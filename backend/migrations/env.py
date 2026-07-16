@@ -1,5 +1,5 @@
 from alembic import context
-from sqlalchemy import engine_from_config,pool
+from sqlalchemy import create_engine, pool
 from backend.app.bootstrap.settings import Settings
 from backend.app.infrastructure.persistence.models import Base
 config=context.config; target_metadata=Base.metadata
@@ -7,7 +7,7 @@ def run_migrations_offline() -> None:
     context.configure(url=Settings().database_url,target_metadata=target_metadata,literal_binds=True)
     with context.begin_transaction(): context.run_migrations()
 def run_migrations_online() -> None:
-    connectable=engine_from_config(config.get_section(config.config_ini_section,{}),prefix="sqlalchemy.",poolclass=pool.NullPool)
+    connectable=create_engine(Settings().database_url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(connection=connection,target_metadata=target_metadata)
         with context.begin_transaction(): context.run_migrations()

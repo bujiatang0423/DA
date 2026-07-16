@@ -1,11 +1,13 @@
 from __future__ import annotations
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from backend.app.contracts.common import ErrorResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
 from backend.app.features.runs.module import build_runs_feature
@@ -40,12 +42,18 @@ from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.bootstrap.settings import Settings
 
 
-def create_app(features: Sequence[FeatureModule], settings: Settings | None = None) -> FastAPI:
+def create_app(features: Sequence[FeatureModule], settings: Settings | None = None,
+               ready_probe: Callable[[], object] | None = None) -> FastAPI:
     resolved = settings or Settings()
     app = FastAPI(title="DA Platform API", version="0.1.0")
     app.add_middleware(CORSMiddleware, allow_origins=list(resolved.allowed_origins),
-                      allow_credentials=False, allow_methods=["*"],
+                      allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
                       allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID", "Authorization"])
+
+    async def authenticate(request: Request) -> None:
+        if resolved.authentication_enabled and not request.headers.get("authorization", "").lower().startswith("bearer "):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="authentication required")
 
     @app.middleware("http")
     async def request_id(request: Request, call_next: object) -> object:
@@ -58,6 +66,12 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
     @app.exception_handler(KeyError)
     async def missing(request: Request, exc: KeyError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        body = ErrorResponse(code="VALIDATION_ERROR", message="request validation failed",
+                             request_id=request.state.request_id, details={"errors": exc.errors()})
+        return JSONResponse(status_code=422, content=body.model_dump(mode="json"))
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -73,6 +87,8 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
 
     @api.get("/health/ready")
     def ready() -> dict[str, str]:
+        if ready_probe is not None:
+            ready_probe()
         return {"status": "ok"}
 
     if not features:
@@ -81,7 +97,7 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
             raise KeyError(run_id)
 
     for feature in features:
-        api.include_router(feature.router)
+        api.include_router(feature.router, dependencies=[Depends(authenticate)])
     app.include_router(api)
     return app
 

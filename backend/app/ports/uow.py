@@ -1,0 +1,13 @@
+from typing import Protocol
+
+
+class PersistenceUnitOfWork(Protocol):
+    """Minimal transaction boundary shared by persistence adapters."""
+
+    def add(self, instance: object) -> None: ...
+
+    def flush(self) -> None: ...
+
+    def commit(self) -> None: ...
+
+    def rollback(self) -> None: ...
