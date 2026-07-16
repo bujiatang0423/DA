@@ -1,9 +1,10 @@
 from collections.abc import Sequence
 from uuid import uuid4
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.bootstrap.settings import Settings
@@ -28,8 +29,8 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
     async def missing(request: Request, exc: KeyError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
 
-    @app.exception_handler(HTTPException)
-    async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         if exc.status_code == 404:
             return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
         return JSONResponse(status_code=exc.status_code, content={"code": "HTTP_ERROR", "message": str(exc.detail), "request_id": request.state.request_id, "details": {}})
