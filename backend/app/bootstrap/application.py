@@ -1,10 +1,39 @@
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
+from backend.app.features.runs.module import build_runs_feature
+
+
+class _MemoryRuns:
+    def __init__(self) -> None:
+        self._rows: dict[str, RunDetail] = {}
+
+    def list(self, cursor: str | None = None, limit: int = 50) -> Page[RunDetail]:
+        return Page(items=list(self._rows.values())[:limit], next_cursor=None)
+
+    def get(self, run_id: str) -> RunDetail:
+        if run_id not in self._rows:
+            raise KeyError(run_id)
+        return self._rows[run_id]
+
+    def artifacts(self, run_id: str) -> list[dict[str, object]]:
+        self.get(run_id)
+        return []
+
+    def submit(self, kind: RunKind, payload: dict[str, object], idempotency_key: str | None,
+               submitted_at: datetime) -> RunRef:
+        from uuid import uuid4
+        run_id = str(uuid4())
+        ref = RunRef(run_id=run_id, kind=kind, status=RunStatus.QUEUED,
+                     submitted_at=submitted_at, links=RunLinks(self=f"/api/v1/runs/{run_id}"))
+        self._rows[run_id] = RunDetail(**ref.model_dump())
+        return ref
 
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.bootstrap.settings import Settings
@@ -57,4 +86,5 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
 
 
 def build_application() -> FastAPI:
-    return create_app(())
+    memory = _MemoryRuns()
+    return create_app((build_runs_feature(memory),))  # type: ignore[arg-type]
