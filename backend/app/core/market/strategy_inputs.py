@@ -116,6 +116,7 @@ class StrategyInputBuilder:
         securities: list[SecurityEvaluationInput] = []
         all_returns20: list[float] = []
         all_returns60: list[float] = []
+        returns_by_security: dict[str, tuple[float, float]] = {}
         for observation in snapshot.security_observations:
             master = next(
                 (r for r in observation.records if r.kind is DataKind.SECURITY_MASTER), None
@@ -123,8 +124,10 @@ class StrategyInputBuilder:
             bars = _bars(snapshot, observation.security_id)
             closes = tuple(float(x.get("close", 0)) for x in bars if x.get("close") is not None)
             if len(closes) >= 60 and closes[0] > 0:
-                all_returns20.append(closes[-1] / closes[-21] - 1 if len(closes) >= 21 else 0.0)
-                all_returns60.append(closes[-1] / closes[-60] - 1)
+                r20 = closes[-1] / closes[-21] - 1 if len(closes) >= 21 else 0.0
+                r60 = closes[-1] / closes[-60] - 1
+                all_returns20.append(r20); all_returns60.append(r60)
+                returns_by_security[observation.security_id] = (r20, r60)
             complete = len(observation.records_of(DataKind.FINANCIAL_FACT)) >= 2
             quality: list[str] = []
             if not complete:
@@ -215,8 +218,8 @@ class StrategyInputBuilder:
             securities = [
                 replace(
                     s,
-                    rs20_percentile=winsorized_percentile(tuple(all_returns20), 0.0),
-                    rs60_percentile=winsorized_percentile(tuple(all_returns60), 0.0),
+                    rs20_percentile=winsorized_percentile(tuple(all_returns20), returns_by_security.get(s.security_id, (0.0, 0.0))[0]),
+                    rs60_percentile=winsorized_percentile(tuple(all_returns60), returns_by_security.get(s.security_id, (0.0, 0.0))[1]),
                 )
                 for s in securities
             ]
