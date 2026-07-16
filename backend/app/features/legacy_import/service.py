@@ -9,7 +9,7 @@ from backend.app.core.portfolio.models import OpeningPosition
 from .inspect import inspect_source
 @dataclass(frozen=True)
 class ImportedBatch:
-    batch_id:str; source_root:str; source_git_state:str; imported_at:datetime; effective_at:datetime; portfolio_id:str; manifest_sha256:str; quality_report_json:str
+    batch_id:str; source_root:str; source_git_state:str; imported_at:datetime; effective_at:datetime; portfolio_id:str; manifest_sha256:str; quality_report_json:str; idempotent:bool=False
 @dataclass(frozen=True)
 class ImportedHistoricalPosition:
     snapshot_at:datetime; security_id:str; quantity:int; inherited_unit_cost:Decimal; imported_buy_date:str|None; source_file_sha256:str; raw_row_json:str
@@ -37,7 +37,11 @@ class LegacyImportService:
         current=report.source_root/'data'/'holdings'/'持仓.csv'; positions=self._parse_opening(current,effective_at)
         snapshots=tuple(row for item in files if item.snapshot_at for row in self._parse_history(item.path,item.snapshot_at,item.sha256))
         quality=json.dumps({'tags':[t.value for t in report.tags],'files':[{'source_path':str(x.path),'sha256':x.sha256,'snapshot_at':x.snapshot_at.isoformat() if x.snapshot_at else None,'tags':[t.value for t in x.tags]} for x in files]},ensure_ascii=False,sort_keys=True)
-        batch=ImportedBatch(batch_id,str(report.source_root),_git_state(report.source_root),datetime.now(timezone.utc),effective_at,portfolio_id,digest,quality); self._repository.save(batch,tuple(raw),positions,snapshots); return batch
+        batch=ImportedBatch(batch_id,str(report.source_root),_git_state(report.source_root),datetime.now(timezone.utc),effective_at,portfolio_id,digest,quality)
+        saved = self._repository.save(batch,tuple(raw),positions,snapshots)
+        return ImportedBatch(batch.batch_id, batch.source_root, batch.source_git_state,
+                             batch.imported_at, batch.effective_at, batch.portfolio_id,
+                             batch.manifest_sha256, batch.quality_report_json, not saved)
     @staticmethod
     def _parse_opening(path:Path,effective:datetime)->tuple[OpeningPosition,...]:
         out=[]
