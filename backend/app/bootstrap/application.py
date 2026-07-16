@@ -31,41 +31,63 @@ class _MemoryRuns:
         self.get(run_id)
         return []
 
-    def submit(self, kind: RunKind, payload: dict[str, object], idempotency_key: str | None,
-               submitted_at: datetime) -> RunRef:
+    def submit(
+        self,
+        kind: RunKind,
+        payload: dict[str, object],
+        idempotency_key: str | None,
+        submitted_at: datetime,
+    ) -> RunRef:
         from uuid import uuid4
+
         run_id = str(uuid4())
         if idempotency_key and (kind, idempotency_key) in self._idempotency:
             return self._rows[self._idempotency[(kind, idempotency_key)]].model_copy()
-        ref = RunRef(run_id=run_id, kind=kind, status=RunStatus.QUEUED,
-                     submitted_at=submitted_at, links=RunLinks(
-                         self=f"/api/v1/runs/{run_id}",
-                         artifacts=f"/api/v1/runs/{run_id}/artifacts"))
+        ref = RunRef(
+            run_id=run_id,
+            kind=kind,
+            status=RunStatus.QUEUED,
+            submitted_at=submitted_at,
+            links=RunLinks(
+                self=f"/api/v1/runs/{run_id}", artifacts=f"/api/v1/runs/{run_id}/artifacts"
+            ),
+        )
         self._rows[run_id] = RunDetail(**ref.model_dump())
         if idempotency_key:
             self._idempotency[(kind, idempotency_key)] = run_id
         return ref
 
+
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.bootstrap.settings import Settings
 
 
-def create_app(features: Sequence[FeatureModule], settings: Settings | None = None,
-               ready_probe: Callable[[], object] | None = None,
-               token_validator: Callable[[str], bool] | None = None) -> FastAPI:
+def create_app(
+    features: Sequence[FeatureModule],
+    settings: Settings | None = None,
+    ready_probe: Callable[[], object] | None = None,
+    token_validator: Callable[[str], bool] | None = None,
+) -> FastAPI:
     resolved = settings or Settings()
     if "*" in resolved.allowed_origins:
         raise ValueError("wildcard CORS origin is not allowed")
     app = FastAPI(title="DA Platform API", version="0.1.0")
-    app.add_middleware(CORSMiddleware, allow_origins=list(resolved.allowed_origins),
-                      allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
-                      allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID", "Authorization"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(resolved.allowed_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID", "Authorization"],
+    )
 
     async def authenticate(request: Request) -> None:
         token = request.headers.get("authorization", "")
-        valid = token.startswith("Bearer ") and (token_validator(token[7:]) if token_validator else True)
+        valid = token.startswith("Bearer ") and (
+            token_validator(token[7:]) if token_validator else True
+        )
         if resolved.authentication_enabled and not valid:
             from fastapi import HTTPException
+
             raise HTTPException(status_code=401, detail="authentication required")
 
     @app.middleware("http")
@@ -78,24 +100,55 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
 
     @app.exception_handler(KeyError)
     async def missing(request: Request, exc: KeyError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "NOT_FOUND",
+                "message": "resource not found",
+                "request_id": request.state.request_id,
+                "details": {},
+            },
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-        body = ErrorResponse(code="VALIDATION_ERROR", message="request validation failed",
-                             request_id=request.state.request_id, details={"errors": exc.errors()})
+        body = ErrorResponse(
+            code="VALIDATION_ERROR",
+            message="request validation failed",
+            request_id=request.state.request_id,
+            details={"errors": exc.errors()},
+        )
         return JSONResponse(status_code=422, content=body.model_dump(mode="json"))
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         if exc.status_code == 404:
-            return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
-        return JSONResponse(status_code=exc.status_code, content={"code": "HTTP_ERROR", "message": str(exc.detail), "request_id": request.state.request_id, "details": {}})
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "code": "NOT_FOUND",
+                    "message": "resource not found",
+                    "request_id": request.state.request_id,
+                    "details": {},
+                },
+            )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "code": "HTTP_ERROR",
+                "message": str(exc.detail),
+                "request_id": request.state.request_id,
+                "details": {},
+            },
+        )
 
     @app.exception_handler(Exception)
     async def unexpected(request: Request, exc: Exception) -> JSONResponse:
-        body = ErrorResponse(code="INTERNAL_ERROR", message="internal server error",
-                             request_id=request.state.request_id)
+        body = ErrorResponse(
+            code="INTERNAL_ERROR",
+            message="internal server error",
+            request_id=request.state.request_id,
+        )
         return JSONResponse(status_code=500, content=body.model_dump())
 
     api = APIRouter(prefix="/api/v1")
@@ -111,6 +164,7 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
         return {"status": "ok"}
 
     if not features:
+
         @api.get("/runs/{run_id}")
         def unavailable_run(run_id: str) -> object:
             raise KeyError(run_id)

@@ -22,8 +22,12 @@ def build_router(service: RunsService) -> APIRouter:
         return service.artifacts(run_id)
 
     @router.post("", response_model=RunRef, status_code=202)
-    def submit_run(kind: RunKind, payload: dict[str, object], response: Response,
-                   idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> RunRef:
+    def submit_run(
+        kind: RunKind,
+        payload: dict[str, object],
+        response: Response,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> RunRef:
         result = service.submit(kind, payload, idempotency_key, datetime.now(UTC))
         response.headers["Location"] = result.links.self
         return result

@@ -109,7 +109,12 @@ class RunRepository:
         result = self._session.execute(
             update(RunRow)
             .where(RunRow.status == RunStatus.RUNNING.value, RunRow.heartbeat_at < cutoff)
-            .values(status=RunStatus.QUEUED.value, retry_count=RunRow.retry_count + 1, stage=None, progress=0)
+            .values(
+                status=RunStatus.QUEUED.value,
+                retry_count=RunRow.retry_count + 1,
+                stage=None,
+                progress=0,
+            )
             .returning(RunRow.id)
         )
         ids = tuple(result.scalars())
@@ -118,4 +123,6 @@ class RunRepository:
         return ids
 
     def _event(self, run_id: UUID, event_type: str, now: datetime) -> None:
-        self._session.add(RunEventRow(run_id=run_id, occurred_at=now, event_type=event_type, payload={}))
+        self._session.add(
+            RunEventRow(run_id=run_id, occurred_at=now, event_type=event_type, payload={})
+        )

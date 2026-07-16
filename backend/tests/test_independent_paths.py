@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 def test_runtime_files_do_not_reference_la() -> None:
     forbidden = ("/Users/bujiatang/workspace/" + "LA", "../" + "LA/")
     matches: list[str] = []
@@ -10,6 +11,7 @@ def test_runtime_files_do_not_reference_la() -> None:
                 text = path.read_text(encoding="utf-8", errors="ignore")
                 matches.extend(f"{path}: {value}" for value in forbidden if value in text)
     assert matches == []
+
 
 def test_repository_contains_no_symlinks() -> None:
     generated = {"node_modules", "dist", "__pycache__", ".pytest_cache"}
