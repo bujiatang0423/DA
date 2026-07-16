@@ -6,7 +6,7 @@ def test_runtime_files_do_not_reference_la() -> None:
     for root in (Path("backend"), Path("web/src"), Path("strategies/manifest.json")):
         paths = [root] if root.is_file() else list(root.rglob("*"))
         for path in paths:
-            if path.is_file():
+            if path.is_file() and path.suffix != ".pyc":
                 text = path.read_text(encoding="utf-8", errors="ignore")
                 matches.extend(f"{path}: {value}" for value in forbidden if value in text)
     assert matches == []
