@@ -101,3 +101,18 @@ class PortfolioLedger:
         )
         self.apply_fill(fill)
         return fill
+
+    def to_portfolio_snapshot(self, as_of_time: datetime):
+        from backend.app.core.portfolio.models import PortfolioLot, PortfolioSnapshot, PositionOrigin
+
+        lots = tuple(
+            PortfolioLot(
+                f"sim-{security_id}", security_id, position.quantity, position.sellable_quantity,
+                position.average_cost, datetime.combine(position.acquired_date, datetime.min.time()),
+                PositionOrigin.SIMULATED_FILL, None, None, None, None, 0,
+            )
+            for security_id, position in sorted(self.state.positions.items())
+            if position.quantity > 0
+        )
+        return PortfolioSnapshot("backtest", as_of_time, self.state.version, self.state.cash,
+                                 self.state.cash, lots)
