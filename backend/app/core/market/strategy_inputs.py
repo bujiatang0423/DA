@@ -132,6 +132,12 @@ class StrategyInputBuilder:
             quality: list[str] = []
             if not complete:
                 quality.append("FINANCIAL_TEMPLATE_INCOMPLETE")
+            financial_rows = [_payload(r) for r in observation.records_of(DataKind.FINANCIAL_FACT)]
+            numeric_values = [float(v) for row in financial_rows for v in row.values()
+                              if isinstance(v, (int, float))]
+            financial_score = max(0.0, min(100.0, mean(numeric_values))) if numeric_values else 0.0
+            if not numeric_values:
+                quality.append("FINANCIAL_NUMERIC_MISSING")
             policy_records = observation.records_of(DataKind.POLICY_DOCUMENT)
             llm_records = observation.records_of(DataKind.LLM_FACTOR)
             llm_valid = bool(llm_records)
@@ -193,8 +199,8 @@ class StrategyInputBuilder:
                     )
                     for r in policy_records
                 ),
-                financial_numeric_score=1.0 if complete else 0.0,
-                financial_text_score=1.0 if complete else 0.0,
+                financial_numeric_score=financial_score,
+                financial_text_score=100.0 if complete else 0.0,
                 policy_direction="unknown",
                 close=close,
                 planned_price=close,
@@ -226,11 +232,18 @@ class StrategyInputBuilder:
         index_close = next(
             (float(p["close"]) for p in market_payloads if p.get("close") is not None), 0.0
         )
+        rows = next((p.get("bars", ()) for p in market_payloads if p.get("bars")), ())
+        idx = tuple(float(x.get("close", 0)) for x in rows)
+        ma20 = mean(idx[-20:]) if len(idx) >= 20 else 0.0
+        ma60 = mean(idx[-60:]) if len(idx) >= 60 else 0.0
+        ret1 = idx[-1] / idx[-2] - 1 if len(idx) >= 2 else 0.0
+        ret20 = idx[-1] / idx[-21] - 1 if len(idx) >= 21 else 0.0
+        state = MarketState.STRONG if index_close > ma20 > ma60 > 0 else MarketState.WEAK if ma20 and index_close < ma20 else MarketState.NEUTRAL
         market = MarketRegimeInput(
             index_close,
-            0.0,
-            0.0,
-            0.0,
+            ma20,
+            ret1,
+            ret20,
             breadth,
             0.0,
             0.0,
@@ -241,7 +254,7 @@ class StrategyInputBuilder:
             0,
             0,
             False,
-            MarketState.NEUTRAL,
+            state,
             0,
             False,
         )
