@@ -23,6 +23,6 @@ class StrategyInputBuilder:
             master = next((r.payload for r in obs.records if r.kind is DataKind.SECURITY_MASTER), {})
             complete = len(obs.records_of(DataKind.FINANCIAL_FACT)) >= 2
             values = {f.name: (False if 'bool' in str(f.type) else (None if 'None' in str(f.type) else (0.0 if 'float' in str(f.type) else 0))) for f in fields(SecurityEvaluationInput)}
-            values.update({'security_id': obs.security_id, 'name': str(master.get('name', '')), 'industry': str(master.get('industry_id', '')), 'ledger': LedgerKind.CORE, 'financial_light': FinancialLight.UNKNOWN, 'policy_direction': 'unknown', 'hard_filter_passed': complete, 'quality_codes': () if complete else ('FINANCIAL_TEMPLATE_INCOMPLETE',)})
+            values.update({'security_id': obs.security_id, 'name': str(master.get('name', '')), 'industry': str(master.get('industry_id', '')), 'theme': None, 'ledger': LedgerKind.CORE, 'policy_evidence': (), 'financial_light': FinancialLight.UNKNOWN, 'policy_direction': 'unknown', 'hard_filter_passed': complete, 'quality_codes': () if complete else ('FINANCIAL_TEMPLATE_INCOMPLETE',)})
             securities.append(SecurityEvaluationInput(**values))
         return StrategyEvaluationRequest(AsOf(as_of_time=snapshot.as_of_time), StrategyVersion(version=strategy_version, sha256=snapshot.manifest_hash), snapshot.manifest_hash, market, pview, tuple(securities))
