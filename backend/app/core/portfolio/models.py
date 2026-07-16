@@ -18,8 +18,25 @@ class PortfolioSnapshot:
     portfolio_id:str; as_of_time:datetime; version:int; cash:Decimal; equity:Decimal; lots:tuple[PortfolioLot,...]
     @property
     def positions(self)->tuple[PortfolioPosition,...]:
-        out=[]
-        for sid in sorted({l.security_id for l in self.lots}):
-            g=[l for l in self.lots if l.security_id==sid]; q=sum(l.quantity for l in g)
-            if q: out.append(PortfolioPosition(sid,g[0].strategy_book,g[0].origin,q,sum(l.available_to_sell for l in g),sum(l.average_cost*l.quantity for l in g)/q,max((l.effective_stop for l in g if l.effective_stop),default=None),max((l.highest_close for l in g if l.highest_close),default=None),g[0].entry_score,g[0].initial_risk_per_share,max(l.add_count for l in g)))
+        groups: dict[tuple[str, StrategyBook | None, PositionOrigin], list[PortfolioLot]] = {}
+        for lot in self.lots:
+            groups.setdefault((lot.security_id, lot.strategy_book, lot.origin), []).append(lot)
+        out = []
+        for (sid, book, origin), lots in sorted(groups.items(), key=lambda x: str(x[0])):
+            q = sum(x.quantity for x in lots)
+            if q <= 0: continue
+            first = min(lots, key=lambda x: x.effective_at)
+            out.append(PortfolioPosition(sid, book, origin, q, sum(x.available_to_sell for x in lots), sum(x.average_cost*x.quantity for x in lots)/q, max((x.effective_stop for x in lots if x.effective_stop is not None), default=None), max((x.highest_close for x in lots if x.highest_close is not None), default=None), first.entry_score, first.initial_risk_per_share, max(x.add_count for x in lots)))
         return tuple(out)
+
+@dataclass(frozen=True)
+class ManualFillCommand:
+    portfolio_id: str; security_id: str; side: FillSide; quantity: int; price: Decimal; fee: Decimal; filled_at: datetime; strategy_book: StrategyBook | None
+
+@dataclass(frozen=True)
+class CorrectionSnapshot:
+    portfolio_id: str; as_of_time: datetime; cash: Decimal; equity: Decimal; lots: tuple[PortfolioLot, ...]
+
+@dataclass(frozen=True)
+class PortfolioAuditEvent:
+    portfolio_id: str; event_type: str; recorded_at: datetime; expected_version: int; reason: str; payload_hash: str
