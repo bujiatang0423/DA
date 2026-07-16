@@ -46,7 +46,9 @@ class Worker:
         return self.runs.requeue_stale(now - timedelta(seconds=stale_after_seconds), now)
 
 
-def build_worker(runs: object, handlers: HandlerRegistry, clock: Callable[[], datetime]) -> Worker:
+def build_worker(
+    runs: RunStore, handlers: HandlerRegistry, clock: Callable[[], datetime]
+) -> Worker:
     return Worker(runs, handlers, clock)
 
 

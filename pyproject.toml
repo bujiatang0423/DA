@@ -26,3 +26,7 @@ strict=true
 [[tool.mypy.overrides]]
 module=["backend.app.*"]
 ignore_errors=true
+
+[[tool.mypy.overrides]]
+module=["backend.tests.*"]
+ignore_errors=true

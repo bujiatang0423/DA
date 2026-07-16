@@ -23,11 +23,13 @@ class _MemoryRuns:
         return Page(items=builtins.list(self._rows.values())[:limit], next_cursor=None)
 
     def get(self, run_id: str) -> RunDetail:
+        run_id = str(run_id)
         if run_id not in self._rows:
             raise KeyError(run_id)
         return self._rows[run_id]
 
     def artifacts(self, run_id: str) -> list[dict[str, object]]:
+        run_id = str(run_id)
         self.get(run_id)
         return []
 
@@ -82,8 +84,10 @@ def create_app(
 
     async def authenticate(request: Request) -> None:
         token = request.headers.get("authorization", "")
-        valid = token.startswith("Bearer ") and (
-            token_validator(token[7:]) if token_validator else True
+        valid = (
+            token.startswith("Bearer ")
+            and token_validator is not None
+            and token_validator(token[7:])
         )
         if resolved.authentication_enabled and not valid:
             from fastapi import HTTPException
@@ -112,11 +116,15 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = [
+            {"loc": list(error.get("loc", ())), "type": error.get("type", "validation_error")}
+            for error in exc.errors()
+        ]
         body = ErrorResponse(
             code="VALIDATION_ERROR",
             message="request validation failed",
             request_id=request.state.request_id,
-            details={"errors": exc.errors()},
+            details={"errors": errors},
         )
         return JSONResponse(status_code=422, content=body.model_dump(mode="json"))
 
