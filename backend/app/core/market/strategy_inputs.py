@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 from statistics import mean
 from typing import Any
 
@@ -166,6 +166,13 @@ class StrategyInputBuilder:
             securities.append(SecurityEvaluationInput(**values))
 
         breadth = next((float(p["breadth"]) for p in market_payloads if p.get("breadth") is not None), 0.0)
+        if all_returns20 and all_returns60:
+            securities = [
+                replace(s,
+                        rs20_percentile=winsorized_percentile(tuple(all_returns20), 0.0),
+                        rs60_percentile=winsorized_percentile(tuple(all_returns60), 0.0))
+                for s in securities
+            ]
         index_close = next((float(p["close"]) for p in market_payloads if p.get("close") is not None), 0.0)
         market = MarketRegimeInput(index_close, 0.0, 0.0, 0.0, breadth, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0, 0, False, MarketState.NEUTRAL, 0, False)
         pview = PortfolioView(float(portfolio.equity), 0.0, 0.0, len(portfolio.positions))
