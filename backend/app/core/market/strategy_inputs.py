@@ -35,7 +35,7 @@ def atr14(bars: tuple[dict[str, Any], ...]) -> float:
         raise StrategyInputError("insufficient data for ATR14")
     ordered = bars[-15:]
     trs = []
-    for previous, current in zip(ordered, ordered[1:], strict=True):
+    for previous, current in zip(ordered, ordered[1:], strict=False):
         high, low = float(current["high"]), float(current["low"])
         trs.append(max(high - low, abs(high - float(previous["close"])), abs(low - float(previous["close"]))))
     return mean(tuple(trs[-14:]))
@@ -136,7 +136,7 @@ class StrategyInputBuilder:
                 industry=industry,
                 theme=None,
                 ledger=LedgerKind.CORE,
-                financial_light=FinancialLight.UNKNOWN,
+                financial_light=FinancialLight.GREEN if complete else FinancialLight.YELLOW,
                 policy_evidence=tuple(
                     PolicyEvidence(
                         float(_payload(r).get("strength", 0.0)),

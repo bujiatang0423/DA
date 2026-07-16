@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytest
 
@@ -7,7 +7,7 @@ from backend.app.core.market.pit_models import DataKind, SnapshotScope, Temporal
 from backend.app.core.market.snapshot import FutureDataError, assemble_snapshot
 
 
-UTC = timezone.utc
+UTC = UTC
 
 
 def record(rid: str, entity: str, event: datetime, available: datetime | None = None) -> TemporalRecord:

@@ -2,6 +2,7 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from backend.app.features.legacy_import.service import LegacyImportService
 
@@ -10,7 +11,7 @@ class Repo:
     def __init__(self) -> None:
         self.calls = []
 
-    def save(self, batch, raw_files, positions, historical_snapshots):
+    def save(self, batch: Any, raw_files: Any, positions: Any, historical_snapshots: Any) -> bool:  # noqa: ANN401
         self.calls.append((batch, raw_files, positions, historical_snapshots))
         return len(self.calls) == 1
 
