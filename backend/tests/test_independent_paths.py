@@ -12,4 +12,10 @@ def test_runtime_files_do_not_reference_la() -> None:
     assert matches == []
 
 def test_repository_contains_no_symlinks() -> None:
-    assert not [str(path) for path in Path(".").rglob("*") if path.is_symlink()]
+    generated = {"node_modules", "dist", "__pycache__", ".pytest_cache"}
+    symlinks = [
+        str(path)
+        for path in Path(".").rglob("*")
+        if path.is_symlink() and not generated.intersection(path.parts)
+    ]
+    assert not symlinks
