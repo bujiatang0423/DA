@@ -70,9 +70,7 @@ class StrategyInputBuilder:
         if snapshot.quality.has_errors:
             raise StrategyInputError("snapshot quality contains errors")
         market_payloads = [_payload(r) for r in snapshot.market_inputs]
-        if not any(r.kind is DataKind.TRADING_CALENDAR for r in snapshot.market_inputs) and not any(
-            "breadth" in p or p.get("security_count") is not None for p in market_payloads
-        ):
+        if not any("breadth" in p or p.get("security_count") is not None for p in market_payloads):
             raise StrategyInputError("market breadth missing")
 
         securities: list[SecurityEvaluationInput] = []
