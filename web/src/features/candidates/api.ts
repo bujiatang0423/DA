@@ -1,0 +1,1 @@
+export async function submitCandidate(asOfTime:string):Promise<unknown>{const response=await fetch("/api/v1/candidates",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({as_of_time:asOfTime})}); if(!response.ok) throw new Error("candidate request failed"); return response.json()}
