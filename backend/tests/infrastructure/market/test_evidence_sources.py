@@ -3,7 +3,10 @@ from datetime import datetime, UTC
 from typing import Any
 
 from backend.app.core.market.pit_models import DataKind, SnapshotScope
-from backend.app.infrastructure.market.research_adapters import LlmEvidenceSource, PolicyEvidenceSource
+from backend.app.infrastructure.market.research_adapters import (
+    LlmEvidenceSource,
+    PolicyEvidenceSource,
+)
 
 
 UTC = UTC
@@ -54,13 +57,19 @@ class Market:
 
 class Llm:
     def extract(self, **kwargs: Any) -> Factor:  # noqa: ANN401
-        return Factor(kwargs["as_of_time"], kwargs["security_id"], "m", "prompt", "input", "output", {})
+        return Factor(
+            kwargs["as_of_time"], kwargs["security_id"], "m", "prompt", "input", "output", {}
+        )
 
 
 def test_llm_source_preserves_output_hash_and_identity_lineage() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
     batch = LlmEvidenceSource(Llm(), Policy(), Market()).fetch(
-        as_of_time=as_of, scope=SnapshotScope(("AAA",)))
+        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+    )
     item = batch.records[0]
     assert item.kind is DataKind.LLM_FACTOR and item.available_at == as_of
-    assert item.payload["output_hash"] == "output" and batch.lineage[0].source_artifact_hash == "output"
+    assert (
+        item.payload["output_hash"] == "output"
+        and batch.lineage[0].source_artifact_hash == "output"
+    )

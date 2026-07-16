@@ -12,4 +12,5 @@ class ResearchBatch:
 
 class ResearchSource(Protocol):
     provider: str
+
     def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch: ...

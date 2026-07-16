@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Mapping
+from collections.abc import Mapping
 
 from backend.app.contracts.grades import DataGrade
 
@@ -39,15 +39,15 @@ class SnapshotScope:
     history_start: datetime | None = None
 
     @classmethod
-    def candidate_recommendation(cls) -> "SnapshotScope":
+    def candidate_recommendation(cls) -> SnapshotScope:
         return cls(required_kinds=tuple(DataKind))
 
     @classmethod
-    def holding_analysis(cls, security_ids: tuple[str, ...]) -> "SnapshotScope":
+    def holding_analysis(cls, security_ids: tuple[str, ...]) -> SnapshotScope:
         return cls(security_ids, cls.candidate_recommendation().required_kinds)
 
     @classmethod
-    def backtest(cls, security_ids: tuple[str, ...], history_start: datetime) -> "SnapshotScope":
+    def backtest(cls, security_ids: tuple[str, ...], history_start: datetime) -> SnapshotScope:
         return cls(security_ids, cls.candidate_recommendation().required_kinds, history_start)
 
 

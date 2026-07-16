@@ -37,7 +37,13 @@ def atr14(bars: tuple[dict[str, Any], ...]) -> float:
     trs = []
     for previous, current in zip(ordered, ordered[1:], strict=False):
         high, low = float(current["high"]), float(current["low"])
-        trs.append(max(high - low, abs(high - float(previous["close"])), abs(low - float(previous["close"]))))
+        trs.append(
+            max(
+                high - low,
+                abs(high - float(previous["close"])),
+                abs(low - float(previous["close"])),
+            )
+        )
     return mean(tuple(trs[-14:]))
 
 
@@ -58,7 +64,10 @@ def obv_slope(bars: tuple[dict[str, Any], ...], window: int = 20) -> float:
 def winsorized_percentile(values: tuple[float, ...], value: float) -> float:
     if not values:
         return 0.5
-    low, high = sorted(values)[max(0, int(len(values) * 0.01) - 1)], sorted(values)[min(len(values) - 1, int(len(values) * 0.99))]
+    low, high = (
+        sorted(values)[max(0, int(len(values) * 0.01) - 1)],
+        sorted(values)[min(len(values) - 1, int(len(values) * 0.99))],
+    )
     clipped = min(high, max(low, value))
     return sum(item <= clipped for item in values) / len(values)
 
@@ -68,10 +77,25 @@ def _payload(record: TemporalRecord) -> dict[str, Any]:
 
 
 def _bars(snapshot: PointInTimeSnapshot, security_id: str) -> tuple[dict[str, Any], ...]:
-    rows = [_payload(r) for r in snapshot.security_observations_by_id(security_id).records_of(DataKind.DAILY_BAR_RAW)] if hasattr(snapshot, "security_observations_by_id") else []
+    rows = (
+        [
+            _payload(r)
+            for r in snapshot.security_observations_by_id(security_id).records_of(
+                DataKind.DAILY_BAR_RAW
+            )
+        ]
+        if hasattr(snapshot, "security_observations_by_id")
+        else []
+    )
     if not rows:
-        observation = next((x for x in snapshot.security_observations if x.security_id == security_id), None)
-        rows = [_payload(r) for r in observation.records_of(DataKind.DAILY_BAR_RAW)] if observation else []
+        observation = next(
+            (x for x in snapshot.security_observations if x.security_id == security_id), None
+        )
+        rows = (
+            [_payload(r) for r in observation.records_of(DataKind.DAILY_BAR_RAW)]
+            if observation
+            else []
+        )
     return tuple(sorted(rows, key=lambda x: str(x.get("trade_date", x.get("date", "")))))
 
 
@@ -93,7 +117,9 @@ class StrategyInputBuilder:
         all_returns20: list[float] = []
         all_returns60: list[float] = []
         for observation in snapshot.security_observations:
-            master = next((r for r in observation.records if r.kind is DataKind.SECURITY_MASTER), None)
+            master = next(
+                (r for r in observation.records if r.kind is DataKind.SECURITY_MASTER), None
+            )
             bars = _bars(snapshot, observation.security_id)
             closes = tuple(float(x.get("close", 0)) for x in bars if x.get("close") is not None)
             if len(closes) >= 60 and closes[0] > 0:
@@ -113,7 +139,11 @@ class StrategyInputBuilder:
                 quality.append("LLM_FACTOR_INVALID")
             name = str(_payload(master).get("name", "")) if master else ""
             master_payload = _payload(master) if master else {}
-            industry = str(_payload(master).get("industry_id", _payload(master).get("industry", ""))) if master else ""
+            industry = (
+                str(_payload(master).get("industry_id", _payload(master).get("industry", "")))
+                if master
+                else ""
+            )
             close = closes[-1] if closes else 0.0
             ma20 = moving_average(closes, 20) if len(closes) >= 20 else 0.0
             ma60 = moving_average(closes, 60) if len(closes) >= 60 else 0.0
@@ -124,11 +154,20 @@ class StrategyInputBuilder:
             average_turnover20 = mean(amounts[-20:]) if len(amounts) >= 20 else 0.0
             status = str(master_payload.get("status", "")).upper()
             listing_days = int(master_payload.get("listing_days", 9999) or 0)
-            one_word = len(bars) > 0 and all(float(x.get("high", 0)) == float(x.get("low", 1)) for x in bars[-5:])
-            hard_market = ("ST" not in name.upper() and "*ST" not in name.upper()
-                           and listing_days >= 120 and len(bars) >= 18 and mavol20 > 0
-                           and average_turnover20 >= 50_000_000 and status not in {"SUSPENDED", "停牌"}
-                           and close > 0 and not one_word)
+            one_word = len(bars) > 0 and all(
+                float(x.get("high", 0)) == float(x.get("low", 1)) for x in bars[-5:]
+            )
+            hard_market = (
+                "ST" not in name.upper()
+                and "*ST" not in name.upper()
+                and listing_days >= 120
+                and len(bars) >= 18
+                and mavol20 > 0
+                and average_turnover20 >= 50_000_000
+                and status not in {"SUSPENDED", "停牌"}
+                and close > 0
+                and not one_word
+            )
             values: dict[str, Any] = {f.name: 0 for f in fields(SecurityEvaluationInput)}
             values.update(
                 security_id=observation.security_id,
@@ -143,11 +182,13 @@ class StrategyInputBuilder:
                         float(_payload(r).get("relevance", 0.0)),
                         int(_payload(r).get("age_days", 0)),
                         PolicyStage(str(_payload(r).get("stage", "planning")))
-                        if str(_payload(r).get("stage", "planning")) in {x.value for x in PolicyStage}
+                        if str(_payload(r).get("stage", "planning"))
+                        in {x.value for x in PolicyStage}
                         else PolicyStage.PLANNING,
                         float(_payload(r).get("evidence_confidence", 0.0)),
                         float(_payload(r).get("data_completeness", 0.0)),
-                    ) for r in policy_records
+                    )
+                    for r in policy_records
                 ),
                 financial_numeric_score=1.0 if complete else 0.0,
                 financial_text_score=1.0 if complete else 0.0,
@@ -167,15 +208,46 @@ class StrategyInputBuilder:
             )
             securities.append(SecurityEvaluationInput(**values))
 
-        breadth = next((float(p["breadth"]) for p in market_payloads if p.get("breadth") is not None), 0.0)
+        breadth = next(
+            (float(p["breadth"]) for p in market_payloads if p.get("breadth") is not None), 0.0
+        )
         if all_returns20 and all_returns60:
             securities = [
-                replace(s,
-                        rs20_percentile=winsorized_percentile(tuple(all_returns20), 0.0),
-                        rs60_percentile=winsorized_percentile(tuple(all_returns60), 0.0))
+                replace(
+                    s,
+                    rs20_percentile=winsorized_percentile(tuple(all_returns20), 0.0),
+                    rs60_percentile=winsorized_percentile(tuple(all_returns60), 0.0),
+                )
                 for s in securities
             ]
-        index_close = next((float(p["close"]) for p in market_payloads if p.get("close") is not None), 0.0)
-        market = MarketRegimeInput(index_close, 0.0, 0.0, 0.0, breadth, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0, 0, False, MarketState.NEUTRAL, 0, False)
+        index_close = next(
+            (float(p["close"]) for p in market_payloads if p.get("close") is not None), 0.0
+        )
+        market = MarketRegimeInput(
+            index_close,
+            0.0,
+            0.0,
+            0.0,
+            breadth,
+            0.0,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            0,
+            False,
+            MarketState.NEUTRAL,
+            0,
+            False,
+        )
         pview = PortfolioView(float(portfolio.equity), 0.0, 0.0, len(portfolio.positions))
-        return StrategyEvaluationRequest(AsOf(as_of_time=snapshot.as_of_time), StrategyVersion(version=strategy_version, sha256=snapshot.manifest_hash), snapshot.manifest_hash, market, pview, tuple(securities))
+        return StrategyEvaluationRequest(
+            AsOf(as_of_time=snapshot.as_of_time),
+            StrategyVersion(version=strategy_version, sha256=snapshot.manifest_hash),
+            snapshot.manifest_hash,
+            market,
+            pview,
+            tuple(securities),
+        )
