@@ -1,10 +1,17 @@
 from collections.abc import Callable
 from time import sleep
 from datetime import datetime
+from typing import Protocol
 from backend.app.contracts.runs import RunKind, RunStatus
 from .handlers import HandlerRegistry, JobContext
+
+class RunStore(Protocol):
+    def claim_next(self, now: datetime) -> object | None: ...
+    def heartbeat(self, run_id: object, stage: str, progress: int, now: datetime) -> None: ...
+    def transition(self, run_id: object, target: RunStatus, now: datetime) -> None: ...
+    def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[object, ...]: ...
 class Worker:
-    def __init__(self, runs: object, handlers: HandlerRegistry, clock: Callable[[], datetime]) -> None:
+    def __init__(self, runs: RunStore, handlers: HandlerRegistry, clock: Callable[[], datetime]) -> None:
         self.runs = runs
         self.handlers = handlers
         self.clock = clock

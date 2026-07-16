@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections.abc import Callable, Sequence
+import builtins
 from datetime import datetime
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ class _MemoryRuns:
         self._idempotency: dict[tuple[RunKind, str], str] = {}
 
     def list(self, cursor: str | None = None, limit: int = 50) -> Page[RunDetail]:
-        return Page(items=list(self._rows.values())[:limit], next_cursor=None)
+        return Page(items=builtins.list(self._rows.values())[:limit], next_cursor=None)
 
     def get(self, run_id: str) -> RunDetail:
         if run_id not in self._rows:
@@ -50,15 +51,20 @@ from backend.app.bootstrap.settings import Settings
 
 
 def create_app(features: Sequence[FeatureModule], settings: Settings | None = None,
-               ready_probe: Callable[[], object] | None = None) -> FastAPI:
+               ready_probe: Callable[[], object] | None = None,
+               token_validator: Callable[[str], bool] | None = None) -> FastAPI:
     resolved = settings or Settings()
+    if "*" in resolved.allowed_origins:
+        raise ValueError("wildcard CORS origin is not allowed")
     app = FastAPI(title="DA Platform API", version="0.1.0")
     app.add_middleware(CORSMiddleware, allow_origins=list(resolved.allowed_origins),
                       allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
                       allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID", "Authorization"])
 
     async def authenticate(request: Request) -> None:
-        if resolved.authentication_enabled and not request.headers.get("authorization", "").lower().startswith("bearer "):
+        token = request.headers.get("authorization", "")
+        valid = token.startswith("Bearer ") and (token_validator(token[7:]) if token_validator else True)
+        if resolved.authentication_enabled and not valid:
             from fastapi import HTTPException
             raise HTTPException(status_code=401, detail="authentication required")
 

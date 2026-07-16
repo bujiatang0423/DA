@@ -3,6 +3,7 @@ from .market_regime import evaluate_market_regime
 from .factors import *
 from .risk import size_position
 from .constraints import check_constraints
+from .reason_codes import ReasonCode
 class V212StrategyEngine:
     def evaluate(self,request:StrategyEvaluationRequest)->StrategyEvaluation:
         market=evaluate_market_regime(request.market); raw=[]
@@ -12,7 +13,7 @@ class V212StrategyEngine:
             if not s.policy_sources_available: q.append("POLICY_UNAVAILABLE"); reasons.append(ReasonCode.POLICY_UNAVAILABLE)
             if f is None or not s.llm_factor_valid: q.append("FINANCIAL_INVALID")
             if not q and p is not None and f is not None:
-                r=relative_strength_score(s.rs20_percentile,s.rs60_percentile,industry_proxy=s.industry_proxy); t=trend_score(s.above_ma20,s.above_ma60,s.rising_ma20,s.breakout_or_valid_pullback,ma20_atr_distance=s.ma20_atr_distance); v=volume_score(s.breakout_volume_percentile,s.obv_slope_percentile,s.turnover_percentile); score=composite_score(p,f,r,t,v); factors=(p,f,r,t,v,score,0)
+                r=relative_strength_score(s.rs20_percentile,s.rs60_percentile,industry_proxy=s.industry_proxy); t=trend_score(s.above_ma20,s.above_ma60,s.rising_ma20,s.breakout_or_valid_pullback,ma20_atr_distance=s.ma20_atr_distance); v=volume_score(s.breakout_volume_percentile,s.obv_slope_percentile,s.turnover_percentile); score=composite_score(p,f,r,t,v); factors=FactorScores(p,f,r,t,v,score,0)
                 sizing=size_position(PositionSizingInput(request.portfolio.net_equity,s.planned_price,s.pullback_low,s.atr14,s.average_turnover20,s.ledger))
             raw.append((s,factors,sizing,reasons,q))
         scores=tuple(x[1].s if x[1] else 0 for x in raw); out=[]

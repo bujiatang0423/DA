@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from uuid import UUID
 from fastapi import APIRouter, Header, Response
 
@@ -24,7 +24,7 @@ def build_router(service: RunsService) -> APIRouter:
     @router.post("", response_model=RunRef, status_code=202)
     def submit_run(kind: RunKind, payload: dict[str, object], response: Response,
                    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> RunRef:
-        result = service.submit(kind, payload, idempotency_key, datetime.now(timezone.utc))
+        result = service.submit(kind, payload, idempotency_key, datetime.now(UTC))
         response.headers["Location"] = result.links.self
         return result
 

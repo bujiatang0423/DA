@@ -17,7 +17,7 @@ class RunsService:
     @staticmethod
     def _ref(row: RunRow) -> RunRef:
         run_id = str(row.id)
-        return RunRef(run_id=run_id, kind=row.kind, status=row.status,
+        return RunRef(run_id=run_id, kind=RunKind(row.kind), status=RunStatus(row.status),
                       submitted_at=row.submitted_at,
                       links=RunLinks(self=f"/api/v1/runs/{run_id}", artifacts=f"/api/v1/runs/{run_id}/artifacts"))
 
