@@ -8,6 +8,7 @@ __pycache__/
 data/artifacts/
 data/imports/
 web/node_modules/
+web/tsconfig.tsbuildinfo
 web/dist/
 playwright-report/
 .coverage
