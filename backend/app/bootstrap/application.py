@@ -2,6 +2,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 import builtins
 from datetime import datetime
+from decimal import Decimal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -12,6 +13,10 @@ from backend.app.contracts.common import ErrorResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
 from backend.app.features.runs.module import build_runs_feature
+from backend.app.features.candidates.module import build_candidate_feature
+from backend.app.features.holdings.module import build_holdings_feature
+from backend.app.features.backtests.module import build_backtests_feature
+from backend.app.core.portfolio.models import PortfolioSnapshot
 
 
 class _MemoryRuns:
@@ -58,6 +63,18 @@ class _MemoryRuns:
         if idempotency_key:
             self._idempotency[(kind, idempotency_key)] = run_id
         return ref
+
+
+class _EmptyPortfolioReader:
+    def snapshot(self, *, portfolio_id: str, as_of_time: datetime) -> PortfolioSnapshot:
+        return PortfolioSnapshot(
+            portfolio_id=portfolio_id,
+            as_of_time=as_of_time,
+            version=0,
+            cash=Decimal("0"),
+            equity=Decimal("0"),
+            lots=(),
+        )
 
 
 from backend.app.bootstrap.feature_registry import FeatureModule
@@ -185,4 +202,11 @@ def create_app(
 
 def build_application() -> FastAPI:
     memory = _MemoryRuns()
-    return create_app((build_runs_feature(memory),))  # type: ignore[arg-type]
+    return create_app(
+        (
+            build_runs_feature(memory),
+            build_candidate_feature(),
+            build_holdings_feature(_EmptyPortfolioReader()),
+            build_backtests_feature(),
+        )
+    )  # type: ignore[arg-type]

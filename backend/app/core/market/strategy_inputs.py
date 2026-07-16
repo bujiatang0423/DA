@@ -114,7 +114,9 @@ class StrategyInputBuilder:
             raise StrategyInputError("market breadth missing")
 
         securities: list[SecurityEvaluationInput] = []
-        global_policy = tuple(r for r in snapshot.market_inputs if r.kind is DataKind.POLICY_DOCUMENT)
+        global_policy = tuple(
+            r for r in snapshot.market_inputs if r.kind is DataKind.POLICY_DOCUMENT
+        )
         global_llm = tuple(r for r in snapshot.market_inputs if r.kind is DataKind.LLM_FACTOR)
         all_returns20: list[float] = []
         all_returns60: list[float] = []
@@ -128,23 +130,32 @@ class StrategyInputBuilder:
             if len(closes) >= 60 and closes[0] > 0:
                 r20 = closes[-1] / closes[-21] - 1 if len(closes) >= 21 else 0.0
                 r60 = closes[-1] / closes[-60] - 1
-                all_returns20.append(r20); all_returns60.append(r60)
+                all_returns20.append(r20)
+                all_returns60.append(r60)
                 returns_by_security[observation.security_id] = (r20, r60)
             complete = len(observation.records_of(DataKind.FINANCIAL_FACT)) >= 2
             quality: list[str] = []
             if not complete:
                 quality.append("FINANCIAL_TEMPLATE_INCOMPLETE")
             financial_rows = [_payload(r) for r in observation.records_of(DataKind.FINANCIAL_FACT)]
-            numeric_values = [float(v) for row in financial_rows for v in row.values()
-                              if isinstance(v, (int, float))]
+            numeric_values = [
+                float(v)
+                for row in financial_rows
+                for v in row.values()
+                if isinstance(v, (int, float))
+            ]
             financial_score = max(0.0, min(100.0, mean(numeric_values))) if numeric_values else 0.0
             if not numeric_values:
                 quality.append("FINANCIAL_NUMERIC_MISSING")
             policy_records = observation.records_of(DataKind.POLICY_DOCUMENT) + tuple(
-                r for r in global_policy if observation.security_id in str(_payload(r).get("security_ids", ""))
+                r
+                for r in global_policy
+                if observation.security_id in str(_payload(r).get("security_ids", ""))
             )
             llm_records = observation.records_of(DataKind.LLM_FACTOR) + tuple(
-                r for r in global_llm if observation.security_id in str(_payload(r).get("security_ids", ""))
+                r
+                for r in global_llm
+                if observation.security_id in str(_payload(r).get("security_ids", ""))
             )
             llm_valid = bool(llm_records) and all(
                 str(_payload(r).get("first_observed_at", "")) <= snapshot.as_of_time.isoformat()
@@ -233,8 +244,12 @@ class StrategyInputBuilder:
             securities = [
                 replace(
                     s,
-                    rs20_percentile=winsorized_percentile(tuple(all_returns20), returns_by_security.get(s.security_id, (0.0, 0.0))[0]),
-                    rs60_percentile=winsorized_percentile(tuple(all_returns60), returns_by_security.get(s.security_id, (0.0, 0.0))[1]),
+                    rs20_percentile=winsorized_percentile(
+                        tuple(all_returns20), returns_by_security.get(s.security_id, (0.0, 0.0))[0]
+                    ),
+                    rs60_percentile=winsorized_percentile(
+                        tuple(all_returns60), returns_by_security.get(s.security_id, (0.0, 0.0))[1]
+                    ),
                 )
                 for s in securities
             ]
@@ -247,7 +262,13 @@ class StrategyInputBuilder:
         ma60 = mean(idx[-60:]) if len(idx) >= 60 else 0.0
         ret1 = idx[-1] / idx[-2] - 1 if len(idx) >= 2 else 0.0
         ret20 = idx[-1] / idx[-21] - 1 if len(idx) >= 21 else 0.0
-        state = MarketState.STRONG if index_close > ma20 > ma60 > 0 else MarketState.WEAK if ma20 and index_close < ma20 else MarketState.NEUTRAL
+        state = (
+            MarketState.STRONG
+            if index_close > ma20 > ma60 > 0
+            else MarketState.WEAK
+            if ma20 and index_close < ma20
+            else MarketState.NEUTRAL
+        )
         market = MarketRegimeInput(
             index_close,
             ma20,
