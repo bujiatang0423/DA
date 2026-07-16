@@ -142,7 +142,9 @@ class StrategyInputBuilder:
                         float(_payload(r).get("strength", 0.0)),
                         float(_payload(r).get("relevance", 0.0)),
                         int(_payload(r).get("age_days", 0)),
-                        PolicyStage(str(_payload(r).get("stage", "planning"))),
+                        PolicyStage(str(_payload(r).get("stage", "planning")))
+                        if str(_payload(r).get("stage", "planning")) in {x.value for x in PolicyStage}
+                        else PolicyStage.PLANNING,
                         float(_payload(r).get("evidence_confidence", 0.0)),
                         float(_payload(r).get("data_completeness", 0.0)),
                     ) for r in policy_records
