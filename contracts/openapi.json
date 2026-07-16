@@ -45,6 +45,12 @@
       "RunDetail": {
         "additionalProperties": false,
         "properties": {
+          "auto_trade_enabled": {
+            "const": false,
+            "default": false,
+            "title": "Auto Trade Enabled",
+            "type": "boolean"
+          },
           "error": {
             "anyOf": [
               {
@@ -68,6 +74,12 @@
               }
             ],
             "title": "Heartbeat At"
+          },
+          "human_confirm_required": {
+            "const": true,
+            "default": true,
+            "title": "Human Confirm Required",
+            "type": "boolean"
           },
           "kind": {
             "$ref": "#/components/schemas/RunKind"
@@ -167,6 +179,18 @@
       "RunRef": {
         "additionalProperties": false,
         "properties": {
+          "auto_trade_enabled": {
+            "const": false,
+            "default": false,
+            "title": "Auto Trade Enabled",
+            "type": "boolean"
+          },
+          "human_confirm_required": {
+            "const": true,
+            "default": true,
+            "title": "Human Confirm Required",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/RunKind"
           },
