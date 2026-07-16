@@ -45,6 +45,11 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
     def ready() -> dict[str, str]:
         return {"status": "ok"}
 
+    if not features:
+        @api.get("/runs/{run_id}")
+        def unavailable_run(run_id: str) -> object:
+            raise KeyError(run_id)
+
     for feature in features:
         api.include_router(feature.router)
     app.include_router(api)
