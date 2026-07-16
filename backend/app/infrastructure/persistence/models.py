@@ -12,6 +12,8 @@ class RunRow(Base):
     kind: Mapped[str] = mapped_column(String(64)); status: Mapped[str] = mapped_column(String(16)); request_payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True); stage: Mapped[str | None] = mapped_column(String(64), nullable=True); progress: Mapped[int] = mapped_column(Integer, default=0)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True); heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True); finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True); retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 class RunEventRow(Base):
     __tablename__ = "run_events"
     id: Mapped[int] = mapped_column(primary_key=True); run_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), index=True); occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); event_type: Mapped[str] = mapped_column(String(64)); payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)

@@ -16,6 +16,7 @@ from backend.app.features.runs.module import build_runs_feature
 class _MemoryRuns:
     def __init__(self) -> None:
         self._rows: dict[str, RunDetail] = {}
+        self._idempotency: dict[tuple[RunKind, str], str] = {}
 
     def list(self, cursor: str | None = None, limit: int = 50) -> Page[RunDetail]:
         return Page(items=list(self._rows.values())[:limit], next_cursor=None)
@@ -33,9 +34,15 @@ class _MemoryRuns:
                submitted_at: datetime) -> RunRef:
         from uuid import uuid4
         run_id = str(uuid4())
+        if idempotency_key and (kind, idempotency_key) in self._idempotency:
+            return self._rows[self._idempotency[(kind, idempotency_key)]].model_copy()
         ref = RunRef(run_id=run_id, kind=kind, status=RunStatus.QUEUED,
-                     submitted_at=submitted_at, links=RunLinks(self=f"/api/v1/runs/{run_id}"))
+                     submitted_at=submitted_at, links=RunLinks(
+                         self=f"/api/v1/runs/{run_id}",
+                         artifacts=f"/api/v1/runs/{run_id}/artifacts"))
         self._rows[run_id] = RunDetail(**ref.model_dump())
+        if idempotency_key:
+            self._idempotency[(kind, idempotency_key)] = run_id
         return ref
 
 from backend.app.bootstrap.feature_registry import FeatureModule
@@ -78,6 +85,12 @@ def create_app(features: Sequence[FeatureModule], settings: Settings | None = No
         if exc.status_code == 404:
             return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "resource not found", "request_id": request.state.request_id, "details": {}})
         return JSONResponse(status_code=exc.status_code, content={"code": "HTTP_ERROR", "message": str(exc.detail), "request_id": request.state.request_id, "details": {}})
+
+    @app.exception_handler(Exception)
+    async def unexpected(request: Request, exc: Exception) -> JSONResponse:
+        body = ErrorResponse(code="INTERNAL_ERROR", message="internal server error",
+                             request_id=request.state.request_id)
+        return JSONResponse(status_code=500, content=body.model_dump())
 
     api = APIRouter(prefix="/api/v1")
 

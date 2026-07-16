@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from time import sleep
 from datetime import datetime
 from backend.app.contracts.runs import RunKind, RunStatus
 from .handlers import HandlerRegistry, JobContext
@@ -35,5 +36,10 @@ def build_worker(runs: object, handlers: HandlerRegistry,
     return Worker(runs, handlers, clock)
 
 
-def run() -> None:
-    return None
+def run(worker: Worker, sleep_fn: Callable[[float], None] = sleep,
+        stop: Callable[[], bool] | None = None, interval: float = 1.0) -> None:
+    should_stop = stop or (lambda: False)
+    while not should_stop():
+        worker.run_once()
+        if not should_stop():
+            sleep_fn(interval)

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Response
 
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunRef
 from backend.app.features.runs.service import RunsService
@@ -22,7 +22,10 @@ def build_router(service: RunsService) -> APIRouter:
         return service.artifacts(run_id)
 
     @router.post("", response_model=RunRef, status_code=202)
-    def submit_run(kind: RunKind, payload: dict[str, object], idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> RunRef:
-        return service.submit(kind, payload, idempotency_key, datetime.now(timezone.utc))
+    def submit_run(kind: RunKind, payload: dict[str, object], response: Response,
+                   idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> RunRef:
+        result = service.submit(kind, payload, idempotency_key, datetime.now(timezone.utc))
+        response.headers["Location"] = result.links.self
+        return result
 
     return router
