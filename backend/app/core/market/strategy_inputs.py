@@ -114,6 +114,8 @@ class StrategyInputBuilder:
             raise StrategyInputError("market breadth missing")
 
         securities: list[SecurityEvaluationInput] = []
+        global_policy = tuple(r for r in snapshot.market_inputs if r.kind is DataKind.POLICY_DOCUMENT)
+        global_llm = tuple(r for r in snapshot.market_inputs if r.kind is DataKind.LLM_FACTOR)
         all_returns20: list[float] = []
         all_returns60: list[float] = []
         returns_by_security: dict[str, tuple[float, float]] = {}
@@ -138,9 +140,16 @@ class StrategyInputBuilder:
             financial_score = max(0.0, min(100.0, mean(numeric_values))) if numeric_values else 0.0
             if not numeric_values:
                 quality.append("FINANCIAL_NUMERIC_MISSING")
-            policy_records = observation.records_of(DataKind.POLICY_DOCUMENT)
-            llm_records = observation.records_of(DataKind.LLM_FACTOR)
-            llm_valid = bool(llm_records)
+            policy_records = observation.records_of(DataKind.POLICY_DOCUMENT) + tuple(
+                r for r in global_policy if observation.security_id in str(_payload(r).get("security_ids", ""))
+            )
+            llm_records = observation.records_of(DataKind.LLM_FACTOR) + tuple(
+                r for r in global_llm if observation.security_id in str(_payload(r).get("security_ids", ""))
+            )
+            llm_valid = bool(llm_records) and all(
+                str(_payload(r).get("first_observed_at", "")) <= snapshot.as_of_time.isoformat()
+                for r in llm_records
+            )
             policy_available = bool(policy_records)
             if not policy_available:
                 quality.append("POLICY_EVIDENCE_INVALID")
