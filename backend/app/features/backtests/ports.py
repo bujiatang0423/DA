@@ -12,6 +12,7 @@ from backend.app.features.backtests.models import (
     OrderIntent,
     StrategyGroup,
 )
+from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,14 @@ class BacktestDecision:
 
 class BacktestDecisionPort(Protocol):
     def decide(self, context: BacktestDecisionContext) -> BacktestDecision: ...
+
+
+class BacktestExecutionPort(Protocol):
+    """Execute one intent at a simulated next-day open."""
+
+    def execute(
+        self, intent: OrderIntent, trade_date: date, available_to_sell: int
+    ) -> FilledAttempt | RejectedAttempt: ...
 
 
 class BacktestTradingDayPort(Protocol):

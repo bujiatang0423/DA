@@ -3,12 +3,17 @@ from decimal import Decimal
 
 import pytest
 
-from backend.app.features.backtests.execution import DailyBar, ExecutionSimulator
+from backend.app.features.backtests.execution import DailyBar, ExecutionSimulator, FilledAttempt
 from backend.app.features.backtests.fees import RESEARCH_FEE_SCHEDULE, calculate_fee
 from backend.app.features.backtests.ledger import Fill, PortfolioLedger
 from backend.app.features.backtests.metrics import calculate_metrics
 from backend.app.features.backtests.models import BacktestRequest, OrderIntent, OrderSide
 from backend.app.features.backtests.walk_forward import HoldoutLock, HoldoutViolation
+from backend.app.features.backtests.engine import BacktestEngine
+from backend.app.features.backtests.ports import BacktestDecision, BacktestDecisionContext
+from backend.app.features.backtests.models import StrategyGroup
+from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotQuality
+from backend.app.contracts.grades import DataGrade
 
 
 def intent(side: OrderSide = OrderSide.BUY, quantity: int = 1000) -> OrderIntent:
@@ -90,3 +95,47 @@ def test_metrics_and_holdout_lock() -> None:
         HoldoutLock(date(2024, 1, 1), date(2024, 12, 31)).assert_not_touched(
             date(2024, 6, 1), date(2024, 6, 2)
         )
+
+
+def test_engine_executes_next_day_intent_and_publishes_trade_metrics() -> None:
+    class Days:
+        def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
+            return (date(2024, 1, 1), date(2024, 1, 2))
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time, scope, DataGrade.RESEARCH, (), (), SnapshotQuality(()), (), "x"
+            )
+
+    class Decisions:
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            return BacktestDecision((intent(quantity=100),), {})
+
+    class Execution:
+        def execute(
+            self, order: OrderIntent, trade_date: date, available_to_sell: int
+        ) -> FilledAttempt:
+            return FilledAttempt(
+                order.order_id,
+                trade_date,
+                order.quantity,
+                Decimal("10"),
+                Decimal("10"),
+                Decimal("1"),
+                Decimal("0"),
+            )
+
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 2),
+        initial_cash=Decimal("10000"),
+        groups=[StrategyGroup.A],
+    )
+    result = BacktestEngine(Days(), Warehouse(), Decisions(), Execution()).run(
+        request, StrategyGroup.A
+    )
+    assert len(result.trades) == 1
+    assert result.trades[0]["trade_date"] == "2024-01-02"
+    assert result.metrics["observations"] == 2
