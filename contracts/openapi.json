@@ -326,6 +326,140 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HoldingAdviceItemResponse": {
+        "properties": {
+          "advised_action": {
+            "title": "Advised Action",
+            "type": "string"
+          },
+          "available_to_sell": {
+            "title": "Available To Sell",
+            "type": "integer"
+          },
+          "average_cost": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Average Cost",
+            "type": "string"
+          },
+          "close": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Close",
+            "type": "string"
+          },
+          "effective_stop": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Stop"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "market_state": {
+            "title": "Market State",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "pending_target_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Target Action"
+          },
+          "planned_quantity": {
+            "title": "Planned Quantity",
+            "type": "integer"
+          },
+          "proposed_effective_stop": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Effective Stop"
+          },
+          "quality_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quality Codes",
+            "type": "array"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "security_id": {
+            "title": "Security Id",
+            "type": "string"
+          },
+          "security_name": {
+            "title": "Security Name",
+            "type": "string"
+          },
+          "strategy_book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Book"
+          }
+        },
+        "required": [
+          "security_id",
+          "security_name",
+          "origin",
+          "strategy_book",
+          "quantity",
+          "available_to_sell",
+          "average_cost",
+          "close",
+          "market_state",
+          "advised_action",
+          "planned_quantity",
+          "pending_target_action",
+          "effective_stop",
+          "proposed_effective_stop",
+          "reason_codes",
+          "quality_codes",
+          "evidence_refs"
+        ],
+        "title": "HoldingAdviceItemResponse",
+        "type": "object"
+      },
       "HoldingAnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -405,72 +539,6 @@
           "as_of_time"
         ],
         "title": "HoldingAnalysisRequest",
-        "type": "object"
-      },
-      "HoldingAnalysisResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "as_of_time": {
-            "format": "date-time",
-            "title": "As Of Time",
-            "type": "string"
-          },
-          "equity": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Equity",
-            "type": "string"
-          },
-          "exposure_ratio": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Exposure Ratio",
-            "type": "string"
-          },
-          "gross_exposure": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Gross Exposure",
-            "type": "string"
-          },
-          "market_max_exposure": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Market Max Exposure",
-            "type": "string"
-          },
-          "portfolio_drawdown": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Portfolio Drawdown",
-            "type": "string"
-          },
-          "portfolio_id": {
-            "title": "Portfolio Id",
-            "type": "string"
-          },
-          "risks": {
-            "items": {
-              "$ref": "#/components/schemas/HoldingRisk"
-            },
-            "title": "Risks",
-            "type": "array"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          }
-        },
-        "required": [
-          "portfolio_id",
-          "as_of_time",
-          "equity",
-          "gross_exposure",
-          "exposure_ratio",
-          "market_max_exposure",
-          "portfolio_drawdown",
-          "risks",
-          "warnings"
-        ],
-        "title": "HoldingAnalysisResponse",
         "type": "object"
       },
       "HoldingRisk": {
@@ -1205,6 +1273,137 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "backend__app__contracts__holdings__HoldingAnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of_time": {
+            "format": "date-time",
+            "title": "As Of Time",
+            "type": "string"
+          },
+          "equity": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Equity",
+            "type": "string"
+          },
+          "exposure_ratio": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Exposure Ratio",
+            "type": "string"
+          },
+          "gross_exposure": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gross Exposure",
+            "type": "string"
+          },
+          "market_max_exposure": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Market Max Exposure",
+            "type": "string"
+          },
+          "portfolio_drawdown": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Portfolio Drawdown",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingRisk"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "portfolio_id",
+          "as_of_time",
+          "equity",
+          "gross_exposure",
+          "exposure_ratio",
+          "market_max_exposure",
+          "portfolio_drawdown",
+          "risks",
+          "warnings"
+        ],
+        "title": "HoldingAnalysisResponse",
+        "type": "object"
+      },
+      "backend__app__features__holdings__contracts__HoldingAnalysisResponse": {
+        "properties": {
+          "as_of_time": {
+            "format": "date-time",
+            "title": "As Of Time",
+            "type": "string"
+          },
+          "auto_trade_enabled": {
+            "const": false,
+            "default": false,
+            "title": "Auto Trade Enabled",
+            "type": "boolean"
+          },
+          "data_grade": {
+            "title": "Data Grade",
+            "type": "string"
+          },
+          "human_confirm_required": {
+            "const": true,
+            "default": true,
+            "title": "Human Confirm Required",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingAdviceItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "llm_grade": {
+            "title": "Llm Grade",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "strategy_version": {
+            "const": "v2.12",
+            "title": "Strategy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "portfolio_id",
+          "as_of_time",
+          "strategy_version",
+          "manifest_hash",
+          "data_grade",
+          "llm_grade",
+          "items"
+        ],
+        "title": "HoldingAnalysisResponse",
+        "type": "object"
       }
     }
   },
@@ -1525,7 +1724,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HoldingAnalysisResponse"
+                  "$ref": "#/components/schemas/backend__app__contracts__holdings__HoldingAnalysisResponse"
                 }
               }
             },
@@ -1543,6 +1742,107 @@
           }
         },
         "summary": "Analyze",
+        "tags": [
+          "holdings"
+        ]
+      }
+    },
+    "/api/v1/holdings/analysis/submit": {
+      "post": {
+        "operationId": "submit_analysis_api_v1_holdings_analysis_submit_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldingAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Analysis",
+        "tags": [
+          "holdings"
+        ]
+      }
+    },
+    "/api/v1/holdings/analysis/{run_id}": {
+      "get": {
+        "operationId": "result_api_v1_holdings_analysis__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__app__features__holdings__contracts__HoldingAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Result",
         "tags": [
           "holdings"
         ]
