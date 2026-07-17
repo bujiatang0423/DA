@@ -72,3 +72,19 @@ class RunsService:
                     select(RunArtifactRow).where(RunArtifactRow.run_id == UUID(str(run_id)))
                 )
             ]
+
+    def claim_next(self, now: datetime) -> RunRow | None:
+        with self._factory.begin() as session:
+            return RunRepository(session).claim_next(now)
+
+    def heartbeat(self, run_id: UUID, stage: str, progress: int, now: datetime) -> None:
+        with self._factory.begin() as session:
+            RunRepository(session).heartbeat(run_id, stage, progress, now)
+
+    def transition(self, run_id: UUID, target: RunStatus, now: datetime) -> RunRow:
+        with self._factory.begin() as session:
+            return RunRepository(session).transition(run_id, target, now)
+
+    def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:
+        with self._factory.begin() as session:
+            return RunRepository(session).requeue_stale(cutoff, now)
