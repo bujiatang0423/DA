@@ -14,7 +14,7 @@ from backend.app.ports.portfolio import PortfolioReader
 from backend.app.ports.strategy import StrategyDecisionPort
 
 from .models import HoldingAnalysisResult, HoldingRiskSummary
-from .quality import holding_evidence, llm_grade_from_snapshot
+from .quality import llm_grade_from_snapshot
 from .repository import HoldingAnalysisRepository
 from .strategy_projection import project_position
 
@@ -86,24 +86,11 @@ class HoldingAnalysisService:
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: missing evaluations for {','.join(missing)}"
             )
-        invalid_close_ids = tuple(
-            security_id for security_id, item in evaluations_by_security.items() if item.close <= 0
-        )
-        if invalid_close_ids:
-            raise HoldingMarketDataMissing(
-                f"{HoldingMarketDataMissing.code}: invalid close for {','.join(invalid_close_ids)}"
-            )
         items = tuple(
-            project_position(
-                position,
-                evaluations_by_security[position.security_id],
-                evidence_refs=evidence.refs,
-                evidence_available=evidence.is_available,
-            )
+            project_position(position, evaluations_by_security[position.security_id])
             for position in portfolio.positions
-            for evidence in (holding_evidence(snapshot, position.security_id),)
         )
-        portfolio_view = evaluation.portfolio_summary
+        portfolio_view = prepared.portfolio
         result = HoldingAnalysisResult(
             run_id=command.run_id,
             portfolio_id=command.portfolio_id,
@@ -115,9 +102,9 @@ class HoldingAnalysisService:
             summary=HoldingRiskSummary(
                 equity=portfolio.equity,
                 cash=portfolio.cash,
-                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure_pct)),
-                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk_pct)),
-                market_state=portfolio_view.market_state.value,
+                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure * 100)),
+                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk * 100)),
+                market_state=evaluation.market.state.value,
             ),
             items=items,
         )
