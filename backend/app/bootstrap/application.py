@@ -201,12 +201,18 @@ def create_app(
 
 
 def build_application() -> FastAPI:
+    settings = Settings()
+    from backend.app.infrastructure.persistence.database import build_engine, build_session_factory
+    from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
+
+    engine = build_engine(settings.database_url)
+    sessions = build_session_factory(engine)
     memory = _MemoryRuns()
     return create_app(
         (
             build_runs_feature(memory),
-            build_candidate_feature(),
-            build_holdings_feature(_EmptyPortfolioReader()),
-            build_backtests_feature(),
+            build_candidate_feature(memory.submit),
+            build_holdings_feature(SqlPortfolioReader(sessions)),
+            build_backtests_feature(memory.submit),
         )
     )  # type: ignore[arg-type]
