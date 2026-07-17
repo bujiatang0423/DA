@@ -99,3 +99,7 @@ def test_builder_maps_policy_llm_and_marks_incomplete_financial_quality() -> Non
     assert item.policy_sources_available and item.llm_factor_valid
     assert "FINANCIAL_TEMPLATE_INCOMPLETE" in item.quality_codes
     assert not item.hard_filter_passed
+    assert item.above_ma20 and not item.above_ma60
+    assert item.breakout_or_valid_pullback
+    assert item.breakout_volume_percentile > 0
+    assert item.turnover_percentile > 0
