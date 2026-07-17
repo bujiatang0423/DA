@@ -112,5 +112,6 @@ class V212StrategyEngine:
             request.strategy.version,
             request.manifest_hash,
             market,
+            request.portfolio,
             tuple(out),
         )

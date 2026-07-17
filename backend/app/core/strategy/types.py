@@ -234,4 +234,5 @@ class StrategyEvaluation:
     strategy_version: str
     manifest_hash: str
     market: MarketRegimeDecision
+    portfolio_summary: PortfolioView
     securities: tuple[SecurityEvaluation, ...]

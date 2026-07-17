@@ -86,11 +86,18 @@ class HoldingAnalysisService:
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: missing evaluations for {','.join(missing)}"
             )
+        invalid_close_ids = tuple(
+            security_id for security_id, item in evaluations_by_security.items() if item.close <= 0
+        )
+        if invalid_close_ids:
+            raise HoldingMarketDataMissing(
+                f"{HoldingMarketDataMissing.code}: invalid close for {','.join(invalid_close_ids)}"
+            )
         items = tuple(
             project_position(position, evaluations_by_security[position.security_id])
             for position in portfolio.positions
         )
-        portfolio_view = prepared.portfolio
+        portfolio_view = evaluation.portfolio_summary
         result = HoldingAnalysisResult(
             run_id=command.run_id,
             portfolio_id=command.portfolio_id,
@@ -102,8 +109,8 @@ class HoldingAnalysisService:
             summary=HoldingRiskSummary(
                 equity=portfolio.equity,
                 cash=portfolio.cash,
-                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure * 100)),
-                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk * 100)),
+                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure)) * Decimal("100"),
+                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk)) * Decimal("100"),
                 market_state=evaluation.market.state.value,
             ),
             items=items,

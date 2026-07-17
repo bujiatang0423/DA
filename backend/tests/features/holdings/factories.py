@@ -21,6 +21,7 @@ from backend.app.core.strategy.types import (
     FinancialLight,
     MarketRegimeDecision,
     MarketState,
+    PortfolioView,
     SecurityEvaluation,
     StrategyEvaluation,
 )
@@ -210,6 +211,12 @@ def strategy_evaluation(
             confidence="medium",
             week_cooldown_remaining=0,
             month_cooldown_remaining=0,
+        ),
+        portfolio_summary=PortfolioView(
+            net_equity=1_000_000,
+            gross_exposure=0.65,
+            portfolio_risk=0.0125,
+            position_count=1,
         ),
         securities=securities or (security_evaluation(),),
     )

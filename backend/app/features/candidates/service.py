@@ -8,7 +8,12 @@ from backend.app.core.market.pit_models import DataKind, SnapshotScope
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.core.strategy.service import V212StrategyEngine
-from backend.app.core.strategy.types import MarketRegimeDecision, MarketState, StrategyEvaluation
+from backend.app.core.strategy.types import (
+    MarketRegimeDecision,
+    MarketState,
+    PortfolioView,
+    StrategyEvaluation,
+)
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
 from .models import CandidateRecommendationResult
@@ -59,6 +64,12 @@ class CandidateService:
                 strategy_version=command.strategy_version,
                 manifest_hash=snapshot.manifest_hash,
                 market=MarketRegimeDecision(MarketState.WEAK, 0.0, False, False, "low", 0, 0, ()),
+                portfolio_summary=PortfolioView(
+                    net_equity=float(portfolio.equity),
+                    gross_exposure=0.0,
+                    portfolio_risk=0.0,
+                    position_count=len(portfolio.positions),
+                ),
                 securities=(),
             )
         else:
