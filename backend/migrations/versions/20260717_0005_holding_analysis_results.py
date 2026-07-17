@@ -3,6 +3,7 @@
 Revision ID: 20260717_0005
 Revises: 20260717_0004
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -19,7 +20,9 @@ def upgrade() -> None:
         sa.Column("as_of_time", sa.DateTime(timezone=True), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=False),
     )
-    op.create_index("ix_holding_analysis_results_as_of_time", "holding_analysis_results", ["as_of_time"])
+    op.create_index(
+        "ix_holding_analysis_results_as_of_time", "holding_analysis_results", ["as_of_time"]
+    )
 
 
 def downgrade() -> None:
