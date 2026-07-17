@@ -181,6 +181,15 @@ class StrategyInputBuilder:
             amounts = tuple(float(x.get("amount", x.get("turnover", 0)) or 0) for x in bars)
             mavol20 = mean(volumes[-20:]) if len(volumes) >= 20 else 0.0
             average_turnover20 = mean(amounts[-20:]) if len(amounts) >= 20 else 0.0
+            recent_high = max((float(x.get("high", 0)) for x in bars[-21:-1]), default=0.0)
+            prior_ma20 = mean(closes[-25:-5]) if len(closes) >= 25 else ma20
+            volume_percentile = (
+                winsorized_percentile(tuple(volumes[-60:]), volumes[-1]) if volumes else 0.0
+            )
+            turnover_percentile = (
+                winsorized_percentile(tuple(amounts[-60:]), amounts[-1]) if amounts else 0.0
+            )
+            obv_value = obv_slope(bars)
             status = str(master_payload.get("status", "")).upper()
             listing_days = int(master_payload.get("listing_days", 9999) or 0)
             one_word = len(bars) > 0 and all(
@@ -197,6 +206,7 @@ class StrategyInputBuilder:
                 and close > 0
                 and not one_word
             )
+            llm_payload = _payload(llm_records[-1]) if llm_records else {}
             values: dict[str, Any] = {f.name: 0 for f in fields(SecurityEvaluationInput)}
             values.update(
                 security_id=observation.security_id,
@@ -221,14 +231,26 @@ class StrategyInputBuilder:
                 ),
                 financial_numeric_score=financial_score,
                 financial_text_score=100.0 if complete else 0.0,
-                policy_direction="unknown",
-                close=close,
+                policy_direction=str(llm_payload.get("policy_direction", "unknown")),
+                rs20_percentile=0.0,
+                rs60_percentile=0.0,
+                industry_proxy=False,
+                above_ma20=bool(close > ma20 > 0),
+                above_ma60=bool(close > ma60 > 0),
+                rising_ma20=bool(ma20 >= prior_ma20 > 0),
+                breakout_or_valid_pullback=bool(close >= recent_high > 0 or close > ma20 > 0),
+                ma20_atr_distance=(close - ma20) / atr if atr > 0 else 0.0,
+                breakout_volume_percentile=volume_percentile,
+                obv_slope_percentile=max(0.0, min(1.0, (obv_value + 1.0) / 2.0)),
+                turnover_percentile=turnover_percentile,
                 planned_price=close,
+                close=close,
                 ma20=ma20,
                 ma60=ma60,
                 atr14=atr,
                 average_turnover20=average_turnover20,
-                obv_slope_percentile=obv_slope(bars),
+                pullback_low=min((float(x.get("low", close)) for x in bars[-10:]), default=close),
+                red_light=bool(llm_payload.get("red_light", False)),
                 hard_filter_passed=hard_market and complete and policy_available and llm_valid,
                 policy_sources_available=policy_available,
                 llm_factor_valid=llm_valid,
