@@ -4,17 +4,26 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import DateTime, JSON, String
+from sqlalchemy import DateTime, JSON, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
 from backend.app.infrastructure.persistence.models import Base
 from .models import HoldingAnalysisResult
 
 
-class HoldingResultRepository(Protocol):
+class HoldingAnalysisConflict(RuntimeError):
+    pass
+
+
+class HoldingAnalysisRepository(Protocol):
     def save(self, result: HoldingAnalysisResult) -> None: ...
 
     def get(self, run_id: str) -> HoldingAnalysisResult | None: ...
+
+    def latest(self, portfolio_id: str) -> HoldingAnalysisResult | None: ...
+
+
+HoldingResultRepository = HoldingAnalysisRepository
 
 
 class HoldingResultRow(Base):
@@ -25,25 +34,42 @@ class HoldingResultRow(Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSON)
 
 
-class SqlHoldingResultRepository:
+class SqlHoldingAnalysisRepository:
     def __init__(self, sessions: sessionmaker[Session]) -> None:
         self._sessions = sessions
 
     def save(self, result: HoldingAnalysisResult) -> None:
         with self._sessions.begin() as session:
-            if session.get(HoldingResultRow, result.run_id) is None:
-                session.add(
-                    HoldingResultRow(
-                        run_id=result.run_id,
-                        as_of_time=result.as_of_time,
-                        payload=_encode(result),
-                    )
+            existing = session.get(HoldingResultRow, result.run_id)
+            if existing is not None:
+                if str(existing.payload.get("manifest_hash")) != result.manifest_hash:
+                    raise HoldingAnalysisConflict(result.run_id)
+                return
+            session.add(
+                HoldingResultRow(
+                    run_id=result.run_id,
+                    as_of_time=result.as_of_time,
+                    payload=_encode(result),
                 )
+            )
 
     def get(self, run_id: str) -> HoldingAnalysisResult | None:
         with self._sessions() as session:
             row = session.get(HoldingResultRow, run_id)
             return _decode(row.payload) if row else None
+
+    def latest(self, portfolio_id: str) -> HoldingAnalysisResult | None:
+        with self._sessions() as session:
+            row = session.scalar(
+                select(HoldingResultRow)
+                .where(HoldingResultRow.payload["portfolio_id"].as_string() == portfolio_id)
+                .order_by(HoldingResultRow.as_of_time.desc(), HoldingResultRow.run_id.desc())
+                .limit(1)
+            )
+            return _decode(row.payload) if row else None
+
+
+SqlHoldingResultRepository = SqlHoldingAnalysisRepository
 
 
 def _encode(result: HoldingAnalysisResult) -> dict[str, object]:
@@ -93,7 +119,7 @@ def _encode(result: HoldingAnalysisResult) -> dict[str, object]:
                 "quality_codes": list(item.quality_codes),
                 "evidence_refs": list(item.evidence_refs),
             }
-            for item in result.items
+            for item in sorted(result.items, key=lambda value: value.security_id)
         ],
     }
 
@@ -106,7 +132,7 @@ def _decode(payload: dict[str, object]) -> HoldingAnalysisResult:
 
     summary = dict(payload["summary"])
     items = []
-    for raw in payload["items"]:
+    for raw in sorted(payload["items"], key=lambda value: str(dict(value)["security_id"])):
         row = dict(raw)
         factors = dict(row["factors"])
         items.append(
@@ -146,7 +172,7 @@ def _decode(payload: dict[str, object]) -> HoldingAnalysisResult:
         run_id=str(payload["run_id"]),
         portfolio_id=str(payload["portfolio_id"]),
         as_of_time=datetime.fromisoformat(str(payload["as_of_time"])),
-        strategy_version="v2.12",
+        strategy_version=str(payload["strategy_version"]),
         manifest_hash=str(payload["manifest_hash"]),
         data_grade=DataGrade(str(payload["data_grade"])),
         llm_grade=LlmGrade(str(payload["llm_grade"])),
