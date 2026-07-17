@@ -1,7 +1,10 @@
 from pathlib import Path
 from typing import Literal
-from pydantic import Field
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from backend.app.bootstrap.security import validate_security
 
 
 class Settings(BaseSettings):
@@ -16,3 +19,12 @@ class Settings(BaseSettings):
     timezone: str = "Asia/Shanghai"
     authentication_enabled: bool = False
     worker_stale_after_seconds: int = Field(default=120, ge=30)
+
+    @model_validator(mode="after")
+    def validate_startup_security(self) -> "Settings":
+        validate_security(
+            bind_host=self.bind_host,
+            authentication_enabled=self.authentication_enabled,
+            allowed_origins=self.allowed_origins,
+        )
+        return self
