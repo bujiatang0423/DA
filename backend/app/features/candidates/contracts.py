@@ -81,7 +81,9 @@ class CandidateRecommendationResponse(BaseModel):
     human_confirm_required: Literal[True] = True
 
     @classmethod
-    def from_domain(cls, result: CandidateRecommendationResult) -> "CandidateRecommendationResponse":
+    def from_domain(
+        cls, result: CandidateRecommendationResult
+    ) -> "CandidateRecommendationResponse":
         return cls(
             run_id=result.run_id,
             as_of_time=result.as_of_time,

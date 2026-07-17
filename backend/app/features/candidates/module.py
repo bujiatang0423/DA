@@ -14,5 +14,7 @@ def build_candidate_feature(
     repository: CandidateRepository | None = None,
     service: CandidateService | None = None,
 ) -> FeatureModule:
-    handlers = ((RunKind.CANDIDATE_RECOMMENDATION, CandidateJobHandler(service)),) if service else ()
+    handlers = (
+        ((RunKind.CANDIDATE_RECOMMENDATION, CandidateJobHandler(service)),) if service else ()
+    )
     return FeatureModule("candidates", build_router(submit, repository), handlers)

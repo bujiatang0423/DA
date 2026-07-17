@@ -140,11 +140,11 @@ def _decode(payload: dict[str, object]) -> CandidateRecommendationResult:
                 bucket=CandidateBucket(str(row["bucket"])),
                 state=CandidateState(str(row["state"])),
                 strategy_book=(
-                    StrategyBook(str(row["strategy_book"]))
-                    if row.get("strategy_book")
-                    else None
+                    StrategyBook(str(row["strategy_book"])) if row.get("strategy_book") else None
                 ),
-                factors=CandidateFactors(**{key: _decimal(value) for key, value in factors.items()}),
+                factors=CandidateFactors(
+                    **{key: _decimal(value) for key, value in factors.items()}
+                ),
                 planned_quantity=int(row["planned_quantity"]),
                 initial_stop=_decimal(row["initial_stop"]) if row.get("initial_stop") else None,
                 trigger_condition=str(row["trigger_condition"]),

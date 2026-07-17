@@ -54,9 +54,7 @@ class CandidateService:
                 as_of_time=command.as_of_time,
                 strategy_version=command.strategy_version,
                 manifest_hash=snapshot.manifest_hash,
-                market=MarketRegimeDecision(
-                    MarketState.WEAK, 0.0, False, False, "low", 0, 0, ()
-                ),
+                market=MarketRegimeDecision(MarketState.WEAK, 0.0, False, False, "low", 0, 0, ()),
                 securities=(),
             )
         else:
@@ -69,7 +67,11 @@ class CandidateService:
         items = tuple(
             sorted(
                 (project_security(item) for item in evaluation.securities),
-                key=lambda item: (item.bucket.value, item.factors.percentile_rank, item.security_id),
+                key=lambda item: (
+                    item.bucket.value,
+                    item.factors.percentile_rank,
+                    item.security_id,
+                ),
             )
         )
         result = CandidateRecommendationResult(

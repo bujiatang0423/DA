@@ -227,9 +227,7 @@ def build_application() -> FastAPI:
     return create_app(
         (
             build_runs_feature(runs_service),
-            build_candidate_feature(
-                runs_service.submit, SqlCandidateRepository(sessions)
-            ),
+            build_candidate_feature(runs_service.submit, SqlCandidateRepository(sessions)),
             build_holdings_feature(
                 SqlPortfolioReader(sessions), SqlPortfolioMaintenanceService(sessions)
             ),

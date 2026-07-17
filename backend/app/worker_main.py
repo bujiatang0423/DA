@@ -29,9 +29,7 @@ from backend.app.infrastructure.tasks.worker import build_worker, run
 class UnavailableResearchWarehouse:
     """Fail-closed source used until a market/provider adapter is configured."""
 
-    def snapshot(
-        self, *, as_of_time: datetime, scope: SnapshotScope
-    ) -> PointInTimeSnapshot:
+    def snapshot(self, *, as_of_time: datetime, scope: SnapshotScope) -> PointInTimeSnapshot:
         missing = tuple(
             QualityIssue(
                 "REQUIRED_DATASET_MISSING",
