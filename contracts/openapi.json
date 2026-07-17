@@ -67,12 +67,243 @@
         "title": "BacktestRequest",
         "type": "object"
       },
+      "CandidateFactorsResponse": {
+        "properties": {
+          "f": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "F",
+            "type": "string"
+          },
+          "p": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "P",
+            "type": "string"
+          },
+          "percentile_rank": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Percentile Rank",
+            "type": "string"
+          },
+          "r": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "R",
+            "type": "string"
+          },
+          "s": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "S",
+            "type": "string"
+          },
+          "t": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "T",
+            "type": "string"
+          },
+          "v": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "V",
+            "type": "string"
+          }
+        },
+        "required": [
+          "p",
+          "f",
+          "r",
+          "t",
+          "v",
+          "s",
+          "percentile_rank"
+        ],
+        "title": "CandidateFactorsResponse",
+        "type": "object"
+      },
+      "CandidateItemResponse": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "factors": {
+            "$ref": "#/components/schemas/CandidateFactorsResponse"
+          },
+          "initial_stop": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Stop"
+          },
+          "invalidation_condition": {
+            "title": "Invalidation Condition",
+            "type": "string"
+          },
+          "planned_quantity": {
+            "title": "Planned Quantity",
+            "type": "integer"
+          },
+          "quality_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quality Codes",
+            "type": "array"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "security_id": {
+            "title": "Security Id",
+            "type": "string"
+          },
+          "security_name": {
+            "title": "Security Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "strategy_book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Book"
+          },
+          "trigger_condition": {
+            "title": "Trigger Condition",
+            "type": "string"
+          }
+        },
+        "required": [
+          "security_id",
+          "security_name",
+          "bucket",
+          "state",
+          "strategy_book",
+          "factors",
+          "planned_quantity",
+          "initial_stop",
+          "trigger_condition",
+          "invalidation_condition",
+          "reason_codes",
+          "quality_codes",
+          "evidence_refs"
+        ],
+        "title": "CandidateItemResponse",
+        "type": "object"
+      },
+      "CandidateRecommendationResponse": {
+        "properties": {
+          "as_of_time": {
+            "format": "date-time",
+            "title": "As Of Time",
+            "type": "string"
+          },
+          "auto_trade_enabled": {
+            "const": false,
+            "default": false,
+            "title": "Auto Trade Enabled",
+            "type": "boolean"
+          },
+          "data_grade": {
+            "title": "Data Grade",
+            "type": "string"
+          },
+          "human_confirm_required": {
+            "const": true,
+            "default": true,
+            "title": "Human Confirm Required",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "llm_grade": {
+            "title": "Llm Grade",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "market_confidence": {
+            "title": "Market Confidence",
+            "type": "string"
+          },
+          "market_state": {
+            "title": "Market State",
+            "type": "string"
+          },
+          "quality_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quality Codes",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "strategy_version": {
+            "const": "v2.12",
+            "title": "Strategy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "as_of_time",
+          "strategy_version",
+          "manifest_hash",
+          "data_grade",
+          "llm_grade",
+          "market_state",
+          "market_confidence",
+          "quality_codes",
+          "items"
+        ],
+        "title": "CandidateRecommendationResponse",
+        "type": "object"
+      },
       "CandidateSubmitRequest": {
         "additionalProperties": false,
         "properties": {
           "as_of_time": {
             "format": "date-time",
             "title": "As Of Time",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "default": "default",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Portfolio Id",
             "type": "string"
           }
         },
@@ -1164,6 +1395,69 @@
           }
         },
         "summary": "Health",
+        "tags": [
+          "candidates"
+        ]
+      }
+    },
+    "/api/v1/candidates/latest": {
+      "get": {
+        "operationId": "latest_api_v1_candidates_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateRecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Latest",
+        "tags": [
+          "candidates"
+        ]
+      }
+    },
+    "/api/v1/candidates/{run_id}": {
+      "get": {
+        "operationId": "get_result_api_v1_candidates__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateRecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result",
         "tags": [
           "candidates"
         ]
