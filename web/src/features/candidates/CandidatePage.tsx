@@ -17,7 +17,7 @@ function CandidateCard({ item }: { item: CandidateItem }): JSX.Element {
 }
 
 export function CandidatePage(): JSX.Element {
-  const [asOfTime, setAsOfTime] = useState(() => new Date().toISOString().slice(0, 16));
+  const [asOfTime, setAsOfTime] = useState(() => { const now = new Date(); const pad = (v: number) => String(v).padStart(2, "0"); return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`; });
   const [result, setResult] = useState<CandidateResult | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
   const submit = async (): Promise<void> => { setLoading(true); setError(null); try { setResult(await submitCandidate(new Date(asOfTime).toISOString())); } catch (err) { setError(err instanceof Error ? err.message : "请求失败"); } finally { setLoading(false); } };
   const items = result?.items ?? [];
