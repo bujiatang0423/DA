@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -48,6 +48,8 @@ class PortfolioLot:
     effective_stop: Decimal | None
     highest_close: Decimal | None
     add_count: int
+    batch_id: str = "default"
+    buy_date: date | None = None
 
 
 @dataclass(frozen=True)

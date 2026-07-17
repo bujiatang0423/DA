@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import Field, field_validator
@@ -7,7 +7,9 @@ from .common import ContractModel, require_aware
 
 
 class PortfolioPositionInput(ContractModel):
+    batch_id: str = Field(default="default", min_length=1, max_length=64)
     security_id: str = Field(min_length=1, max_length=32)
+    buy_date: date | None = None
     quantity: int = Field(gt=0)
     average_cost: Decimal = Field(gt=0)
     available_to_sell: int | None = Field(default=None, ge=0)

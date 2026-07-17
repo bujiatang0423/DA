@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -42,7 +42,13 @@ def _request(version: int = 0) -> PortfolioMaintenanceRequest:
         expected_version=version,
         reason="人工校正当前持仓",
         positions=[
-            PortfolioPositionInput(security_id="600000", quantity=100, average_cost=Decimal("10"))
+            PortfolioPositionInput(
+                batch_id="lot-2026-01",
+                security_id="600000",
+                buy_date=date(2026, 1, 5),
+                quantity=100,
+                average_cost=Decimal("10"),
+            )
         ],
     )
 
@@ -55,6 +61,8 @@ def test_maintenance_writes_projection_and_audit_version() -> None:
     loaded = service.get("p1", saved.as_of_time)
     assert loaded.version == 1
     assert loaded.equity == Decimal("2000")
+    assert loaded.positions[0].batch_id == "lot-2026-01"
+    assert loaded.positions[0].buy_date == date(2026, 1, 5)
 
 
 def test_maintenance_rejects_stale_version() -> None:

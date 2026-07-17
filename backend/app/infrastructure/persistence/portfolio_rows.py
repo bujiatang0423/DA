@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import DateTime, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base
 
@@ -22,8 +22,10 @@ class PortfolioSnapshotProjectionRow(Base):
 class PortfolioLotProjectionRow(Base):
     __tablename__ = "portfolio_lot_projections"
     lot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
     portfolio_id: Mapped[str] = mapped_column(String(64), index=True)
     security_id: Mapped[str] = mapped_column(String(32))
+    buy_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
     available_to_sell: Mapped[int] = mapped_column(Integer)
     average_cost: Mapped[Decimal] = mapped_column(Numeric(20, 6))

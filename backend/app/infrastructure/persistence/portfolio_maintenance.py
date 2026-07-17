@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from hashlib import sha256
 import json
 from decimal import Decimal
@@ -57,7 +57,9 @@ class SqlPortfolioMaintenanceService:
                 equity=Decimal(str(projection.equity)) if projection else Decimal("0"),
                 positions=[
                     _position(
+                        row.batch_id,
                         row.security_id,
+                        row.buy_date,
                         row.quantity,
                         row.average_cost,
                         row.available_to_sell,
@@ -103,9 +105,11 @@ class SqlPortfolioMaintenanceService:
             for position in request.positions:
                 session.add(
                     PortfolioLotProjectionRow(
-                        lot_id=f"manual:{request.portfolio_id}:{position.security_id}",
+                        lot_id=f"manual:{request.portfolio_id}:{position.batch_id}:{position.security_id}",
+                        batch_id=position.batch_id,
                         portfolio_id=request.portfolio_id,
                         security_id=position.security_id,
+                        buy_date=position.buy_date,
                         quantity=position.quantity,
                         available_to_sell=position.available_to_sell or 0,
                         average_cost=position.average_cost,
@@ -143,7 +147,9 @@ class SqlPortfolioMaintenanceService:
 
 
 def _position(
+    batch_id: str,
     security_id: str,
+    buy_date: date | None,
     quantity: int,
     average_cost: Decimal,
     available_to_sell: int,
@@ -152,7 +158,9 @@ def _position(
     strategy_book: str | None,
 ) -> PortfolioPositionInput:
     return PortfolioPositionInput(
+        batch_id=batch_id,
         security_id=security_id,
+        buy_date=buy_date,
         quantity=quantity,
         average_cost=average_cost,
         available_to_sell=available_to_sell,

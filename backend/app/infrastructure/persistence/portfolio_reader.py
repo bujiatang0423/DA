@@ -100,6 +100,8 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             effective_stop=None,
             highest_close=None,
             add_count=0,
+            batch_id="legacy",
+            buy_date=None,
         )
         for row in rows
         if row.quantity > 0
@@ -124,6 +126,8 @@ def _projection_lot(row: PortfolioLotProjectionRow, as_of_time: datetime) -> Por
         effective_stop=_optional_decimal(row.effective_stop),
         highest_close=_optional_decimal(row.highest_close),
         add_count=int(row.add_count or 0),
+        batch_id=row.batch_id,
+        buy_date=row.buy_date,
     )
 
 

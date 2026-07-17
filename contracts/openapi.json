@@ -556,6 +556,25 @@
             ],
             "title": "Average Cost"
           },
+          "batch_id": {
+            "default": "default",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "buy_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buy Date"
+          },
           "effective_stop": {
             "anyOf": [
               {
@@ -639,6 +658,25 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Average Cost",
             "type": "string"
+          },
+          "batch_id": {
+            "default": "default",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "buy_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buy Date"
           },
           "effective_stop": {
             "anyOf": [
