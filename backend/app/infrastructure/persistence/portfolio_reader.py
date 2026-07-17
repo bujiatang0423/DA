@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.portfolio.models import (
@@ -18,7 +18,6 @@ from backend.app.core.portfolio.models import (
 from .legacy_rows import LegacyImportBatchRow, OpeningPositionRow
 from .portfolio_rows import (
     PortfolioLotProjectionRow,
-    PortfolioSnapshotRevisionRow,
     PortfolioSnapshotProjectionRow,
     PortfolioVersionRow,
 )
@@ -45,31 +44,6 @@ def read_portfolio_snapshot(
     portfolio_id: str,
     as_of_time: datetime,
 ) -> PortfolioSnapshot:
-    revision = session.scalar(
-        select(PortfolioSnapshotRevisionRow)
-        .where(
-            PortfolioSnapshotRevisionRow.portfolio_id == portfolio_id,
-            PortfolioSnapshotRevisionRow.as_of_time <= as_of_time,
-            PortfolioSnapshotRevisionRow.recorded_at <= as_of_time,
-            or_(
-                PortfolioSnapshotRevisionRow.superseded_at.is_(None),
-                PortfolioSnapshotRevisionRow.superseded_at > as_of_time,
-            ),
-        )
-        .order_by(
-            PortfolioSnapshotRevisionRow.as_of_time.desc(),
-            PortfolioSnapshotRevisionRow.version.desc(),
-        )
-    )
-    if revision is not None:
-        return PortfolioSnapshot(
-            portfolio_id=portfolio_id,
-            as_of_time=as_of_time,
-            version=revision.version,
-            cash=_decimal(revision.cash),
-            equity=_decimal(revision.equity),
-            lots=tuple(_revision_lot(row, as_of_time) for row in revision.lots),
-        )
     version = session.scalar(
         select(PortfolioVersionRow.version).where(PortfolioVersionRow.portfolio_id == portfolio_id)
     )
@@ -132,7 +106,7 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             effective_stop=None,
             highest_close=None,
             add_count=0,
-            batch_id=row.batch_id,
+            batch_id="legacy",
             buy_date=None,
         )
         for row in rows
@@ -160,31 +134,6 @@ def _projection_lot(row: PortfolioLotProjectionRow, as_of_time: datetime) -> Por
         add_count=int(row.add_count or 0),
         batch_id=row.batch_id,
         buy_date=row.buy_date,
-    )
-
-
-def _revision_lot(row: dict[str, object], as_of_time: datetime) -> PortfolioLot:
-    effective_at = datetime.fromisoformat(str(row["effective_at"]))
-    available = int(row["available_to_sell"])
-    if as_of_time.date() <= effective_at.date():
-        available = 0
-    buy_date = row.get("buy_date")
-    return PortfolioLot(
-        lot_id=str(row["lot_id"]),
-        security_id=str(row["security_id"]),
-        quantity=int(row["quantity"]),
-        available_to_sell=max(0, min(int(row["quantity"]), available)),
-        average_cost=_decimal(row["average_cost"]),
-        effective_at=effective_at,
-        origin=PositionOrigin(str(row["origin"])),
-        strategy_book=StrategyBook(str(row["strategy_book"])) if row.get("strategy_book") else None,
-        entry_score=_optional_decimal(row.get("entry_score")),
-        initial_risk_per_share=_optional_decimal(row.get("initial_risk_per_share")),
-        effective_stop=_optional_decimal(row.get("effective_stop")),
-        highest_close=_optional_decimal(row.get("highest_close")),
-        add_count=int(row.get("add_count") or 0),
-        batch_id=str(row.get("batch_id") or "default"),
-        buy_date=datetime.fromisoformat(str(buy_date)).date() if buy_date else None,
     )
 
 

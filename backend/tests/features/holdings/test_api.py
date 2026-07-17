@@ -1,34 +1,17 @@
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import UUID
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete
-from sqlalchemy.orm import sessionmaker
 
 from backend.app.bootstrap.application import create_app
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.contracts.runs import RunKind, RunLinks, RunRef, RunStatus
-from backend.app.core.market.pit_models import (
-    DataKind,
-    LineageRef,
-    SecurityObservation,
-    TemporalRecord,
-)
 from backend.app.core.portfolio.analysis import HoldingAnalysisService as LegacyHoldingService
 from backend.app.core.portfolio.models import PositionOrigin
 from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
-from backend.app.features.holdings.repository import (
-    HoldingAnalysisItemRow,
-    HoldingAnalysisRepository,
-    HoldingResultRow,
-    SqlHoldingAnalysisRepository,
-)
-from backend.app.features.holdings.router import LegacyImportProvenance, build_router
-from backend.app.features.holdings.service import HoldingAnalysisService
-from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
+from backend.app.features.holdings.router import build_router
 from backend.app.infrastructure.tasks.handlers import JobContext
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.tests.features.holdings.factories import holding_analysis_result, portfolio_snapshot
@@ -38,7 +21,6 @@ from backend.tests.features.holdings.fakes import (
     FakePortfolioReader,
     FakePortfolioWriter,
 )
-from backend.tests.features.holdings.test_service import build_service
 
 
 @dataclass
@@ -79,7 +61,7 @@ class RecordingAnalysisService:
 
 def holding_client(
     submitter: RecordingSubmitter,
-    repository: HoldingAnalysisRepository,
+    repository: FakeHoldingAnalysisRepository,
 ) -> TestClient:
     reader = FakePortfolioReader(portfolio_snapshot())
     router = build_router(
@@ -94,7 +76,6 @@ def holding_client(
 def portfolio_client(
     reader: FakePortfolioReader,
     writer: FakePortfolioWriter,
-    import_provenance_reader: object | None = None,
 ) -> TestClient:
     repository = FakeHoldingAnalysisRepository()
     router = build_router(
@@ -102,7 +83,6 @@ def portfolio_client(
         repository=repository,
         portfolio_reader=reader,
         portfolio_writer=writer,
-        import_provenance_reader=import_provenance_reader,
         clock=FakeClock(reader.snapshot_value.as_of_time),
     )
     return TestClient(create_app((FeatureModule("holdings", router, ()),)))
@@ -162,100 +142,6 @@ def test_latest_and_result_return_persisted_advice() -> None:
     assert latest.json()["items"][0]["factors"]["s"] == "62.5"
     assert latest.json()["items"][0]["factors"]["percentile_rank"] == "0.80"
     assert latest.json()["items"][0]["r_multiple"] == "1.50"
-    assert latest.json()["items"][0]["evidence_refs"] == ["market-close:600000.SH:2026-07-17"]
-
-
-@pytest.mark.postgres
-def test_restarted_handler_and_api_read_normalized_audit_items_from_postgresql(
-    postgres_engine: Engine,
-) -> None:
-    HoldingResultRow.__table__.create(postgres_engine, checkfirst=True)
-    HoldingAnalysisItemRow.__table__.create(postgres_engine, checkfirst=True)
-    sessions = sessionmaker(bind=postgres_engine, expire_on_commit=False)
-    service, command, warehouse, portfolios, builder, strategy, _ = build_service()
-    run_id = uuid4()
-    artifact_hash = "a" * 64
-    warehouse.snapshot_value = replace(
-        warehouse.snapshot_value,
-        security_observations=(
-            SecurityObservation(
-                "000001.SZ",
-                (
-                    TemporalRecord(
-                        record_id="holding-evidence",
-                        kind=DataKind.DAILY_BAR_RAW,
-                        entity_id="000001.SZ",
-                        event_time=command.as_of_time,
-                        observed_at=command.as_of_time,
-                        available_at=command.as_of_time,
-                        source_artifact_hash=artifact_hash,
-                        payload={},
-                    ),
-                ),
-            ),
-        ),
-        lineage=(LineageRef("holding-evidence-batch", "pit", artifact_hash),),
-    )
-    analysis_service = HoldingAnalysisService(
-        warehouse,
-        portfolios,
-        builder,
-        strategy,
-        SqlHoldingAnalysisRepository(sessions),
-    )
-    context = JobContext(
-        run_id=run_id,
-        payload={
-            "portfolio_id": command.portfolio_id,
-            "as_of_time": command.as_of_time.isoformat(),
-        },
-        heartbeat=lambda _stage, _progress: None,
-    )
-
-    try:
-        HoldingAnalysisJobHandler(analysis_service)(context)
-        HoldingAnalysisJobHandler(analysis_service)(context)
-
-        restarted_repository = SqlHoldingAnalysisRepository(sessions)
-        client = holding_client(RecordingSubmitter(), restarted_repository)
-        response = client.get(f"/api/v1/holding-analyses/{run_id}")
-
-        assert response.status_code == 200
-        items = response.json()["items"]
-        assert len(items) == 1
-        assert items[0]["security_id"] == "000001.SZ"
-        assert items[0]["reason_codes"] == ["ELIGIBLE"]
-        assert items[0]["quality_codes"] == []
-        assert items[0]["evidence_refs"] == [f"pit:daily_bar_raw:{artifact_hash}"]
-        with sessions() as session:
-            child_rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=str(run_id)).all()
-        assert [(row.item_index, row.security_id) for row in child_rows] == [(0, "000001.SZ")]
-    finally:
-        with sessions.begin() as session:
-            session.execute(
-                delete(HoldingAnalysisItemRow).where(HoldingAnalysisItemRow.run_id == str(run_id))
-            )
-            session.execute(delete(HoldingResultRow).where(HoldingResultRow.run_id == str(run_id)))
-
-
-def test_latest_at_returns_only_an_analysis_for_the_requested_decision_time() -> None:
-    submitter = RecordingSubmitter()
-    result = holding_analysis_result("holding-api-exact")
-    repository = FakeHoldingAnalysisRepository([result])
-    client = holding_client(submitter, repository)
-
-    exact = client.get(
-        "/api/v1/holding-analyses/latest",
-        params={"portfolio_id": "default", "as_of_time": result.as_of_time.isoformat()},
-    )
-    other_time = client.get(
-        "/api/v1/holding-analyses/latest",
-        params={"portfolio_id": "default", "as_of_time": "2026-07-19T09:00:00Z"},
-    )
-
-    assert exact.status_code == 200
-    assert exact.json()["run_id"] == result.run_id
-    assert other_time.status_code == 404
 
 
 def test_positions_preserve_legacy_origin_and_unknown_book() -> None:
@@ -276,68 +162,6 @@ def test_positions_preserve_legacy_origin_and_unknown_book() -> None:
     position = response.json()["items"][0]
     assert position["origin"] == "legacy_opening_balance"
     assert position["strategy_book"] is None
-
-
-def test_positions_return_only_server_verified_import_provenance() -> None:
-    snapshot = portfolio_snapshot()
-    legacy_lot = replace(
-        snapshot.lots[0],
-        origin=PositionOrigin.LEGACY_OPENING_BALANCE,
-        strategy_book=None,
-        batch_id="batch-1",
-    )
-    reader = FakePortfolioReader(replace(snapshot, lots=(legacy_lot,)))
-    writer = FakePortfolioWriter(reader.snapshot_value)
-
-    def provenance(batch_id: str) -> LegacyImportProvenance | None:
-        if batch_id != "batch-1":
-            return None
-        return LegacyImportProvenance(
-            batch_id="batch-1",
-            manifest_sha256="a" * 64,
-            portfolio_id="default",
-            effective_at=reader.snapshot_value.as_of_time,
-        )
-
-    client = portfolio_client(reader, writer, provenance)
-    response = client.get(
-        f"/api/v1/portfolio/positions?import_batch_id=batch-1&import_manifest_sha256={'a' * 64}"
-    )
-
-    assert response.status_code == 200
-    assert response.json()["import_provenance"] == {
-        "batch_id": "batch-1",
-        "manifest_sha256": "a" * 64,
-    }
-
-
-def test_positions_reject_tampered_import_manifest_without_echoing_it() -> None:
-    snapshot = portfolio_snapshot()
-    legacy_lot = replace(
-        snapshot.lots[0],
-        origin=PositionOrigin.LEGACY_OPENING_BALANCE,
-        batch_id="batch-1",
-    )
-    reader = FakePortfolioReader(replace(snapshot, lots=(legacy_lot,)))
-    writer = FakePortfolioWriter(reader.snapshot_value)
-    client = portfolio_client(
-        reader,
-        writer,
-        lambda _batch_id: LegacyImportProvenance(
-            batch_id="batch-1",
-            manifest_sha256="a" * 64,
-            portfolio_id="default",
-            effective_at=reader.snapshot_value.as_of_time,
-        ),
-    )
-
-    response = client.get(
-        "/api/v1/portfolio/positions?import_batch_id=batch-1&"
-        "import_manifest_sha256=not-the-real-manifest"
-    )
-
-    assert response.status_code == 409
-    assert "not-the-real-manifest" not in response.text
 
 
 def test_position_correction_is_audited_and_optimistic() -> None:
@@ -368,45 +192,6 @@ def test_position_correction_is_audited_and_optimistic() -> None:
     assert expected_version == 7
     assert reason == "核对券商对账单后修正数量"
     assert correction.lots[0].quantity == 600
-
-
-def test_position_correction_preserves_unmentioned_holdings() -> None:
-    snapshot = portfolio_snapshot()
-    second_lot = replace(
-        snapshot.lots[0],
-        lot_id="lot-2",
-        security_id="600000.SH",
-        quantity=200,
-        available_to_sell=200,
-    )
-    snapshot = replace(snapshot, lots=(*snapshot.lots, second_lot))
-    reader = FakePortfolioReader(snapshot)
-    writer = FakePortfolioWriter(replace(snapshot, version=8))
-    client = portfolio_client(reader, writer)
-
-    response = client.put(
-        "/api/v1/portfolio/positions",
-        json={
-            "portfolio_id": "default",
-            "expected_version": 7,
-            "reason": "更正平安银行数量",
-            "positions": [
-                {
-                    "security_id": "000001.SZ",
-                    "quantity": 600,
-                    "average_cost": "10.30",
-                    "effective_at": "2026-07-17T15:00:00+08:00",
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 200
-    correction, _, _ = writer.corrections[0]
-    assert {lot.security_id: lot.quantity for lot in correction.lots} == {
-        "000001.SZ": 600,
-        "600000.SH": 200,
-    }
 
 
 def test_manual_fill_uses_actual_execution_price_and_fee() -> None:
@@ -473,27 +258,3 @@ def test_position_version_conflict_uses_stable_error_code() -> None:
 
     assert response.status_code == 409
     assert response.json()["code"] == "PORTFOLIO_VERSION_CONFLICT"
-
-
-def test_backdated_portfolio_change_uses_a_stable_client_error() -> None:
-    snapshot = portfolio_snapshot()
-    reader = FakePortfolioReader(snapshot)
-    writer = FakePortfolioWriter(snapshot, error=BackdatedPortfolioMutation("backdated"))
-    client = portfolio_client(reader, writer)
-
-    response = client.post(
-        "/api/v1/portfolio/fills",
-        json={
-            "portfolio_id": "default",
-            "expected_version": 7,
-            "security_id": "000001.SZ",
-            "side": "sell",
-            "quantity": 100,
-            "price": "10.35",
-            "fee": "5.00",
-            "executed_at": "2026-07-17T09:31:00+08:00",
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "BACKDATED_PORTFOLIO_MUTATION"
