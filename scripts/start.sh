@@ -9,8 +9,10 @@ LOG_DIR="$ROOT_DIR/data/logs"
 RUN_DIR="$ROOT_DIR/data/run"
 API_LOG="$LOG_DIR/backend.log"
 WEB_LOG="$LOG_DIR/frontend.log"
+WORKER_LOG="$LOG_DIR/worker.log"
 API_PID_FILE="$RUN_DIR/backend.pid"
 WEB_PID_FILE="$RUN_DIR/frontend.pid"
+WORKER_PID_FILE="$RUN_DIR/worker.pid"
 
 log() {
     printf '[DA] %s\n' "$*"
@@ -93,14 +95,26 @@ start_frontend() {
     echo $! > "$WEB_PID_FILE"
 }
 
+start_worker() {
+    log "starting worker"
+    (
+        cd "$ROOT_DIR"
+        exec python -m backend.app.worker_main
+    ) >>"$WORKER_LOG" 2>&1 &
+    echo $! > "$WORKER_PID_FILE"
+}
+
 status() {
-    local api_pid web_pid
+    local api_pid web_pid worker_pid
     api_pid="$(read_pid "$API_PID_FILE")"
     web_pid="$(read_pid "$WEB_PID_FILE")"
+    worker_pid="$(read_pid "$WORKER_PID_FILE")"
     printf 'backend: pid=%s port=%s %s\n' "${api_pid:--}" "$API_PORT" \
         "$( [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null && echo running || echo stopped )"
     printf 'frontend: pid=%s port=%s %s\n' "${web_pid:--}" "$WEB_PORT" \
         "$( [[ -n "$web_pid" ]] && kill -0 "$web_pid" 2>/dev/null && echo running || echo stopped )"
+    printf 'worker: pid=%s %s\n' "${worker_pid:--}" \
+        "$( [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null && echo running || echo stopped )"
 }
 
 start() {
@@ -110,9 +124,12 @@ start() {
     mkdir -p "$LOG_DIR" "$RUN_DIR"
     start_backend
     start_frontend
+    start_worker
     sleep 2
-    if [[ -n "$(port_pids "$API_PORT")" && -n "$(port_pids "$WEB_PORT")" ]]; then
-        log "backend and frontend started"
+    if [[ -n "$(port_pids "$API_PORT")" && -n "$(port_pids "$WEB_PORT")" \
+        && -n "$(read_pid "$WORKER_PID_FILE")" ]] \
+        && kill -0 "$(read_pid "$WORKER_PID_FILE")" 2>/dev/null; then
+        log "backend, frontend, and worker started"
         status
     else
         printf '[DA] startup failed; inspect %s and %s\n' "$API_LOG" "$WEB_LOG" >&2
@@ -124,6 +141,7 @@ stop() {
     require_command lsof
     stop_recorded backend "$API_PID_FILE"
     stop_recorded frontend "$WEB_PID_FILE"
+    stop_recorded worker "$WORKER_PID_FILE"
     clear_port "$API_PORT"
     clear_port "$WEB_PORT"
     log "services stopped"
