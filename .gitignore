@@ -7,6 +7,9 @@ __pycache__/
 .ruff_cache/
 data/artifacts/
 data/imports/
+data/logs/
+data/run/
+*.DS_Store
 web/node_modules/
 web/tsconfig.tsbuildinfo
 web/dist/

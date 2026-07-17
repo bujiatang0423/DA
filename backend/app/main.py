@@ -8,3 +8,7 @@ app = build_application()
 def run() -> None:
     settings = Settings()
     uvicorn.run(app, host=settings.bind_host, port=settings.bind_port)
+
+
+if __name__ == "__main__":
+    run()

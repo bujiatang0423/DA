@@ -11,6 +11,17 @@ DA 是独立于 LA 的四维盾剑 V2.12 研究与决策平台，不执行自动
 
 ## 本地运行
 
+也可以使用一键脚本启动和停止前后端：
+
+```bash
+./scripts/start.sh start
+./scripts/start.sh status
+./scripts/start.sh stop
+```
+
+脚本会先清理 8000 和 5173 端口上的监听进程。日志位于 `data/logs/`，PID 位于
+`data/run/`；可用 `DA_API_PORT`、`DA_WEB_PORT` 覆盖端口。
+
 ```bash
 docker compose up -d postgres
 python -m alembic upgrade head
