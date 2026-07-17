@@ -219,6 +219,7 @@ def build_application() -> FastAPI:
     from backend.app.infrastructure.persistence.portfolio_maintenance import (
         SqlPortfolioMaintenanceService,
     )
+    from backend.app.features.candidates.repository import SqlCandidateRepository
 
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)
@@ -226,7 +227,9 @@ def build_application() -> FastAPI:
     return create_app(
         (
             build_runs_feature(runs_service),
-            build_candidate_feature(runs_service.submit),
+            build_candidate_feature(
+                runs_service.submit, SqlCandidateRepository(sessions)
+            ),
             build_holdings_feature(
                 SqlPortfolioReader(sessions), SqlPortfolioMaintenanceService(sessions)
             ),

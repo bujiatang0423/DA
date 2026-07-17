@@ -15,3 +15,7 @@ def render_markdown(result: CandidateRecommendationResult) -> str:
             f"- {item.security_id} | {item.bucket.value} | {item.state.value} | S={item.factors.s}"
         )
     return "\n".join(lines) + "\n"
+
+
+def render_candidate_markdown(result: CandidateRecommendationResult) -> str:
+    return render_markdown(result)
