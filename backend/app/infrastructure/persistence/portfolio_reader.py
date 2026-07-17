@@ -36,42 +36,48 @@ class SqlPortfolioReader:
 
     def snapshot(self, *, portfolio_id: str, as_of_time: datetime) -> PortfolioSnapshot:
         with self._session_factory() as session:
-            version = session.scalar(
-                select(PortfolioVersionRow.version).where(
-                    PortfolioVersionRow.portfolio_id == portfolio_id
-                )
-            )
-            projection = session.scalar(
-                select(PortfolioSnapshotProjectionRow)
-                .where(
-                    PortfolioSnapshotProjectionRow.portfolio_id == portfolio_id,
-                    PortfolioSnapshotProjectionRow.as_of_time <= as_of_time,
-                )
-                .order_by(PortfolioSnapshotProjectionRow.as_of_time.desc())
-            )
-            lot_rows = session.scalars(
-                select(PortfolioLotProjectionRow)
-                .where(
-                    PortfolioLotProjectionRow.portfolio_id == portfolio_id,
-                    PortfolioLotProjectionRow.effective_at <= as_of_time,
-                )
-                .order_by(PortfolioLotProjectionRow.effective_at, PortfolioLotProjectionRow.lot_id)
-            ).all()
+            return read_portfolio_snapshot(session, portfolio_id, as_of_time)
 
-            lots = [_projection_lot(row, as_of_time) for row in lot_rows]
-            if not lot_rows:
-                lots.extend(_opening_lots(session, portfolio_id, as_of_time))
 
-            cash = Decimal("0") if projection is None else _decimal(projection.cash)
-            equity = Decimal("0") if projection is None else _decimal(projection.equity)
-            return PortfolioSnapshot(
-                portfolio_id=portfolio_id,
-                as_of_time=as_of_time,
-                version=int(version or 0),
-                cash=cash,
-                equity=equity,
-                lots=tuple(lots),
-            )
+def read_portfolio_snapshot(
+    session: Session,
+    portfolio_id: str,
+    as_of_time: datetime,
+) -> PortfolioSnapshot:
+    version = session.scalar(
+        select(PortfolioVersionRow.version).where(PortfolioVersionRow.portfolio_id == portfolio_id)
+    )
+    projection = session.scalar(
+        select(PortfolioSnapshotProjectionRow)
+        .where(
+            PortfolioSnapshotProjectionRow.portfolio_id == portfolio_id,
+            PortfolioSnapshotProjectionRow.as_of_time <= as_of_time,
+        )
+        .order_by(PortfolioSnapshotProjectionRow.as_of_time.desc())
+    )
+    lot_rows = session.scalars(
+        select(PortfolioLotProjectionRow)
+        .where(
+            PortfolioLotProjectionRow.portfolio_id == portfolio_id,
+            PortfolioLotProjectionRow.effective_at <= as_of_time,
+        )
+        .order_by(PortfolioLotProjectionRow.effective_at, PortfolioLotProjectionRow.lot_id)
+    ).all()
+
+    lots = [_projection_lot(row, as_of_time) for row in lot_rows]
+    if not lot_rows:
+        lots.extend(_opening_lots(session, portfolio_id, as_of_time))
+
+    cash = Decimal("0") if projection is None else _decimal(projection.cash)
+    equity = Decimal("0") if projection is None else _decimal(projection.equity)
+    return PortfolioSnapshot(
+        portfolio_id=portfolio_id,
+        as_of_time=as_of_time,
+        version=int(version or 0),
+        cash=cash,
+        equity=equity,
+        lots=tuple(lots),
+    )
 
 
 def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> list[PortfolioLot]:

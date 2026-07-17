@@ -3,9 +3,14 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
-from backend.app.core.portfolio.models import PortfolioSnapshot
+from backend.app.core.portfolio.models import (
+    CorrectionSnapshot,
+    ManualFillCommand,
+    PortfolioSnapshot,
+)
 from backend.app.core.strategy.types import PortfolioView, StrategyEvaluation
 from backend.app.features.holdings.models import HoldingAnalysisResult
+from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 
 
 @dataclass
@@ -89,3 +94,38 @@ class FakeStrategyDecisionPort:
     def evaluate(self, request: object) -> StrategyEvaluation:
         self.requests.append(request)
         return self.evaluation
+
+
+@dataclass(frozen=True)
+class FakeClock:
+    value: datetime
+
+    def now(self) -> datetime:
+        return self.value
+
+
+@dataclass
+class FakePortfolioWriter:
+    result: PortfolioSnapshot
+    conflict: ConcurrentPortfolioUpdate | None = None
+    corrections: list[tuple[CorrectionSnapshot, int, str]] = field(default_factory=list)
+    manual_fills: list[tuple[ManualFillCommand, int]] = field(default_factory=list)
+
+    def replace_positions_for_correction(
+        self,
+        snapshot: CorrectionSnapshot,
+        expected_version: int,
+        reason: str,
+    ) -> PortfolioSnapshot:
+        if self.conflict is not None:
+            raise self.conflict
+        self.corrections.append((snapshot, expected_version, reason))
+        return self.result
+
+    def record_manual_fill(
+        self,
+        command: ManualFillCommand,
+        expected_version: int,
+    ) -> PortfolioSnapshot:
+        self.manual_fills.append((command, expected_version))
+        return self.result

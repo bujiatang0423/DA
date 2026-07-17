@@ -1,6 +1,8 @@
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.core.portfolio.analysis import HoldingAnalysisService
 from backend.app.ports.portfolio import PortfolioReader
+from backend.app.ports.portfolio import PortfolioWriter
+from backend.app.core.clock import Clock
 from .router import build_router
 from .maintenance_router import build_maintenance_router
 from backend.app.infrastructure.persistence.portfolio_maintenance import (
@@ -18,10 +20,19 @@ def build_holdings_feature(
     submit: object | None = None,
     result_repository: HoldingResultRepository | None = None,
     analysis_service: V212HoldingAnalysisService | None = None,
+    portfolio_writer: PortfolioWriter | None = None,
+    clock: Clock | None = None,
 ) -> FeatureModule:
-    router = build_router(HoldingAnalysisService(reader), submit, result_repository)
+    router = build_router(
+        HoldingAnalysisService(reader),
+        submit,
+        result_repository,
+        portfolio_reader=reader,
+        portfolio_writer=portfolio_writer,
+        clock=clock,
+    )
     if maintenance is not None:
-        router.include_router(build_maintenance_router(maintenance))
+        router.include_router(build_maintenance_router(maintenance), prefix="/holdings")
     handlers = (
         ((RunKind.HOLDING_ANALYSIS, HoldingAnalysisJobHandler(analysis_service)),)
         if analysis_service

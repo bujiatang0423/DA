@@ -15,6 +15,10 @@ class HoldingAnalysisConflict(RuntimeError):
     pass
 
 
+class HoldingAnalysisNotFound(KeyError):
+    pass
+
+
 class HoldingAnalysisRepository(Protocol):
     def save(self, result: HoldingAnalysisResult) -> None: ...
 
