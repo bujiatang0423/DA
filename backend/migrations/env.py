@@ -3,6 +3,9 @@ from sqlalchemy import create_engine, pool
 from backend.app.bootstrap.settings import Settings
 from backend.app.infrastructure.persistence.models import Base
 
+# Import every ORM module so Alembic compares the complete DA schema.
+from backend.app.infrastructure.persistence import legacy_rows, pit_rows, portfolio_rows  # noqa: F401
+
 config = context.config
 target_metadata = Base.metadata
 

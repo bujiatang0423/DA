@@ -32,7 +32,10 @@ def upgrade() -> None:
         "run_events",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column(
-            "run_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("runs.id", ondelete="CASCADE")
+            "run_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("runs.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("event_type", sa.String(64), nullable=False),
@@ -43,7 +46,10 @@ def upgrade() -> None:
         "run_artifacts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column(
-            "run_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("runs.id", ondelete="CASCADE")
+            "run_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("runs.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("kind", sa.String(64), nullable=False),
         sa.Column("relative_path", sa.Text, nullable=False),

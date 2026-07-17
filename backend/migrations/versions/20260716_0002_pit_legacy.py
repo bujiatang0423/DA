@@ -106,6 +106,11 @@ def upgrade() -> None:
         sa.Column("highest_close", sa.Numeric(20, 6)),
         sa.Column("add_count", sa.Integer, nullable=False, server_default="0"),
     )
+    op.create_index(
+        "ix_portfolio_lot_projections_portfolio_id",
+        "portfolio_lot_projections",
+        ["portfolio_id"],
+    )
     op.create_table(
         "portfolio_audit_events",
         sa.Column("id", sa.Integer, primary_key=True),
