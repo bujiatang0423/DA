@@ -4,15 +4,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
+from uuid import UUID
 
 from backend.app.core.market.pit_models import PointInTimeSnapshot
 from backend.app.core.portfolio.models import PortfolioSnapshot
+from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
 from backend.app.features.backtests.models import (
     BacktestExperimentResult,
     OrderIntent,
     StrategyGroup,
 )
-from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
+from backend.app.ports.artifacts import ArtifactRepository
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class BacktestDecision:
 
 
 class BacktestDecisionPort(Protocol):
+    """Generate order intents without creating fills or mutating a portfolio ledger."""
+
     def decide(self, context: BacktestDecisionContext) -> BacktestDecision: ...
 
 
@@ -53,4 +57,11 @@ class BacktestSnapshotPort(Protocol):
 
 
 class BacktestRepository(Protocol):
-    def publish_result(self, result: BacktestExperimentResult) -> None: ...
+    """Persist a structured experiment result and its artifact projections."""
+
+    def publish_result(
+        self,
+        run_id: UUID,
+        result: BacktestExperimentResult,
+        artifacts: ArtifactRepository,
+    ) -> None: ...
