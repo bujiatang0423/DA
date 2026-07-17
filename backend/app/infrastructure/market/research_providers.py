@@ -42,7 +42,7 @@ class BaoStockDailyBarProvider:
     provider_name: str = "baostock"
 
     def daily_bars(self, security_id: str, start: date, end: date) -> tuple[ProviderBar, ...]:
-        exchange, code = security_id.split(".", 1)
+        code, exchange = security_id.rsplit(".", 1)
         self.module.login()
         try:
             result = self.module.query_history_k_data_plus(

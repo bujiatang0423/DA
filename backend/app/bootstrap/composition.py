@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
+from types import ModuleType
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,9 +14,19 @@ from backend.app.features.candidates.repository import SqlCandidateRepository
 from backend.app.features.candidates.service import CandidateService
 from backend.app.features.holdings.repository import SqlHoldingResultRepository
 from backend.app.features.holdings.service import V212HoldingAnalysisService
+from backend.app.infrastructure.market.provider_source import ProviderResearchSource
+from backend.app.infrastructure.market.research_providers import (
+    AkShareDailyBarProvider,
+    BaoStockDailyBarProvider,
+    FallbackDailyBarProvider,
+)
+from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.ports.point_in_time import PointInTimeWarehouse
-from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
+
+
+class ProviderConfigurationError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -25,14 +38,54 @@ class ApplicationComponents:
     holding_repository: SqlHoldingResultRepository
 
 
-def build_components(settings: Settings, sessions: sessionmaker[Session]) -> ApplicationComponents:
+def _provider_module(name: str) -> ModuleType:
+    try:
+        return import_module(name)
+    except ImportError as exc:
+        raise ProviderConfigurationError(
+            f"production provider dependency is missing: {name}"
+        ) from exc
+
+
+def build_warehouse(
+    settings: Settings,
+    *,
+    fake_warehouse: PointInTimeWarehouse | None = None,
+    akshare_module: ModuleType | None = None,
+    baostock_module: ModuleType | None = None,
+) -> PointInTimeWarehouse:
+    if settings.provider_mode == "fake":
+        if fake_warehouse is None:
+            raise ProviderConfigurationError(
+                "fake provider mode requires an explicit fake warehouse"
+            )
+        return fake_warehouse
+
+    if fake_warehouse is not None:
+        raise ProviderConfigurationError("production provider mode rejects a fake warehouse")
+
+    akshare = akshare_module or _provider_module("akshare")
+    baostock = baostock_module or _provider_module("baostock")
+    daily_bars = FallbackDailyBarProvider(
+        primary=AkShareDailyBarProvider(akshare),
+        fallback=BaoStockDailyBarProvider(baostock),
+    )
+    source = ProviderResearchSource(daily_bars, ZoneInfo(settings.timezone))
+    return ResearchPointInTimeWarehouse((source,))
+
+
+def build_components(
+    settings: Settings,
+    sessions: sessionmaker[Session],
+    *,
+    fake_warehouse: PointInTimeWarehouse | None = None,
+) -> ApplicationComponents:
     """Build shared strategy dependencies without duplicating feature logic.
 
-    Production data providers can replace the fail-closed warehouse at this boundary. Until all
-    provider adapters are configured, the default remains explicit and produces no executable item.
+    Fake data is accepted only through the explicit test-mode seam. Production always selects the
+    real provider chain and missing datasets remain subject to the warehouse's fail-closed checks.
     """
-    del settings
-    warehouse: PointInTimeWarehouse = UnavailableResearchWarehouse()
+    warehouse = build_warehouse(settings, fake_warehouse=fake_warehouse)
     strategy = V212StrategyEngine()
     service = CandidateService(
         warehouse,
