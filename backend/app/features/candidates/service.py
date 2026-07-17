@@ -40,6 +40,10 @@ class CandidateService:
         self._strategy = strategy
         self._repository = repository
 
+    @property
+    def repository(self) -> CandidateRepository:
+        return self._repository
+
     def run(self, command: CandidateRecommendationCommand) -> CandidateRecommendationResult:
         snapshot = self._warehouse.snapshot(
             as_of_time=command.as_of_time, scope=SnapshotScope.candidate_recommendation()
