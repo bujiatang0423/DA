@@ -1,4 +1,11 @@
 import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path = [entry for entry in sys.path if Path(entry or ".").resolve() != ROOT]
+sys.path.insert(0, str(ROOT))
+
 from backend.app.bootstrap.application import build_application
 
 
@@ -10,7 +17,7 @@ def render_openapi() -> str:
 
 
 def main() -> None:
-    with open("contracts/openapi.json", "w", encoding="utf-8") as target:
+    with (ROOT / "contracts/openapi.json").open("w", encoding="utf-8") as target:
         target.write(render_openapi())
 
 

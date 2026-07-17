@@ -18,6 +18,7 @@ from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.holdings.module import build_holdings_feature
 from backend.app.features.backtests.module import build_backtests_feature
 from backend.app.core.portfolio.models import PortfolioSnapshot
+from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 
 
 class _MemoryRuns:
@@ -132,6 +133,16 @@ def create_app(
             },
         )
 
+    @app.exception_handler(ConcurrentPortfolioUpdate)
+    async def concurrent_update(request: Request, exc: ConcurrentPortfolioUpdate) -> JSONResponse:
+        body = ErrorResponse(
+            code="CONCURRENT_PORTFOLIO_UPDATE",
+            message="portfolio changed; reload before saving",
+            request_id=request.state.request_id,
+            details={"reason": str(exc)},
+        )
+        return JSONResponse(status_code=409, content=body.model_dump())
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors = [
@@ -205,6 +216,9 @@ def build_application() -> FastAPI:
     settings = Settings()
     from backend.app.infrastructure.persistence.database import build_engine, build_session_factory
     from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
+    from backend.app.infrastructure.persistence.portfolio_maintenance import (
+        SqlPortfolioMaintenanceService,
+    )
 
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)
@@ -213,7 +227,9 @@ def build_application() -> FastAPI:
         (
             build_runs_feature(runs_service),
             build_candidate_feature(runs_service.submit),
-            build_holdings_feature(SqlPortfolioReader(sessions)),
+            build_holdings_feature(
+                SqlPortfolioReader(sessions), SqlPortfolioMaintenanceService(sessions)
+            ),
             build_backtests_feature(runs_service.submit),
         )
     )  # type: ignore[arg-type]

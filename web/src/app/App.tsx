@@ -4,6 +4,7 @@ import type { FeatureDefinition } from "./featureRegistry";
 const icons: Record<string, string> = {
   candidates: "◈",
   holdings: "▣",
+  maintenance: "✎",
   backtests: "◒",
   runs: "☷",
 };
