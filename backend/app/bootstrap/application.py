@@ -13,6 +13,7 @@ from backend.app.contracts.common import ErrorResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
 from backend.app.features.runs.module import build_runs_feature
+from backend.app.features.runs.service import RunsService
 from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.holdings.module import build_holdings_feature
 from backend.app.features.backtests.module import build_backtests_feature
@@ -207,12 +208,12 @@ def build_application() -> FastAPI:
 
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)
-    memory = _MemoryRuns()
+    runs_service = RunsService(sessions)
     return create_app(
         (
-            build_runs_feature(memory),
-            build_candidate_feature(memory.submit),
+            build_runs_feature(runs_service),
+            build_candidate_feature(runs_service.submit),
             build_holdings_feature(SqlPortfolioReader(sessions)),
-            build_backtests_feature(memory.submit),
+            build_backtests_feature(runs_service.submit),
         )
     )  # type: ignore[arg-type]
