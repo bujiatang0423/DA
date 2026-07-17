@@ -48,6 +48,13 @@ class BacktestRequest(BaseModel):
 
 
 class OrderIntent(BaseModel):
+    """A research order request, not a fill or ledger mutation.
+
+    Lower priorities run first: 1 red-light/delisting, 2 hard stop, 3 portfolio reduction,
+    4 strategy-book exit, 5 replacement, and 100 new buy. Ties sort by security ID, with
+    sell attempts preceding buy risk recalculation.
+    """
+
     model_config = ConfigDict(frozen=True)
     order_id: str
     security_id: str
@@ -61,6 +68,14 @@ class OrderIntent(BaseModel):
     signal_close: Decimal = Field(gt=0)
     stop_price: Decimal | None = Field(default=None, gt=0)
     max_participation_rate: Decimal = Field(default=Decimal("0.002"), gt=0, le=1)
+
+
+class BacktestGroupSummary(BaseModel):
+    group: StrategyGroup
+    data_grade: DataGrade
+    llm_grade: LlmGrade
+    input_manifest_hash: str
+    metrics: dict[str, str | int | None]
 
 
 class BacktestGroupResult(BaseModel):
@@ -86,5 +101,5 @@ class BacktestRunSummary(BaseModel):
     status: str
     strategy_version: str
     input_manifest_hash: str
-    groups: tuple[BacktestGroupResult, ...]
+    groups: tuple[BacktestGroupSummary, ...]
     created_at: datetime
