@@ -8,6 +8,7 @@ from backend.app.core.market.pit_models import DataKind, SnapshotScope
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.core.strategy.service import V212StrategyEngine
+from backend.app.core.strategy.types import MarketRegimeDecision, MarketState, StrategyEvaluation
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
 from .models import CandidateRecommendationResult
@@ -48,10 +49,21 @@ class CandidateService:
         portfolio: PortfolioSnapshot = self._portfolios.snapshot(
             portfolio_id=command.portfolio_id, as_of_time=command.as_of_time
         )
-        prepared = self._input_builder.build(
-            snapshot=snapshot, portfolio=portfolio, strategy_version=command.strategy_version
-        )
-        evaluation = self._strategy.evaluate(prepared)
+        if snapshot.quality.has_errors:
+            evaluation = StrategyEvaluation(
+                as_of_time=command.as_of_time,
+                strategy_version=command.strategy_version,
+                manifest_hash=snapshot.manifest_hash,
+                market=MarketRegimeDecision(
+                    MarketState.WEAK, 0.0, False, False, "low", 0, 0, ()
+                ),
+                securities=(),
+            )
+        else:
+            prepared = self._input_builder.build(
+                snapshot=snapshot, portfolio=portfolio, strategy_version=command.strategy_version
+            )
+            evaluation = self._strategy.evaluate(prepared)
         llm_manifest = _llm_manifest(snapshot)
         llm_grade, llm_quality = derive_llm_grade(llm_manifest)
         items = tuple(
