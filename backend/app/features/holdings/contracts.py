@@ -47,7 +47,8 @@ class HoldingAdviceItemResponse(BaseModel):
             advised_action=item.advised_action.value,
             planned_quantity=item.planned_quantity,
             pending_target_action=item.pending_target_action.value
-            if item.pending_target_action else None,
+            if item.pending_target_action
+            else None,
             effective_stop=item.effective_stop,
             proposed_effective_stop=item.proposed_effective_stop,
             reason_codes=tuple(code.value for code in item.reason_codes),

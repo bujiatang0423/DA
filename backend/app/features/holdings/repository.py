@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Protocol
+
+from sqlalchemy import DateTime, JSON, String
+from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
+
+from backend.app.infrastructure.persistence.models import Base
+from .models import HoldingAnalysisResult
+
+
+class HoldingResultRepository(Protocol):
+    def save(self, result: HoldingAnalysisResult) -> None: ...
+
+    def get(self, run_id: str) -> HoldingAnalysisResult | None: ...
+
+
+class HoldingResultRow(Base):
+    __tablename__ = "holding_analysis_results"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    as_of_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON)
+
+
+class SqlHoldingResultRepository:
+    def __init__(self, sessions: sessionmaker[Session]) -> None:
+        self._sessions = sessions
+
+    def save(self, result: HoldingAnalysisResult) -> None:
+        with self._sessions.begin() as session:
+            if session.get(HoldingResultRow, result.run_id) is None:
+                session.add(
+                    HoldingResultRow(
+                        run_id=result.run_id,
+                        as_of_time=result.as_of_time,
+                        payload=_encode(result),
+                    )
+                )
+
+    def get(self, run_id: str) -> HoldingAnalysisResult | None:
+        with self._sessions() as session:
+            row = session.get(HoldingResultRow, run_id)
+            return _decode(row.payload) if row else None
+
+
+def _encode(result: HoldingAnalysisResult) -> dict[str, object]:
+    return {
+        "run_id": result.run_id,
+        "portfolio_id": result.portfolio_id,
+        "as_of_time": result.as_of_time.isoformat(),
+        "strategy_version": result.strategy_version,
+        "manifest_hash": result.manifest_hash,
+        "data_grade": result.data_grade.value,
+        "llm_grade": result.llm_grade.value,
+        "summary": {
+            "equity": str(result.summary.equity),
+            "cash": str(result.summary.cash),
+            "gross_exposure_pct": str(result.summary.gross_exposure_pct),
+            "portfolio_risk_pct": str(result.summary.portfolio_risk_pct),
+            "market_state": result.summary.market_state,
+        },
+        "items": [
+            {
+                "security_id": item.security_id,
+                "security_name": item.security_name,
+                "origin": item.origin.value,
+                "strategy_book": item.strategy_book.value if item.strategy_book else None,
+                "quantity": item.quantity,
+                "available_to_sell": item.available_to_sell,
+                "average_cost": str(item.average_cost),
+                "close": str(item.close),
+                "market_state": item.market_state,
+                "factors": {
+                    name: str(getattr(item.factors, name))
+                    for name in ("p", "f", "r", "t", "v", "s", "percentile_rank")
+                },
+                "r_multiple": str(item.r_multiple) if item.r_multiple is not None else None,
+                "effective_stop": str(item.effective_stop)
+                if item.effective_stop is not None
+                else None,
+                "proposed_effective_stop": str(item.proposed_effective_stop)
+                if item.proposed_effective_stop is not None
+                else None,
+                "advised_action": item.advised_action.value,
+                "planned_quantity": item.planned_quantity,
+                "pending_target_action": item.pending_target_action.value
+                if item.pending_target_action
+                else None,
+                "reason_codes": [code.value for code in item.reason_codes],
+                "quality_codes": list(item.quality_codes),
+                "evidence_refs": list(item.evidence_refs),
+            }
+            for item in result.items
+        ],
+    }
+
+
+def _decode(payload: dict[str, object]) -> HoldingAnalysisResult:
+    from backend.app.contracts.grades import DataGrade, LlmGrade
+    from backend.app.core.portfolio.models import PositionOrigin, StrategyBook
+    from backend.app.core.strategy.reason_codes import ReasonCode
+    from .models import AdviceAction, HoldingAdviceItem, HoldingFactors, HoldingRiskSummary
+
+    summary = dict(payload["summary"])
+    items = []
+    for raw in payload["items"]:
+        row = dict(raw)
+        factors = dict(row["factors"])
+        items.append(
+            HoldingAdviceItem(
+                security_id=str(row["security_id"]),
+                security_name=str(row["security_name"]),
+                origin=PositionOrigin(str(row["origin"])),
+                strategy_book=StrategyBook(str(row["strategy_book"]))
+                if row.get("strategy_book")
+                else None,
+                quantity=int(row["quantity"]),
+                available_to_sell=int(row["available_to_sell"]),
+                average_cost=Decimal(str(row["average_cost"])),
+                close=Decimal(str(row["close"])),
+                market_state=str(row["market_state"]),
+                factors=HoldingFactors(
+                    **{key: Decimal(str(value)) for key, value in factors.items()}
+                ),
+                r_multiple=Decimal(str(row["r_multiple"])) if row.get("r_multiple") else None,
+                effective_stop=Decimal(str(row["effective_stop"]))
+                if row.get("effective_stop")
+                else None,
+                proposed_effective_stop=Decimal(str(row["proposed_effective_stop"]))
+                if row.get("proposed_effective_stop")
+                else None,
+                advised_action=AdviceAction(str(row["advised_action"])),
+                planned_quantity=int(row["planned_quantity"]),
+                pending_target_action=AdviceAction(str(row["pending_target_action"]))
+                if row.get("pending_target_action")
+                else None,
+                reason_codes=tuple(ReasonCode(str(code)) for code in row["reason_codes"]),
+                quality_codes=tuple(str(code) for code in row["quality_codes"]),
+                evidence_refs=tuple(str(ref) for ref in row["evidence_refs"]),
+            )
+        )
+    return HoldingAnalysisResult(
+        run_id=str(payload["run_id"]),
+        portfolio_id=str(payload["portfolio_id"]),
+        as_of_time=datetime.fromisoformat(str(payload["as_of_time"])),
+        strategy_version="v2.12",
+        manifest_hash=str(payload["manifest_hash"]),
+        data_grade=DataGrade(str(payload["data_grade"])),
+        llm_grade=LlmGrade(str(payload["llm_grade"])),
+        summary=HoldingRiskSummary(
+            equity=Decimal(str(summary["equity"])),
+            cash=Decimal(str(summary["cash"])),
+            gross_exposure_pct=Decimal(str(summary["gross_exposure_pct"])),
+            portfolio_risk_pct=Decimal(str(summary["portfolio_risk_pct"])),
+            market_state=str(summary["market_state"]),
+        ),
+        items=tuple(items),
+    )

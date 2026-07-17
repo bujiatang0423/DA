@@ -234,7 +234,11 @@ def build_application() -> FastAPI:
                 service=components.candidate_service,
             ),
             build_holdings_feature(
-                SqlPortfolioReader(sessions), SqlPortfolioMaintenanceService(sessions)
+                SqlPortfolioReader(sessions),
+                SqlPortfolioMaintenanceService(sessions),
+                runs_service.submit,
+                components.holding_repository,
+                components.holding_service,
             ),
             build_backtests_feature(runs_service.submit),
         )

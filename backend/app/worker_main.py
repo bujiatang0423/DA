@@ -8,6 +8,7 @@ from backend.app.bootstrap.settings import Settings
 from backend.app.bootstrap.composition import build_components
 from backend.app.contracts.runs import RunKind
 from backend.app.features.candidates.jobs import CandidateJobHandler
+from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
 from backend.app.features.runs.service import RunsService
 from backend.app.infrastructure.persistence.database import build_engine, build_session_factory
 from backend.app.infrastructure.tasks.handlers import HandlerRegistry
@@ -19,9 +20,14 @@ def main() -> None:
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)
     runs = RunsService(sessions)
-    service = build_components(settings, sessions).candidate_service
+    components = build_components(settings, sessions)
     handlers = HandlerRegistry()
-    handlers.register(RunKind.CANDIDATE_RECOMMENDATION, CandidateJobHandler(service))
+    handlers.register(
+        RunKind.CANDIDATE_RECOMMENDATION, CandidateJobHandler(components.candidate_service)
+    )
+    handlers.register(
+        RunKind.HOLDING_ANALYSIS, HoldingAnalysisJobHandler(components.holding_service)
+    )
     worker = build_worker(runs, handlers, lambda: datetime.now(UTC))
     stopping = False
 

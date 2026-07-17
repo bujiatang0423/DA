@@ -7,7 +7,9 @@ from .models import HoldingAdviceItem, HoldingFactors
 from .priority import PriorityFacts, decide_action
 
 
-def project_position(position: PortfolioPosition, evaluation: SecurityEvaluation) -> HoldingAdviceItem:
+def project_position(
+    position: PortfolioPosition, evaluation: SecurityEvaluation
+) -> HoldingAdviceItem:
     factors = evaluation.factors
     if factors is None:
         factor_values = HoldingFactors(*(Decimal("0") for _ in range(7)))
@@ -47,7 +49,9 @@ def project_position(position: PortfolioPosition, evaluation: SecurityEvaluation
         close=Decimal(str(evaluation.close)),
         market_state=evaluation.market_state.value,
         factors=factor_values,
-        r_multiple=Decimal(str(evaluation.r_multiple)) if evaluation.r_multiple is not None else None,
+        r_multiple=Decimal(str(evaluation.r_multiple))
+        if evaluation.r_multiple is not None
+        else None,
         effective_stop=position.effective_stop,
         proposed_effective_stop=position.effective_stop,
         advised_action=action,

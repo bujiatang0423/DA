@@ -9,6 +9,8 @@ from backend.app.core.market.strategy_inputs import StrategyInputBuilder
 from backend.app.core.strategy.service import V212StrategyEngine
 from backend.app.features.candidates.repository import SqlCandidateRepository
 from backend.app.features.candidates.service import CandidateService
+from backend.app.features.holdings.repository import SqlHoldingResultRepository
+from backend.app.features.holdings.service import V212HoldingAnalysisService
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
@@ -19,6 +21,8 @@ class ApplicationComponents:
     strategy_engine: V212StrategyEngine
     warehouse: PointInTimeWarehouse
     candidate_service: CandidateService
+    holding_service: V212HoldingAnalysisService
+    holding_repository: SqlHoldingResultRepository
 
 
 def build_components(settings: Settings, sessions: sessionmaker[Session]) -> ApplicationComponents:
@@ -37,4 +41,12 @@ def build_components(settings: Settings, sessions: sessionmaker[Session]) -> App
         strategy,
         SqlCandidateRepository(sessions),
     )
-    return ApplicationComponents(strategy, warehouse, service)
+    holding_repository = SqlHoldingResultRepository(sessions)
+    holding_service = V212HoldingAnalysisService(
+        warehouse,
+        SqlPortfolioReader(sessions),
+        StrategyInputBuilder(),
+        strategy,
+        holding_repository,
+    )
+    return ApplicationComponents(strategy, warehouse, service, holding_service, holding_repository)
