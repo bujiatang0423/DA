@@ -1,0 +1,3 @@
+record_id,disclosure_id,metric,value,unit,available_at,source_artifact_hash
+ff-1,fd-1,revenue,100,CNY,2020-03-30,source-ff-v1
+ff-2,fd-2,revenue,110,CNY,2021-01-02,source-ff-v2

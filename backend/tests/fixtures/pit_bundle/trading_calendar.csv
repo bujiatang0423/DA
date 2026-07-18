@@ -1,0 +1,3 @@
+record_id,exchange,trade_date,is_open,available_at,source_artifact_hash
+tc-1,SZSE,2020-01-02,true,2020-01-01,source-tc-v1
+tc-2,SZSE,2020-07-02,true,2021-01-01,source-tc-v2

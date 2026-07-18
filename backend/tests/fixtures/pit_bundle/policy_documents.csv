@@ -1,0 +1,3 @@
+document_id,published_at,first_observed_at,available_at,evidence_grade,official_parent_id,content_hash,source_artifact_hash
+pd-1,2020-01-10,2020-01-10,2020-01-10,A,csrs,content-pd-v1,source-pd-v1
+pd-2,2020-07-10,2021-01-02,2021-01-02,A,csrs,content-pd-v2,source-pd-v2

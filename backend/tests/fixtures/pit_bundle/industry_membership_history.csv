@@ -1,0 +1,3 @@
+record_id,security_id,industry_id,effective_from,effective_to,available_at,source_artifact_hash
+imh-1,000001.SZ,bank,2020-01-01,2020-06-30,2020-01-02,source-imh-v1
+imh-2,000001.SZ,finance,2020-07-01,,2021-01-02,source-imh-v2
