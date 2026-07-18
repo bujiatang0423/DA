@@ -133,6 +133,20 @@ def test_new_source_versions_append_without_overwriting_history(
         strict_pit_session.scalar(select(func.count()).select_from(DailyBarRawRow))
         == first_bundle.file("daily_bars_raw").row_count * 2
     )
+    source_versions = strict_pit_session.execute(
+        select(DailyBarRawRow.source_record_id, func.count())
+        .group_by(DailyBarRawRow.source_record_id)
+        .order_by(DailyBarRawRow.source_record_id)
+    ).all()
+    assert source_versions == [("dbr-1", 2), ("dbr-2", 2)]
+
+    disclosure_ids = {
+        disclosure.id for disclosure in strict_pit_session.scalars(select(FinancialDisclosureRow))
+    }
+    assert all(
+        fact.disclosure_id in disclosure_ids
+        for fact in strict_pit_session.scalars(select(FinancialFactRow))
+    )
 
 
 def _update_checksum(bundle_root: Path, dataset: str) -> None:
@@ -160,9 +174,6 @@ def _versioned_bundle(source: Path) -> Path:
             rows = list(csv.DictReader(stream))
             fields = tuple(rows[0])
         for row in rows:
-            for field in ("record_id", "disclosure_id", "document_id"):
-                if field in row:
-                    row[field] = f"{row[field]}-v2"
             if "source_artifact_hash" in row:
                 row["source_artifact_hash"] = f"{row['source_artifact_hash']}-v2"
         with csv_path.open("w", encoding="utf-8", newline="") as stream:

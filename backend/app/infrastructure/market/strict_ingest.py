@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.infrastructure.market.strict_bundle import PitBundleFile, PitBundleManifest
-from backend.app.infrastructure.market.strict_row_mapping import parse_temporal_rows
+from backend.app.infrastructure.market.strict_row_mapping import parse_temporal_rows, storage_id
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
     IndexDailyBarRow,
@@ -56,7 +56,7 @@ class StrictPitIngestor:
         parsed: list[list[object]] = []
         for item in bundle.files:
             parser = parsers.get(item.dataset, self._temporal_rows)
-            rows = parser(item)
+            rows = parser(item, bundle.manifest_sha256)
             if len(rows) != item.row_count:
                 raise ValueError(f"row_count mismatch: {item.dataset}")
             parsed.append(rows)
@@ -67,11 +67,12 @@ class StrictPitIngestor:
         with item.path.open(encoding="utf-8-sig", newline="") as stream:
             return list(csv.DictReader(stream))
 
-    def _security_master(self, item: PitBundleFile) -> list[object]:
+    def _security_master(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
         dataset = item.dataset
         return [
             SecurityMasterHistoryRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 name=_required(row, "name", dataset),
                 listed_on=_date(row, "listed_on", dataset),
@@ -84,11 +85,12 @@ class StrictPitIngestor:
             for row in self._read(item)
         ]
 
-    def _security_status(self, item: PitBundleFile) -> list[object]:
+    def _security_status(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
         dataset = item.dataset
         return [
             SecurityStatusDailyRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 trade_date=_date(row, "trade_date", dataset),
                 is_st=_boolean(row, "is_st", dataset),
@@ -101,11 +103,12 @@ class StrictPitIngestor:
             for row in self._read(item)
         ]
 
-    def _trading_calendar(self, item: PitBundleFile) -> list[object]:
+    def _trading_calendar(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
         dataset = item.dataset
         return [
             TradingCalendarRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 exchange=_required(row, "exchange", dataset),
                 trade_date=_date(row, "trade_date", dataset),
                 is_open=_boolean(row, "is_open", dataset),
@@ -115,11 +118,12 @@ class StrictPitIngestor:
             for row in self._read(item)
         ]
 
-    def _daily_bars(self, item: PitBundleFile) -> list[object]:
+    def _daily_bars(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
         dataset = item.dataset
         return [
             DailyBarRawRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 trade_date=_date(row, "trade_date", dataset),
                 open=_decimal(row, "open", dataset),
@@ -134,11 +138,12 @@ class StrictPitIngestor:
             for row in self._read(item)
         ]
 
-    def _index_bars(self, item: PitBundleFile) -> list[object]:
+    def _index_bars(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
         dataset = item.dataset
         return [
             IndexDailyBarRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 index_id=_required(row, "index_id", dataset),
                 trade_date=_date(row, "trade_date", dataset),
                 open=_decimal(row, "open", dataset),
@@ -153,8 +158,8 @@ class StrictPitIngestor:
             for row in self._read(item)
         ]
 
-    def _temporal_rows(self, item: PitBundleFile) -> list[object]:
-        return parse_temporal_rows(item.dataset, self._read(item))
+    def _temporal_rows(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
+        return parse_temporal_rows(item.dataset, self._read(item), bundle_manifest_hash)
 
 
 def _required(row: dict[str, str], field: str, dataset: str) -> str:

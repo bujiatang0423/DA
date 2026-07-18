@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -23,12 +24,17 @@ TEMPORAL_TYPES = {
 }
 
 
-def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object]:
+def parse_temporal_rows(
+    dataset: str, rows: list[dict[str, str]], bundle_manifest_hash: str
+) -> list[object]:
     if dataset in TEMPORAL_TYPES:
         row_type = TEMPORAL_TYPES[dataset]
         return [
             row_type(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(
+                    bundle_manifest_hash, dataset, _required(row, "record_id", dataset)
+                ),
+                source_record_id=_required(row, "record_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 available_at=_datetime(row, "available_at", dataset),
                 source_artifact_hash=_required(row, "source_artifact_hash", dataset),
@@ -39,7 +45,10 @@ def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object
     if dataset == "financial_disclosures":
         return [
             FinancialDisclosureRow(
-                id=_required(row, "disclosure_id", dataset),
+                id=storage_id(
+                    bundle_manifest_hash, dataset, _required(row, "disclosure_id", dataset)
+                ),
+                source_record_id=_required(row, "disclosure_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 report_period=_date(row, "report_period", dataset),
                 revision=_integer(row, "revision", dataset),
@@ -52,8 +61,14 @@ def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object
     if dataset == "financial_facts":
         return [
             FinancialFactRow(
-                id=_required(row, "record_id", dataset),
-                disclosure_id=_required(row, "disclosure_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
+                disclosure_id=storage_id(
+                    bundle_manifest_hash,
+                    "financial_disclosures",
+                    _required(row, "disclosure_id", dataset),
+                ),
+                disclosure_source_record_id=_required(row, "disclosure_id", dataset),
                 metric=_required(row, "metric", dataset),
                 value=_required(row, "value", dataset),
                 unit=_required(row, "unit", dataset),
@@ -65,7 +80,10 @@ def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object
     if dataset == "policy_documents":
         return [
             PolicyDocumentRow(
-                id=_required(row, "document_id", dataset),
+                id=storage_id(
+                    bundle_manifest_hash, dataset, _required(row, "document_id", dataset)
+                ),
+                source_record_id=_required(row, "document_id", dataset),
                 published_at=_datetime(row, "published_at", dataset),
                 first_observed_at=_datetime(row, "first_observed_at", dataset),
                 available_at=_datetime(row, "available_at", dataset),
@@ -79,7 +97,8 @@ def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object
     if dataset == "fee_schedules":
         return [
             FeeScheduleRow(
-                id=_required(row, "record_id", dataset),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
                 effective_from=_date(row, "effective_from", dataset),
                 effective_to=_optional_date(row, "effective_to", dataset),
                 exchange=_required(row, "exchange", dataset),
@@ -94,6 +113,11 @@ def parse_temporal_rows(dataset: str, rows: list[dict[str, str]]) -> list[object
             for row in rows
         ]
     raise ValueError(f"unsupported strict dataset: {dataset}")
+
+
+def storage_id(bundle_manifest_hash: str, dataset: str, source_record_id: str) -> str:
+    raw = f"{bundle_manifest_hash}:{dataset}:{source_record_id}".encode()
+    return sha256(raw).hexdigest()
 
 
 def _required(row: dict[str, str], field: str, dataset: str) -> str:

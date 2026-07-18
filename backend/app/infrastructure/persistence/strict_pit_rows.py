@@ -32,6 +32,7 @@ class SecurityMasterHistoryRow(Base):
     __tablename__ = "security_master_history"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     name: Mapped[str] = mapped_column(String(128))
     listed_on: Mapped[date] = mapped_column(Date)
@@ -46,6 +47,7 @@ class SecurityStatusDailyRow(Base):
     __tablename__ = "security_status_daily"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     is_st: Mapped[bool] = mapped_column(Boolean)
@@ -60,6 +62,7 @@ class TradingCalendarRow(Base):
     __tablename__ = "trading_calendar"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     exchange: Mapped[str] = mapped_column(String(16), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     is_open: Mapped[bool] = mapped_column(Boolean)
@@ -76,6 +79,7 @@ class DailyBarRawRow(Base):
     )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     open: Mapped[Decimal] = mapped_column(Numeric(20, 6))
@@ -92,6 +96,7 @@ class IndexDailyBarRow(Base):
     __tablename__ = "index_daily_bars"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     index_id: Mapped[str] = mapped_column(String(32), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     open: Mapped[Decimal] = mapped_column(Numeric(20, 6))
@@ -108,6 +113,7 @@ class TemporalJsonRow(Base):
     __abstract__ = True
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     source_artifact_hash: Mapped[str] = mapped_column(String(64))
@@ -134,6 +140,7 @@ class FinancialDisclosureRow(Base):
     __tablename__ = "financial_disclosures"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     report_period: Mapped[date] = mapped_column(Date)
     revision: Mapped[int] = mapped_column(Integer)
@@ -146,7 +153,9 @@ class FinancialFactRow(Base):
     __tablename__ = "financial_facts"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     disclosure_id: Mapped[str] = mapped_column(ForeignKey("financial_disclosures.id"), index=True)
+    disclosure_source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     metric: Mapped[str] = mapped_column(String(64))
     value: Mapped[str] = mapped_column(String(128))
     unit: Mapped[str] = mapped_column(String(32))
@@ -158,6 +167,7 @@ class PolicyDocumentRow(Base):
     __tablename__ = "policy_documents"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -171,6 +181,7 @@ class FeeScheduleRow(Base):
     __tablename__ = "fee_schedules"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
     effective_from: Mapped[date] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
     exchange: Mapped[str] = mapped_column(String(16))
