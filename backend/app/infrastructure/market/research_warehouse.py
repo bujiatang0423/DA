@@ -15,9 +15,6 @@ class ResearchPointInTimeWarehouse:
         self.sources = sources
 
     def snapshot(self, *, as_of_time: datetime, scope: SnapshotScope) -> PointInTimeSnapshot:
-        batches = tuple(s.fetch(as_of_time=as_of_time, scope=scope) for s in self.sources)
-        records = tuple(r for b in batches for r in b.records)
-        lineage = tuple(x for b in batches for x in b.lineage)
         issues = [
             QualityIssue(
                 "RECONSTRUCTED_HISTORY",
@@ -27,6 +24,22 @@ class ResearchPointInTimeWarehouse:
                 "provider history is reconstructed research data",
             )
         ]
+        batches = []
+        for source in self.sources:
+            try:
+                batches.append(source.fetch(as_of_time=as_of_time, scope=scope))
+            except Exception:
+                issues.append(
+                    QualityIssue(
+                        "PROVIDER_UNAVAILABLE",
+                        QualitySeverity.ERROR,
+                        _provider_name(source),
+                        None,
+                        "provider is unavailable",
+                    )
+                )
+        records = tuple(r for b in batches for r in b.records)
+        lineage = tuple(x for b in batches for x in b.lineage)
         present = {r.kind for r in records}
         for kind in set(scope.required_kinds) - present:
             issues.append(
@@ -46,3 +59,10 @@ class ResearchPointInTimeWarehouse:
             lineage=lineage,
             quality_issues=tuple(issues),
         )
+
+
+def _provider_name(source: ResearchSource) -> str:
+    provider = source.provider
+    if isinstance(provider, str):
+        return provider
+    return str(getattr(provider, "provider_name", type(source).__name__))
