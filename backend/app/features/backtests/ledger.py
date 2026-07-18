@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from backend.app.features.backtests.execution import FilledAttempt
 from backend.app.features.backtests.models import OrderSide
+from backend.app.core.portfolio.models import PortfolioSnapshot
 
 
 @dataclass(frozen=True)
@@ -101,3 +102,33 @@ class PortfolioLedger:
         )
         self.apply_fill(fill)
         return fill
+
+    def to_portfolio_snapshot(self, as_of_time: datetime) -> PortfolioSnapshot:
+        from backend.app.core.portfolio.models import (
+            PortfolioLot,
+            PortfolioSnapshot,
+            PositionOrigin,
+        )
+
+        lots = tuple(
+            PortfolioLot(
+                lot_id=f"sim-{security_id}",
+                security_id=security_id,
+                quantity=position.quantity,
+                available_to_sell=position.sellable_quantity,
+                average_cost=position.average_cost,
+                effective_at=datetime.combine(position.acquired_date, datetime.min.time()),
+                origin=PositionOrigin.SIMULATED_FILL,
+                strategy_book=None,
+                entry_score=None,
+                initial_risk_per_share=None,
+                effective_stop=None,
+                highest_close=None,
+                add_count=0,
+            )
+            for security_id, position in sorted(self.state.positions.items())
+            if position.quantity > 0
+        )
+        return PortfolioSnapshot(
+            "backtest", as_of_time, self.state.version, self.state.cash, self.state.cash, lots
+        )
