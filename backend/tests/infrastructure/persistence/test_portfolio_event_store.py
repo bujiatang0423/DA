@@ -15,6 +15,7 @@ from backend.app.core.portfolio.models import (
 )
 from backend.app.core.portfolio.writer import AuditedPortfolioWriter
 from backend.app.infrastructure.persistence.portfolio_repository import (
+    BackdatedPortfolioMutation,
     InsufficientSellableQuantity,
     SqlPortfolioEventStore,
 )
@@ -160,7 +161,8 @@ def test_backdated_fill_is_not_visible_before_it_is_recorded(
         payload_hash="a" * 64,
     )
 
-    store.append(event=event, payload=command, expected_version=7)
+    with pytest.raises(BackdatedPortfolioMutation):
+        store.append(event=event, payload=command, expected_version=7)
 
     historical = SqlPortfolioReader(portfolio_sessions).snapshot(
         portfolio_id="default",
@@ -170,13 +172,13 @@ def test_backdated_fill_is_not_visible_before_it_is_recorded(
     assert historical.lots[0].quantity == 500
     assert historical.cash == Decimal("350000")
 
-    corrected = SqlPortfolioReader(portfolio_sessions).snapshot(
+    current = SqlPortfolioReader(portfolio_sessions).snapshot(
         portfolio_id="default",
         as_of_time=datetime(2026, 7, 17, 8, 1, tzinfo=UTC),
     )
 
-    assert corrected.lots[0].quantity == 400
-    assert corrected.cash == Decimal("351030")
+    assert current.lots[0].quantity == 500
+    assert current.cash == Decimal("350000")
 
 
 def test_manual_buy_is_t_plus_one_locked(

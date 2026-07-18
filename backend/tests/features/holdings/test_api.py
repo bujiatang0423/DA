@@ -194,6 +194,45 @@ def test_position_correction_is_audited_and_optimistic() -> None:
     assert correction.lots[0].quantity == 600
 
 
+def test_position_correction_preserves_unmentioned_holdings() -> None:
+    snapshot = portfolio_snapshot()
+    second_lot = replace(
+        snapshot.lots[0],
+        lot_id="lot-2",
+        security_id="600000.SH",
+        quantity=200,
+        available_to_sell=200,
+    )
+    snapshot = replace(snapshot, lots=(*snapshot.lots, second_lot))
+    reader = FakePortfolioReader(snapshot)
+    writer = FakePortfolioWriter(replace(snapshot, version=8))
+    client = portfolio_client(reader, writer)
+
+    response = client.put(
+        "/api/v1/portfolio/positions",
+        json={
+            "portfolio_id": "default",
+            "expected_version": 7,
+            "reason": "更正平安银行数量",
+            "positions": [
+                {
+                    "security_id": "000001.SZ",
+                    "quantity": 600,
+                    "average_cost": "10.30",
+                    "effective_at": "2026-07-17T15:00:00+08:00",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    correction, _, _ = writer.corrections[0]
+    assert {lot.security_id: lot.quantity for lot in correction.lots} == {
+        "000001.SZ": 600,
+        "600000.SH": 200,
+    }
+
+
 def test_manual_fill_uses_actual_execution_price_and_fee() -> None:
     snapshot = portfolio_snapshot()
     reader = FakePortfolioReader(snapshot)

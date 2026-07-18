@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 
 from sqlalchemy import delete, select, update
@@ -36,6 +36,10 @@ class InsufficientSellableQuantity(ValueError):
     pass
 
 
+class BackdatedPortfolioMutation(ValueError):
+    pass
+
+
 class SqlPortfolioEventStore:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -65,11 +69,15 @@ class SqlPortfolioEventStore:
             if version is None:
                 version = PortfolioVersionRow(portfolio_id=portfolio_id, version=0)
                 session.add(version)
+            current_as_of_time = _current_projection_time(session, portfolio_id, event.recorded_at)
+            if _as_utc(as_of_time) < _as_utc(current_as_of_time):
+                raise BackdatedPortfolioMutation(
+                    "manual fills and corrections cannot predate the current portfolio projection"
+                )
             current = read_portfolio_snapshot(session, portfolio_id, event.recorded_at)
             next_version = current_version + 1
             updated = _apply_payload(current, payload, next_version)
             version.version = next_version
-            current_as_of_time = _current_projection_time(session, portfolio_id, event.recorded_at)
             _write_revision(
                 session,
                 current,
@@ -106,6 +114,10 @@ def _payload_identity(payload: object) -> tuple[str, datetime]:
     if isinstance(payload, ManualFillCommand):
         return payload.portfolio_id, payload.filled_at
     raise TypeError(f"unsupported portfolio payload: {type(payload).__name__}")
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _apply_payload(

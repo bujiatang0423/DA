@@ -150,11 +150,16 @@ def build_router(
             as_of_time=correction_time,
         )
         current_lots = {lot.security_id: lot for lot in current.lots}
-        lots = tuple(
-            _corrected_lot(position, current_lots.get(position.security_id))
+        corrected_security_ids = {str(position.security_id) for position in request.positions}
+        unchanged_lots = tuple(
+            lot for lot in current.lots if lot.security_id not in corrected_security_ids
+        )
+        corrected_lots = tuple(
+            _corrected_lot(position, current_lots.get(str(position.security_id)))
             for position in request.positions
             if position.quantity > 0
         )
+        lots = tuple(sorted((*unchanged_lots, *corrected_lots), key=lambda lot: lot.lot_id))
         corrected = require_portfolio_writer().replace_positions_for_correction(
             CorrectionSnapshot(
                 portfolio_id=request.portfolio_id,
