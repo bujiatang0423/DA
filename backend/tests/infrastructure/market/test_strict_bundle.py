@@ -53,6 +53,10 @@ def test_verified_source_requires_source_and_license_ids(pit_bundle: Path) -> No
 
 def test_bundle_records_coverage_and_deterministic_manifest_digest(pit_bundle: Path) -> None:
     first = PitBundleManifest.load(pit_bundle)
+    manifest_path = pit_bundle / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["files"].reverse()
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     second = PitBundleManifest.load(pit_bundle)
 
     assert first.coverage_start.isoformat() == "2020-01-01"

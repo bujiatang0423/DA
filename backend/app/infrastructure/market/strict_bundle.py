@@ -101,6 +101,14 @@ class PitBundleManifest:
         coverage_end = date.fromisoformat(str(payload["coverage_end"]))
         if coverage_start > coverage_end:
             raise PitBundleError("coverage_start must not be after coverage_end")
+        canonical_payload = dict(payload)
+        canonical_payload["files"] = sorted(payload["files"], key=lambda item: str(item["dataset"]))
+        canonical_raw = json.dumps(
+            canonical_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
 
         return cls(
             schema_version=1,
@@ -108,5 +116,5 @@ class PitBundleManifest:
             coverage_start=coverage_start,
             coverage_end=coverage_end,
             files=tuple(sorted(entries, key=lambda entry: entry.dataset)),
-            manifest_sha256=hashlib.sha256(raw).hexdigest(),
+            manifest_sha256=hashlib.sha256(canonical_raw).hexdigest(),
         )
