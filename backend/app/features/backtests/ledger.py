@@ -112,19 +112,19 @@ class PortfolioLedger:
 
         lots = tuple(
             PortfolioLot(
-                f"sim-{security_id}",
-                security_id,
-                position.quantity,
-                position.sellable_quantity,
-                position.average_cost,
-                datetime.combine(position.acquired_date, datetime.min.time()),
-                PositionOrigin.SIMULATED_FILL,
-                None,
-                None,
-                None,
-                None,
-                None,
-                0,
+                lot_id=f"sim-{security_id}",
+                security_id=security_id,
+                quantity=position.quantity,
+                available_to_sell=position.sellable_quantity,
+                average_cost=position.average_cost,
+                effective_at=datetime.combine(position.acquired_date, datetime.min.time()),
+                origin=PositionOrigin.SIMULATED_FILL,
+                strategy_book=None,
+                entry_score=None,
+                initial_risk_per_share=None,
+                effective_stop=None,
+                highest_close=None,
+                add_count=0,
             )
             for security_id, position in sorted(self.state.positions.items())
             if position.quantity > 0
