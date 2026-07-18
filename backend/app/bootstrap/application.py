@@ -20,6 +20,7 @@ from backend.app.features.holdings.repository import HoldingAnalysisNotFound
 from backend.app.features.backtests.module import build_backtests_feature
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
+from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
 
 
 class _MemoryRuns:
@@ -154,6 +155,19 @@ def create_app(
         body = ErrorResponse(
             code="PORTFOLIO_VERSION_CONFLICT",
             message="portfolio changed; reload before saving",
+            request_id=request.state.request_id,
+            details={},
+        )
+        return JSONResponse(status_code=409, content=body.model_dump())
+
+    @app.exception_handler(BackdatedPortfolioMutation)
+    async def backdated_portfolio_mutation(
+        request: Request,
+        exc: BackdatedPortfolioMutation,
+    ) -> JSONResponse:
+        body = ErrorResponse(
+            code="BACKDATED_PORTFOLIO_MUTATION",
+            message="backdated portfolio changes require a replay workflow",
             request_id=request.state.request_id,
             details={},
         )

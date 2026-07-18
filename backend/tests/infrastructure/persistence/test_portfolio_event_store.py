@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, create_engine, select
+from sqlalchemy import Engine, create_engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -281,6 +281,29 @@ def test_portfolio_event_store_round_trips_on_postgresql(postgres_engine: Engine
     sessions = sessionmaker(bind=postgres_engine, expire_on_commit=False)
     portfolio_id = "portfolio-event-store-postgres"
     with sessions.begin() as session:
+        session.execute(
+            delete(PortfolioAuditEventRow).where(
+                PortfolioAuditEventRow.portfolio_id == portfolio_id
+            )
+        )
+        session.execute(
+            delete(PortfolioSnapshotRevisionRow).where(
+                PortfolioSnapshotRevisionRow.portfolio_id == portfolio_id
+            )
+        )
+        session.execute(
+            delete(PortfolioLotProjectionRow).where(
+                PortfolioLotProjectionRow.portfolio_id == portfolio_id
+            )
+        )
+        session.execute(
+            delete(PortfolioSnapshotProjectionRow).where(
+                PortfolioSnapshotProjectionRow.portfolio_id == portfolio_id
+            )
+        )
+        session.execute(
+            delete(PortfolioVersionRow).where(PortfolioVersionRow.portfolio_id == portfolio_id)
+        )
         session.add(PortfolioVersionRow(portfolio_id=portfolio_id, version=7))
         session.add(
             PortfolioSnapshotProjectionRow(

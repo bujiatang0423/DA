@@ -108,6 +108,7 @@ class FakeClock:
 class FakePortfolioWriter:
     result: PortfolioSnapshot
     conflict: ConcurrentPortfolioUpdate | None = None
+    error: Exception | None = None
     corrections: list[tuple[CorrectionSnapshot, int, str]] = field(default_factory=list)
     manual_fills: list[tuple[ManualFillCommand, int]] = field(default_factory=list)
 
@@ -117,6 +118,8 @@ class FakePortfolioWriter:
         expected_version: int,
         reason: str,
     ) -> PortfolioSnapshot:
+        if self.error is not None:
+            raise self.error
         if self.conflict is not None:
             raise self.conflict
         self.corrections.append((snapshot, expected_version, reason))
@@ -127,5 +130,7 @@ class FakePortfolioWriter:
         command: ManualFillCommand,
         expected_version: int,
     ) -> PortfolioSnapshot:
+        if self.error is not None:
+            raise self.error
         self.manual_fills.append((command, expected_version))
         return self.result

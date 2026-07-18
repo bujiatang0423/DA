@@ -12,6 +12,7 @@ from backend.app.core.portfolio.analysis import HoldingAnalysisService as Legacy
 from backend.app.core.portfolio.models import PositionOrigin
 from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
 from backend.app.features.holdings.router import build_router
+from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
 from backend.app.infrastructure.tasks.handlers import JobContext
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.tests.features.holdings.factories import holding_analysis_result, portfolio_snapshot
@@ -297,3 +298,27 @@ def test_position_version_conflict_uses_stable_error_code() -> None:
 
     assert response.status_code == 409
     assert response.json()["code"] == "PORTFOLIO_VERSION_CONFLICT"
+
+
+def test_backdated_portfolio_change_uses_a_stable_client_error() -> None:
+    snapshot = portfolio_snapshot()
+    reader = FakePortfolioReader(snapshot)
+    writer = FakePortfolioWriter(snapshot, error=BackdatedPortfolioMutation("backdated"))
+    client = portfolio_client(reader, writer)
+
+    response = client.post(
+        "/api/v1/portfolio/fills",
+        json={
+            "portfolio_id": "default",
+            "expected_version": 7,
+            "security_id": "000001.SZ",
+            "side": "sell",
+            "quantity": 100,
+            "price": "10.35",
+            "fee": "5.00",
+            "executed_at": "2026-07-17T09:31:00+08:00",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "BACKDATED_PORTFOLIO_MUTATION"
