@@ -31,6 +31,7 @@ class FilledAttempt:
     fee: Decimal
     slippage: Decimal
     reason_code: str | None = None
+    fee_schedule_version: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class RejectedAttempt:
     trade_date: date
     quantity: int
     reason_code: str
+    fee_schedule_version: str = ""
 
 
 def stop_price(bar: DailyBar, stop: Decimal, slippage: Decimal) -> Decimal | None:
@@ -62,24 +64,49 @@ class ExecutionSimulator:
         slippage_bps: int = 10,
     ) -> FilledAttempt | RejectedAttempt:
         if intent.earliest_trade_date > bar.trade_date:
-            return RejectedAttempt(intent.order_id, bar.trade_date, 0, "T_PLUS_ONE")
+            return self._reject(intent, bar, "T_PLUS_ONE")
         if bar.suspended:
-            return RejectedAttempt(intent.order_id, bar.trade_date, 0, "SUSPENDED")
+            return self._reject(intent, bar, "SUSPENDED")
         if intent.side is OrderSide.BUY and bar.limit_up:
-            return RejectedAttempt(intent.order_id, bar.trade_date, 0, "LIMIT_UP_LOCKED")
+            return self._reject(intent, bar, "LIMIT_UP_LOCKED")
         if intent.side is OrderSide.SELL and bar.limit_down:
-            return RejectedAttempt(intent.order_id, bar.trade_date, 0, "LIMIT_DOWN_LOCKED")
+            return self._reject(intent, bar, "LIMIT_DOWN_LOCKED")
+        if intent.side is OrderSide.BUY and bar.open > intent.signal_close * Decimal("1.03"):
+            return self._reject(intent, bar, "BUY_GAP_TOO_HIGH")
         if intent.side is OrderSide.SELL:
             quantity = min(intent.quantity, available_to_sell)
         else:
             quantity = min(intent.quantity, int(bar.volume * intent.max_participation_rate))
             quantity = quantity // 100 * 100
         if quantity <= 0:
-            return RejectedAttempt(intent.order_id, bar.trade_date, 0, "VOLUME_PARTICIPATION")
+            return self._reject(intent, bar, "VOLUME_PARTICIPATION")
         slip = Decimal(slippage_bps) / Decimal(10000)
         if intent.side is OrderSide.BUY:
             price = bar.open * (Decimal(1) + slip)
         else:
             price = bar.open * (Decimal(1) - slip)
         fee = calculate_fee(self.fee_schedule, intent.side, price * quantity)
-        return FilledAttempt(intent.order_id, bar.trade_date, quantity, bar.open, price, fee, slip)
+        return FilledAttempt(
+            intent.order_id,
+            bar.trade_date,
+            quantity,
+            bar.open,
+            price,
+            fee,
+            slip,
+            fee_schedule_version=self.fee_schedule.version,
+        )
+
+    def _reject(
+        self,
+        intent: OrderIntent,
+        bar: DailyBar,
+        reason_code: str,
+    ) -> RejectedAttempt:
+        return RejectedAttempt(
+            intent.order_id,
+            bar.trade_date,
+            0,
+            reason_code,
+            self.fee_schedule.version,
+        )
