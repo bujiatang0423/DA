@@ -1,0 +1,3 @@
+record_id,security_id,trade_date,is_st,is_suspended,board,price_limit_pct,available_at,source_artifact_hash
+ssd-1,000001.SZ,2020-01-02,false,false,main,0.10,2020-01-02,source-ssd-v1
+ssd-2,000001.SZ,2020-07-02,true,false,main,0.05,2021-01-02,source-ssd-v2

@@ -1,0 +1,3 @@
+record_id,effective_from,effective_to,exchange,asset_type,commission_rate,minimum_commission,stamp_tax_sell_rate,transfer_rate,available_at,source_artifact_hash
+fs-1,2020-01-01,2020-06-30,SZSE,equity,0.0003,5,0.001,0,2020-01-01,source-fs-v1
+fs-2,2020-07-01,,SZSE,equity,0.0002,5,0.001,0,2021-01-02,source-fs-v2

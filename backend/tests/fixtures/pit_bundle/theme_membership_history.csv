@@ -1,0 +1,3 @@
+record_id,security_id,theme_id,effective_from,effective_to,version,available_at,source_artifact_hash
+tmh-1,000001.SZ,blue_chip,2020-01-01,2020-06-30,1,2020-01-02,source-tmh-v1
+tmh-2,000001.SZ,fintech,2020-07-01,,2,2021-01-02,source-tmh-v2
