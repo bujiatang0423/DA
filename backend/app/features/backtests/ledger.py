@@ -123,6 +123,7 @@ class PortfolioLedger:
                 None,
                 None,
                 None,
+                None,
                 0,
             )
             for security_id, position in sorted(self.state.positions.items())

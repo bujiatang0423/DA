@@ -139,3 +139,57 @@ def test_engine_executes_next_day_intent_and_publishes_trade_metrics() -> None:
     assert len(result.trades) == 1
     assert result.trades[0]["trade_date"] == "2024-01-02"
     assert result.metrics["observations"] == 2
+
+
+def test_next_decision_receives_lots_from_prior_simulated_fill() -> None:
+    class Days:
+        def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
+            return (date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3))
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time, scope, DataGrade.RESEARCH, (), (), SnapshotQuality(()), (), "x"
+            )
+
+    class Decisions:
+        def __init__(self) -> None:
+            self.contexts: list[BacktestDecisionContext] = []
+
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            self.contexts.append(context)
+            intents = (intent(quantity=100),) if len(self.contexts) == 1 else ()
+            return BacktestDecision(intents, {})
+
+    class Execution:
+        def execute(
+            self, order: OrderIntent, trade_date: date, available_to_sell: int
+        ) -> FilledAttempt:
+            return FilledAttempt(
+                order.order_id,
+                trade_date,
+                order.quantity,
+                Decimal("10"),
+                Decimal("10"),
+                Decimal("1"),
+                Decimal("0"),
+            )
+
+    decisions = Decisions()
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 3),
+        initial_cash=Decimal("10000"),
+        groups=[StrategyGroup.A],
+    )
+
+    BacktestEngine(Days(), Warehouse(), decisions, Execution()).run(request, StrategyGroup.A)
+
+    portfolio = decisions.contexts[1].portfolio
+    assert portfolio.version == 1
+    assert portfolio.cash == Decimal("8999")
+    assert portfolio.lots[0].security_id == "600000.SH"
+    assert portfolio.lots[0].quantity == 100
+    assert portfolio.lots[0].available_to_sell == 100
+    assert portfolio.lots[0].average_cost == Decimal("10.01")
