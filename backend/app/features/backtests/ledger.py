@@ -87,10 +87,7 @@ class PortfolioLedger:
         return self.state.positions[security_id]
 
     def sellable_quantity(self, security_id: str, as_of_date: date) -> int:
-        return sum(
-            lot.remaining_quantity
-            for lot in self._sellable_lots(security_id, as_of_date)
-        )
+        return sum(lot.remaining_quantity for lot in self._sellable_lots(security_id, as_of_date))
 
     def _apply_buy(self, fill: Fill) -> None:
         total = fill.price * fill.quantity + fill.fee
