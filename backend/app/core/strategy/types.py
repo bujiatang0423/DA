@@ -75,6 +75,13 @@ class PortfolioView:
 
 
 @dataclass(frozen=True)
+class StrategyPortfolioSummary:
+    gross_exposure_pct: float
+    portfolio_risk_pct: float
+    market_state: MarketState
+
+
+@dataclass(frozen=True)
 class PolicyEvidence:
     strength: float
     relevance: float
@@ -234,4 +241,5 @@ class StrategyEvaluation:
     strategy_version: str
     manifest_hash: str
     market: MarketRegimeDecision
+    portfolio_summary: StrategyPortfolioSummary
     securities: tuple[SecurityEvaluation, ...]

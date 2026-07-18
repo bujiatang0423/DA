@@ -12,6 +12,7 @@ from backend.app.infrastructure.persistence.models import Base
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_rows import (
     PortfolioLotProjectionRow,
+    PortfolioSnapshotRevisionRow,
     PortfolioSnapshotProjectionRow,
     PortfolioVersionRow,
 )
@@ -27,6 +28,7 @@ def _factory() -> sessionmaker:
             PortfolioVersionRow.__table__,
             PortfolioSnapshotProjectionRow.__table__,
             PortfolioLotProjectionRow.__table__,
+            PortfolioSnapshotRevisionRow.__table__,
         ],
     )
     return sessionmaker(bind=engine, expire_on_commit=False)

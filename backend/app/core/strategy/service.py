@@ -112,5 +112,10 @@ class V212StrategyEngine:
             request.strategy.version,
             request.manifest_hash,
             market,
+            StrategyPortfolioSummary(
+                gross_exposure_pct=request.portfolio.gross_exposure * 100,
+                portfolio_risk_pct=request.portfolio.portfolio_risk * 100,
+                market_state=market.state,
+            ),
             tuple(out),
         )

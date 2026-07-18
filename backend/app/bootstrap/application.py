@@ -16,9 +16,11 @@ from backend.app.features.runs.module import build_runs_feature
 from backend.app.features.runs.service import RunsService
 from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.holdings.module import build_holdings_feature
+from backend.app.features.holdings.repository import HoldingAnalysisNotFound
 from backend.app.features.backtests.module import build_backtests_feature
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
+from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
 
 
 class _MemoryRuns:
@@ -97,7 +99,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(resolved.allowed_origins),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID", "Authorization"],
     )
 
@@ -133,13 +135,41 @@ def create_app(
             },
         )
 
+    @app.exception_handler(HoldingAnalysisNotFound)
+    async def missing_holding_analysis(
+        request: Request,
+        exc: HoldingAnalysisNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "HOLDING_ANALYSIS_NOT_FOUND",
+                "message": "holding analysis result not found",
+                "request_id": request.state.request_id,
+                "details": {},
+            },
+        )
+
     @app.exception_handler(ConcurrentPortfolioUpdate)
     async def concurrent_update(request: Request, exc: ConcurrentPortfolioUpdate) -> JSONResponse:
         body = ErrorResponse(
-            code="CONCURRENT_PORTFOLIO_UPDATE",
+            code="PORTFOLIO_VERSION_CONFLICT",
             message="portfolio changed; reload before saving",
             request_id=request.state.request_id,
-            details={"reason": str(exc)},
+            details={},
+        )
+        return JSONResponse(status_code=409, content=body.model_dump())
+
+    @app.exception_handler(BackdatedPortfolioMutation)
+    async def backdated_portfolio_mutation(
+        request: Request,
+        exc: BackdatedPortfolioMutation,
+    ) -> JSONResponse:
+        body = ErrorResponse(
+            code="BACKDATED_PORTFOLIO_MUTATION",
+            message="backdated portfolio changes require a replay workflow",
+            request_id=request.state.request_id,
+            details={},
         )
         return JSONResponse(status_code=409, content=body.model_dump())
 
@@ -239,6 +269,7 @@ def build_application() -> FastAPI:
                 runs_service.submit,
                 components.holding_repository,
                 components.holding_service,
+                components.portfolio_writer,
             ),
             build_backtests_feature(runs_service.submit),
         )

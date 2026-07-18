@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Date, DateTime, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base
 
@@ -37,6 +37,28 @@ class PortfolioLotProjectionRow(Base):
     effective_stop: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     highest_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     add_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PortfolioSnapshotRevisionRow(Base):
+    __tablename__ = "portfolio_snapshot_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_id",
+            "as_of_time",
+            "version",
+            name="uq_portfolio_snapshot_revision",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    portfolio_id: Mapped[str] = mapped_column(String(64), index=True)
+    as_of_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    cash: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
+    equity: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
+    lots: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
 
 
 class PortfolioAuditEventRow(Base):

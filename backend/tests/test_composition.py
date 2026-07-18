@@ -70,3 +70,4 @@ def test_components_share_the_explicit_fake_warehouse() -> None:
     assert components.warehouse is warehouse
     assert components.candidate_service._warehouse is warehouse
     assert components.holding_service._warehouse is warehouse
+    assert components.portfolio_writer.__class__.__name__ == "AuditedPortfolioWriter"

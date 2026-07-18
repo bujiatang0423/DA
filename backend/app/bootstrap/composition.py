@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.bootstrap.settings import Settings
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder
+from backend.app.core.portfolio.writer import AuditedPortfolioWriter
 from backend.app.core.strategy.service import V212StrategyEngine
 from backend.app.features.candidates.repository import SqlCandidateRepository
 from backend.app.features.candidates.service import CandidateService
@@ -22,6 +23,7 @@ from backend.app.infrastructure.market.research_providers import (
 )
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
+from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 
 
@@ -36,6 +38,7 @@ class ApplicationComponents:
     candidate_service: CandidateService
     holding_service: V212HoldingAnalysisService
     holding_repository: SqlHoldingResultRepository
+    portfolio_writer: AuditedPortfolioWriter
 
 
 def _provider_module(name: str) -> ModuleType:
@@ -102,4 +105,12 @@ def build_components(
         strategy,
         holding_repository,
     )
-    return ApplicationComponents(strategy, warehouse, service, holding_service, holding_repository)
+    portfolio_writer = AuditedPortfolioWriter(SqlPortfolioEventStore(sessions))
+    return ApplicationComponents(
+        strategy,
+        warehouse,
+        service,
+        holding_service,
+        holding_repository,
+        portfolio_writer,
+    )
