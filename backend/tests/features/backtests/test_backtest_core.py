@@ -191,5 +191,5 @@ def test_next_decision_receives_lots_from_prior_simulated_fill() -> None:
     assert portfolio.cash == Decimal("8999")
     assert portfolio.lots[0].security_id == "600000.SH"
     assert portfolio.lots[0].quantity == 100
-    assert portfolio.lots[0].available_to_sell == 100
+    assert portfolio.lots[0].available_to_sell == 0
     assert portfolio.lots[0].average_cost == Decimal("10.01")
