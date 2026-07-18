@@ -87,14 +87,12 @@ class StrictPitIngestor:
             )
         ).all()
         existing_ids = {
-            (source_id, source_hash): storage_id
-            for source_id, source_hash, storage_id in existing
+            (source_id, source_hash): storage_id for source_id, source_hash, storage_id in existing
         }
         new_rows = [
             row
             for row in rows
-            if (str(row.source_record_id), str(row.source_artifact_hash))
-            not in existing_ids
+            if (str(row.source_record_id), str(row.source_artifact_hash)) not in existing_ids
         ]
         return new_rows, existing_ids
 
@@ -107,8 +105,7 @@ class StrictPitIngestor:
         if not facts:
             return
         disclosure_ids = {
-            str(disclosure.source_record_id): str(disclosure.id)
-            for disclosure in disclosures
+            str(disclosure.source_record_id): str(disclosure.id) for disclosure in disclosures
         }
         for (source_record_id, _), existing_storage_id in existing_disclosure_ids.items():
             disclosure_ids.setdefault(source_record_id, existing_storage_id)

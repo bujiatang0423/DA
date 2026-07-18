@@ -31,9 +31,7 @@ def parse_temporal_rows(
         row_type = TEMPORAL_TYPES[dataset]
         return [
             row_type(
-                id=storage_id(
-                    bundle_manifest_hash, dataset, _required(row, "record_id", dataset)
-                ),
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
                 source_record_id=_required(row, "record_id", dataset),
                 security_id=_required(row, "security_id", dataset),
                 available_at=_datetime(row, "available_at", dataset),

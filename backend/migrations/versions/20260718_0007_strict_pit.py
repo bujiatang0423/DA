@@ -184,9 +184,7 @@ def downgrade() -> None:
     op.drop_table("policy_documents")
     op.drop_index("ix_financial_facts_available_at", table_name="financial_facts")
     op.drop_index("ix_financial_facts_source_record_id", table_name="financial_facts")
-    op.drop_index(
-        "ix_financial_facts_disclosure_source_record_id", table_name="financial_facts"
-    )
+    op.drop_index("ix_financial_facts_disclosure_source_record_id", table_name="financial_facts")
     op.drop_index("ix_financial_facts_disclosure_id", table_name="financial_facts")
     op.drop_table("financial_facts")
     _drop_security_indexes("financial_disclosures", "security_id")
