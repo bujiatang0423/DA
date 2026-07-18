@@ -1,22 +1,22 @@
-import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-interface HoldingRisk { security_id: string; quantity: number; average_cost?: string | number; market_value: string | number; unrealized_pnl?: string | number | null; unrealized_return?: string | number | null; drawdown_from_high?: string | number | null; effective_stop?: string | number | null; risk_status: string; stop_breached: boolean; reasons: string[] }
-interface HoldingResult { portfolio_id: string; equity: string | number; exposure_ratio: string | number; gross_exposure?: string | number; portfolio_drawdown: string | number; warnings: string[]; risks: HoldingRisk[] }
-const fmt = (value: string | number | null | undefined): string => value == null ? "—" : typeof value === "number" ? value.toFixed(2) : value;
+import type { FeatureDefinition } from "../../app/featureRegistry";
+import { HoldingAnalysisPage } from "./HoldingAnalysisPage";
 
-function HoldingCard({ risk }: { risk: HoldingRisk }): JSX.Element {
-  const danger = risk.stop_breached || risk.risk_status === "risk";
-  return <article className="entity-card"><div className="entity-header"><div className="entity-title"><strong>{risk.security_id}</strong><span>{risk.quantity} 股 · 成本 {fmt(risk.average_cost)}</span></div><span className={`status-badge ${danger ? "status-danger" : "status-success"}`}>{risk.stop_breached ? "止损触发" : risk.risk_status}</span></div><div className="entity-body"><div className="mini-grid"><div className="mini-stat"><span>市值</span><strong>{fmt(risk.market_value)}</strong></div><div className="mini-stat"><span>浮动收益</span><strong className={Number(risk.unrealized_return) < 0 ? "metric-negative" : "metric-positive"}>{fmt(risk.unrealized_return)}</strong></div><div className="mini-stat"><span>距高点回撤</span><strong>{fmt(risk.drawdown_from_high)}</strong></div></div><div className="disclosure"><strong>有效止损：</strong>{fmt(risk.effective_stop)}{risk.reasons.length > 0 && <><br /><strong>风险原因：</strong>{risk.reasons.join("、")}</>}</div></div></article>;
-}
+const holdingQueryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+});
 
-export function HoldingsPage(): JSX.Element {
-  const [portfolioId, setPortfolioId] = useState("default"); const [asOfTime, setAsOfTime] = useState(() => new Date().toISOString().slice(0, 16)); const [prices, setPrices] = useState("{}"); const [result, setResult] = useState<HoldingResult | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
-  const submit = async (): Promise<void> => { setLoading(true); setError(null); try { const parsed: unknown = JSON.parse(prices || "{}"); const response = await fetch("/api/v1/holdings/analysis", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ portfolio_id: portfolioId, as_of_time: new Date(asOfTime).toISOString(), prices: parsed }) }); if (!response.ok) throw new Error(`持仓分析请求失败（${response.status}）`); setResult(await response.json() as HoldingResult); } catch (err) { setError(err instanceof SyntaxError ? "价格必须是合法 JSON" : err instanceof Error ? err.message : "请求失败"); } finally { setLoading(false); } };
-  return <section className="page-shell"><div className="page-heading"><div><h1>持仓分析</h1><p>点时读取真实组合，检查敞口、浮动盈亏、回撤和 ATR 止损。</p></div><button className="btn" onClick={() => void submit()} disabled={loading || !portfolioId}>{loading ? "分析中…" : "运行分析"}</button></div>
-    <div className="panel"><div className="control-grid"><label className="field">组合 ID<input aria-label="组合 ID" value={portfolioId} onChange={(event) => setPortfolioId(event.target.value)} /></label><label className="field">分析时点<input type="datetime-local" value={asOfTime} onChange={(event) => setAsOfTime(event.target.value)} /></label><label className="field">最新价格 JSON<textarea rows={1} value={prices} onChange={(event) => setPrices(event.target.value)} /></label><div className="field"><span>持仓来源</span><strong>SQL 点时快照 · T+1</strong></div></div></div>
-    {error && <div className="alert" role="alert">{error}</div>}
-    {result && <><div className="metric-grid"><div className="metric-card"><span className="metric-label">组合权益</span><div className="metric-value">{fmt(result.equity)}</div><span className="metric-note">Portfolio {result.portfolio_id}</span></div><div className="metric-card"><span className="metric-label">总敞口</span><div className="metric-value">{fmt(result.gross_exposure ?? result.exposure_ratio)}</div><span className="metric-note">当前暴露金额</span></div><div className="metric-card"><span className="metric-label">敞口比例</span><div className="metric-value">{fmt(result.exposure_ratio)}</div><span className="metric-note">相对组合权益</span></div><div className="metric-card"><span className="metric-label">组合回撤</span><div className="metric-value metric-negative">{fmt(result.portfolio_drawdown)}</div><span className="metric-note">周/月风控覆盖</span></div></div>{result.warnings.map((warning) => <div className="alert" role="status" key={warning}>⚠ {warning}</div>)}<div className="panel"><div className="panel-title"><h2>持仓风险卡片</h2><span>{result.risks.length} 个持仓</span></div>{result.risks.length === 0 ? <div className="empty-state">当前点时没有可分析的持仓。</div> : <div className="holding-grid">{result.risks.map((risk) => <HoldingCard key={risk.security_id} risk={risk} />)}</div>}</div></>}
-  </section>;
-}
+export { HoldingAnalysisPage };
+export const HoldingsPage = HoldingAnalysisPage;
 
-export const holdingsFeature = { id: "holdings", path: "/holdings", label: "持仓分析", element: <HoldingsPage /> } as const;
+export const holdingsFeature: FeatureDefinition = {
+  id: "holdings",
+  path: "/holdings",
+  label: "持仓分析",
+  element: (
+    <QueryClientProvider client={holdingQueryClient}>
+      <HoldingAnalysisPage />
+    </QueryClientProvider>
+  ),
+};
