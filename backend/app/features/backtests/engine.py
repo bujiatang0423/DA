@@ -127,10 +127,7 @@ class BacktestEngine:
     ) -> None:
         if self._execution_port is None:
             return
-        position = ledger.state.positions.get(intent.security_id)
-        available = 0
-        if position is not None and position.acquired_date < trade_date:
-            available = position.quantity
+        available = ledger.sellable_quantity(intent.security_id, trade_date)
         attempt = self._execution_port.execute(intent, trade_date, available)
         if isinstance(attempt, FilledAttempt):
             fill = ledger.apply_attempt(

@@ -86,6 +86,12 @@ class PortfolioLedger:
     def position(self, security_id: str) -> PositionState:
         return self.state.positions[security_id]
 
+    def sellable_quantity(self, security_id: str, as_of_date: date) -> int:
+        return sum(
+            lot.remaining_quantity
+            for lot in self._sellable_lots(security_id, as_of_date)
+        )
+
     def _apply_buy(self, fill: Fill) -> None:
         total = fill.price * fill.quantity + fill.fee
         if total > self.state.cash:
@@ -109,19 +115,16 @@ class PortfolioLedger:
         self._refresh_position(fill.security_id)
 
     def _apply_sell(self, fill: Fill) -> None:
-        available = sum(
-            lot.remaining_quantity
-            for lot in self.state.lots
-            if lot.security_id == fill.security_id
-        )
+        sellable_lots = self._sellable_lots(fill.security_id, fill.filled_at.date())
+        available = sum(lot.remaining_quantity for lot in sellable_lots)
         if fill.quantity > available:
             raise ValueError("oversell")
 
         remaining = fill.quantity
         realized_pnl = Decimal(0)
-        for lot in self.state.lots:
-            if lot.security_id != fill.security_id or remaining == 0:
-                continue
+        for lot in sellable_lots:
+            if remaining == 0:
+                break
             sold = min(remaining, lot.remaining_quantity)
             lot.remaining_quantity -= sold
             remaining -= sold
@@ -145,6 +148,18 @@ class PortfolioLedger:
         acquired_date = min(lot.acquired_at.date() for lot in lots)
         self.state.positions[security_id] = PositionState(
             security_id, quantity, total_cost / quantity, acquired_date
+        )
+
+    def _sellable_lots(self, security_id: str, as_of_date: date) -> list[PositionLot]:
+        return sorted(
+            (
+                lot
+                for lot in self.state.lots
+                if lot.security_id == security_id
+                and lot.remaining_quantity > 0
+                and lot.acquired_at.date() < as_of_date
+            ),
+            key=lambda lot: lot.acquired_at,
         )
 
     def apply_attempt(

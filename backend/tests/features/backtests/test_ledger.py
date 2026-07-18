@@ -106,3 +106,21 @@ def test_snapshot_keeps_buy_day_lot_unavailable_until_next_day() -> None:
 
     assert same_day.lots[0].available_to_sell == 0
     assert next_day.lots[0].available_to_sell == 100
+
+
+def test_same_day_sell_uses_only_prior_day_lots() -> None:
+    ledger = PortfolioLedger.opening(Decimal("100000"))
+    ledger.apply_fill(fill("buy-prior", OrderSide.BUY, 100, "10"))
+    ledger.apply_fill(
+        fill("buy-today", OrderSide.BUY, 100, "11", filled_at=datetime(2024, 1, 3, 10))
+    )
+
+    same_day = ledger.to_portfolio_snapshot(datetime(2024, 1, 3, 15, 30))
+    assert sum(lot.available_to_sell for lot in same_day.lots) == 100
+
+    with pytest.raises(ValueError, match="oversell"):
+        ledger.apply_fill(
+            fill("sell-today", OrderSide.SELL, 101, "12", filled_at=datetime(2024, 1, 3, 14))
+        )
+
+    assert [lot.remaining_quantity for lot in ledger.state.lots] == [100, 100]
