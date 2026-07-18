@@ -54,6 +54,7 @@ class PortfolioSnapshotRevisionRow(Base):
     portfolio_id: Mapped[str] = mapped_column(String(64), index=True)
     as_of_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     cash: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
     equity: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)

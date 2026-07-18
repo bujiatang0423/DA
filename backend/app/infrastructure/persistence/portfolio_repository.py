@@ -4,7 +4,7 @@ from dataclasses import asdict, replace
 from datetime import datetime
 import json
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.portfolio.models import (
@@ -76,6 +76,7 @@ class SqlPortfolioEventStore:
                 current_as_of_time,
                 recorded_at=current_as_of_time,
             )
+            _supersede_revisions(session, updated, event.recorded_at)
             _write_revision(session, updated, updated.as_of_time, recorded_at=event.recorded_at)
             _write_projection(session, updated)
             session.add(
@@ -283,11 +284,29 @@ def _write_revision(
             portfolio_id=snapshot.portfolio_id,
             as_of_time=as_of_time,
             recorded_at=recorded_at,
+            superseded_at=None,
             version=snapshot.version,
             cash=snapshot.cash,
             equity=snapshot.equity,
             lots=[_lot_payload(lot) for lot in snapshot.lots],
         )
+    )
+
+
+def _supersede_revisions(
+    session: Session,
+    snapshot: PortfolioSnapshot,
+    recorded_at: datetime,
+) -> None:
+    session.execute(
+        update(PortfolioSnapshotRevisionRow)
+        .where(
+            PortfolioSnapshotRevisionRow.portfolio_id == snapshot.portfolio_id,
+            PortfolioSnapshotRevisionRow.as_of_time >= snapshot.as_of_time,
+            PortfolioSnapshotRevisionRow.recorded_at < recorded_at,
+            PortfolioSnapshotRevisionRow.superseded_at.is_(None),
+        )
+        .values(superseded_at=recorded_at)
     )
 
 

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.core.portfolio.models import (
@@ -51,6 +51,10 @@ def read_portfolio_snapshot(
             PortfolioSnapshotRevisionRow.portfolio_id == portfolio_id,
             PortfolioSnapshotRevisionRow.as_of_time <= as_of_time,
             PortfolioSnapshotRevisionRow.recorded_at <= as_of_time,
+            or_(
+                PortfolioSnapshotRevisionRow.superseded_at.is_(None),
+                PortfolioSnapshotRevisionRow.superseded_at > as_of_time,
+            ),
         )
         .order_by(
             PortfolioSnapshotRevisionRow.as_of_time.desc(),

@@ -170,6 +170,14 @@ def test_backdated_fill_is_not_visible_before_it_is_recorded(
     assert historical.lots[0].quantity == 500
     assert historical.cash == Decimal("350000")
 
+    corrected = SqlPortfolioReader(portfolio_sessions).snapshot(
+        portfolio_id="default",
+        as_of_time=datetime(2026, 7, 17, 8, 1, tzinfo=UTC),
+    )
+
+    assert corrected.lots[0].quantity == 400
+    assert corrected.cash == Decimal("351030")
+
 
 def test_manual_buy_is_t_plus_one_locked(
     portfolio_sessions: sessionmaker[Session],
