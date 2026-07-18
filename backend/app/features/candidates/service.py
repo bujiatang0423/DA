@@ -11,8 +11,8 @@ from backend.app.core.strategy.service import V212StrategyEngine
 from backend.app.core.strategy.types import (
     MarketRegimeDecision,
     MarketState,
-    PortfolioView,
     StrategyEvaluation,
+    StrategyPortfolioSummary,
 )
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
@@ -64,11 +64,10 @@ class CandidateService:
                 strategy_version=command.strategy_version,
                 manifest_hash=snapshot.manifest_hash,
                 market=MarketRegimeDecision(MarketState.WEAK, 0.0, False, False, "low", 0, 0, ()),
-                portfolio_summary=PortfolioView(
-                    net_equity=float(portfolio.equity),
-                    gross_exposure=0.0,
-                    portfolio_risk=0.0,
-                    position_count=len(portfolio.positions),
+                portfolio_summary=StrategyPortfolioSummary(
+                    gross_exposure_pct=0.0,
+                    portfolio_risk_pct=0.0,
+                    market_state=MarketState.WEAK,
                 ),
                 securities=(),
             )

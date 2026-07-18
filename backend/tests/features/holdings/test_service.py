@@ -10,7 +10,7 @@ from backend.app.core.market.pit_models import (
     SnapshotScope,
 )
 from backend.app.core.market.strategy_inputs import StrategyInputError
-from backend.app.core.strategy.types import PortfolioView
+from backend.app.core.strategy.types import MarketState, StrategyPortfolioSummary
 from backend.app.features.holdings.models import AdviceAction
 from backend.app.features.holdings.service import (
     HoldingAnalysisCommand,
@@ -95,11 +95,10 @@ def test_service_projects_the_strategy_portfolio_summary_without_recalculation()
     service, command, _, _, _, strategy, _ = build_service()
     strategy.evaluation = replace(
         strategy.evaluation,
-        portfolio_summary=PortfolioView(
-            net_equity=1_000_000,
-            gross_exposure=0.42,
-            portfolio_risk=0.009,
-            position_count=1,
+        portfolio_summary=StrategyPortfolioSummary(
+            gross_exposure_pct=42.0,
+            portfolio_risk_pct=0.9,
+            market_state=MarketState.NEUTRAL,
         ),
     )
 

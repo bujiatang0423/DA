@@ -109,9 +109,9 @@ class HoldingAnalysisService:
             summary=HoldingRiskSummary(
                 equity=portfolio.equity,
                 cash=portfolio.cash,
-                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure)) * Decimal("100"),
-                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk)) * Decimal("100"),
-                market_state=evaluation.market.state.value,
+                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure_pct)),
+                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk_pct)),
+                market_state=portfolio_view.market_state.value,
             ),
             items=items,
         )

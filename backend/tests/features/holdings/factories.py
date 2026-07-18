@@ -21,9 +21,9 @@ from backend.app.core.strategy.types import (
     FinancialLight,
     MarketRegimeDecision,
     MarketState,
-    PortfolioView,
     SecurityEvaluation,
     StrategyEvaluation,
+    StrategyPortfolioSummary,
 )
 from backend.app.features.holdings.models import (
     AdviceAction,
@@ -212,11 +212,10 @@ def strategy_evaluation(
             week_cooldown_remaining=0,
             month_cooldown_remaining=0,
         ),
-        portfolio_summary=PortfolioView(
-            net_equity=1_000_000,
-            gross_exposure=0.65,
-            portfolio_risk=0.0125,
-            position_count=1,
+        portfolio_summary=StrategyPortfolioSummary(
+            gross_exposure_pct=65.0,
+            portfolio_risk_pct=1.25,
+            market_state=MarketState.NEUTRAL,
         ),
         securities=securities or (security_evaluation(),),
     )

@@ -17,9 +17,11 @@ from backend.app.infrastructure.persistence.portfolio_repository import (
     InsufficientSellableQuantity,
     SqlPortfolioEventStore,
 )
+from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_rows import (
     PortfolioAuditEventRow,
     PortfolioLotProjectionRow,
+    PortfolioSnapshotRevisionRow,
     PortfolioSnapshotProjectionRow,
     PortfolioVersionRow,
 )
@@ -38,6 +40,7 @@ def portfolio_sessions() -> sessionmaker[Session]:
         PortfolioVersionRow.__table__,
         PortfolioSnapshotProjectionRow.__table__,
         PortfolioLotProjectionRow.__table__,
+        PortfolioSnapshotRevisionRow.__table__,
         PortfolioAuditEventRow.__table__,
     ):
         table.create(engine)
@@ -103,6 +106,33 @@ def test_manual_sell_uses_actual_price_fee_and_sellable_quantity(
         assert event.event_type == "manual_fill"
         assert event.expected_version == 7
         assert event.resulting_version == 8
+
+
+def test_manual_fill_does_not_mutate_a_prior_point_in_time_snapshot(
+    portfolio_sessions: sessionmaker[Session],
+) -> None:
+    writer = AuditedPortfolioWriter(SqlPortfolioEventStore(portfolio_sessions))
+    before_fill = datetime(2026, 7, 17, 7, 0, tzinfo=UTC)
+    command = ManualFillCommand(
+        portfolio_id="default",
+        security_id="000001.SZ",
+        side=FillSide.SELL,
+        quantity=100,
+        price=Decimal("10.35"),
+        fee=Decimal("5.00"),
+        filled_at=datetime(2026, 7, 17, 7, 1, tzinfo=UTC),
+        strategy_book=StrategyBook.CORE,
+    )
+
+    writer.record_manual_fill(command, expected_version=7)
+
+    historical = SqlPortfolioReader(portfolio_sessions).snapshot(
+        portfolio_id="default",
+        as_of_time=before_fill,
+    )
+
+    assert historical.lots[0].quantity == 500
+    assert historical.cash == Decimal("350000")
 
 
 def test_manual_buy_is_t_plus_one_locked(
