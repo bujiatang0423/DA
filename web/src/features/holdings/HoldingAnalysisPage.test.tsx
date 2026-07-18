@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
@@ -8,16 +7,17 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { ApiError } from "../../shared/api/client";
 import { HoldingAnalysisPage } from "./HoldingAnalysisPage";
 import {
+  HoldingApiError,
   holdingApi,
   type HoldingResult,
   type PositionPage,
   type RunRef,
 } from "./api";
 
-vi.mock("./api", () => ({
+vi.mock("./api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api")>()),
   holdingApi: {
     positions: vi.fn(),
     correctPositions: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("./api", () => ({
   },
 }));
 
-const portfolioId = "family-account";
+const portfolioId = "default";
 const positionPageFixture: PositionPage = {
   portfolio_id: portfolioId,
   as_of_time: "2026-07-17T15:00:00+08:00",
@@ -115,14 +115,7 @@ const runRefFixture: RunRef = {
 };
 
 function renderPage(): void {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  render(
-    <QueryClientProvider client={client}>
-      <HoldingAnalysisPage />
-    </QueryClientProvider>,
-  );
+  render(<HoldingAnalysisPage />);
 }
 
 beforeEach(() => {
@@ -191,7 +184,9 @@ test("records the user-entered actual execution time", async () => {
 });
 
 test("keeps a correction form open and reloads positions after a version conflict", async () => {
-  vi.mocked(holdingApi.correctPositions).mockRejectedValue(new ApiError(409));
+  vi.mocked(holdingApi.correctPositions).mockRejectedValue(
+    new HoldingApiError(409),
+  );
   renderPage();
 
   fireEvent.click(await screen.findByRole("button", { name: "校正持仓" }));

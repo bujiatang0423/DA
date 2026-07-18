@@ -1,11 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { ApiError } from "../../shared/api/client";
 import {
+  HoldingApiError,
   holdingApi,
+  type HoldingResult,
   type ManualFill,
   type PositionCorrection,
+  type PositionPage,
   type RunRef,
 } from "./api";
 import { HoldingCard } from "./HoldingCard";
@@ -15,75 +16,104 @@ import { PositionCorrectionForm } from "./PositionCorrectionForm";
 const DEFAULT_PORTFOLIO_ID = "default";
 
 export function HoldingAnalysisPage(): JSX.Element {
-  const queryClient = useQueryClient();
+  const [positionPage, setPositionPage] = useState<PositionPage | null>(null);
+  const [result, setResult] = useState<HoldingResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [run, setRun] = useState<RunRef | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
   const [showFill, setShowFill] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const positions = useQuery({
-    queryKey: ["holding-positions", DEFAULT_PORTFOLIO_ID],
-    queryFn: () => holdingApi.positions(DEFAULT_PORTFOLIO_ID),
-  });
-  const portfolioId = positions.data?.portfolio_id ?? DEFAULT_PORTFOLIO_ID;
-  const latest = useQuery({
-    queryKey: ["holding-latest", portfolioId],
-    queryFn: () => holdingApi.latest(portfolioId),
-  });
-  const reloadPositions = async (): Promise<void> => {
-    await queryClient.invalidateQueries({
-      queryKey: ["holding-positions", DEFAULT_PORTFOLIO_ID],
-    });
-  };
-  const submit = useMutation({
-    mutationFn: () => {
-      const asOfTime = positions.data?.as_of_time ?? new Date().toISOString();
-      return holdingApi.submit(
-        { portfolio_id: portfolioId, as_of_time: asOfTime },
-        `holding:${portfolioId}:${asOfTime}`,
-      );
-    },
-    onSuccess: setRun,
-  });
-  const correction = useMutation({
-    mutationFn: (request: PositionCorrection) =>
-      holdingApi.correctPositions(request),
-    onSuccess: async (page) => {
-      queryClient.setQueryData(
-        ["holding-positions", DEFAULT_PORTFOLIO_ID],
-        page,
-      );
-      setShowCorrection(false);
-      setConflict(false);
-    },
-    onError: async (error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        setConflict(true);
-        await reloadPositions();
-      }
-    },
-  });
-  const fill = useMutation({
-    mutationFn: (request: ManualFill) => holdingApi.recordManualFill(request),
-    onSuccess: async (page) => {
-      queryClient.setQueryData(
-        ["holding-positions", DEFAULT_PORTFOLIO_ID],
-        page,
-      );
-      setShowFill(false);
-      setConflict(false);
-    },
-    onError: async (error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        setConflict(true);
-        await reloadPositions();
-      }
-    },
-  });
+  const [submitting, setSubmitting] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  if (positions.isLoading || latest.isLoading) {
+  const load = async (): Promise<void> => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [positions, latest] = await Promise.all([
+        holdingApi.positions(DEFAULT_PORTFOLIO_ID),
+        holdingApi.latest(DEFAULT_PORTFOLIO_ID),
+      ]);
+      setPositionPage(positions);
+      setResult(latest);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const reloadPositions = async (): Promise<void> => {
+    const positions = await holdingApi.positions(DEFAULT_PORTFOLIO_ID);
+    setPositionPage(positions);
+  };
+
+  const handleCorrection = async (
+    request: PositionCorrection,
+  ): Promise<void> => {
+    setSubmitting(true);
+    setConflict(false);
+    setMutationError(null);
+    try {
+      setPositionPage(await holdingApi.correctPositions(request));
+      setShowCorrection(false);
+    } catch (error) {
+      if (error instanceof HoldingApiError && error.status === 409) {
+        setConflict(true);
+        await reloadPositions();
+      } else {
+        setMutationError("校正失败，请重新加载最新版本。");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFill = async (request: ManualFill): Promise<void> => {
+    setSubmitting(true);
+    setConflict(false);
+    setMutationError(null);
+    try {
+      setPositionPage(await holdingApi.recordManualFill(request));
+      setShowFill(false);
+    } catch (error) {
+      if (error instanceof HoldingApiError && error.status === 409) {
+        setConflict(true);
+        await reloadPositions();
+      } else {
+        setMutationError("实际成交保存失败，请核对可卖数量和版本。");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submit = async (): Promise<void> => {
+    const asOfTime = positionPage?.as_of_time ?? new Date().toISOString();
+    setSubmitting(true);
+    try {
+      setRun(
+        await holdingApi.submit(
+          { portfolio_id: DEFAULT_PORTFOLIO_ID, as_of_time: asOfTime },
+          `holding:${DEFAULT_PORTFOLIO_ID}:${asOfTime}`,
+        ),
+      );
+    } catch {
+      setMutationError("分析任务提交失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
     return <div className="empty-state">正在加载点时持仓与最新分析...</div>;
   }
-  if (positions.isError || latest.isError) {
+  if (loadError) {
     return (
       <div className="alert" role="alert">
         持仓分析数据加载失败，请稍后重试。
@@ -91,8 +121,6 @@ export function HoldingAnalysisPage(): JSX.Element {
     );
   }
 
-  const positionPage = positions.data;
-  const result = latest.data;
   return (
     <section className="page-shell">
       <div className="page-heading">
@@ -103,8 +131,8 @@ export function HoldingAnalysisPage(): JSX.Element {
         <div className="heading-actions">
           <button
             className="btn"
-            disabled={submit.isPending}
-            onClick={() => submit.mutate()}
+            disabled={submitting}
+            onClick={() => void submit()}
           >
             分析当前持仓
           </button>
@@ -123,9 +151,9 @@ export function HoldingAnalysisPage(): JSX.Element {
         </div>
       </div>
       <div className="alert">仅供人工确认，不自动下单</div>
-      {submit.isError ? (
+      {mutationError ? (
         <div className="alert" role="alert">
-          分析任务提交失败。
+          {mutationError}
         </div>
       ) : null}
       {run ? <a href={`/runs/${run.run_id}`}>查看运行进度</a> : null}
@@ -137,28 +165,18 @@ export function HoldingAnalysisPage(): JSX.Element {
       {positionPage && showCorrection ? (
         <PositionCorrectionForm
           onCancel={() => setShowCorrection(false)}
-          onSubmit={(request) => correction.mutate(request)}
+          onSubmit={(request) => void handleCorrection(request)}
           page={positionPage}
-          pending={correction.isPending}
+          pending={submitting}
         />
       ) : null}
       {positionPage && showFill ? (
         <ManualFillForm
           onCancel={() => setShowFill(false)}
-          onSubmit={(request) => fill.mutate(request)}
+          onSubmit={(request) => void handleFill(request)}
           page={positionPage}
-          pending={fill.isPending}
+          pending={submitting}
         />
-      ) : null}
-      {correction.isError && !conflict ? (
-        <div className="alert" role="alert">
-          校正失败，请重新加载最新版本。
-        </div>
-      ) : null}
-      {fill.isError && !conflict ? (
-        <div className="alert" role="alert">
-          实际成交保存失败，请核对可卖数量和版本。
-        </div>
       ) : null}
       {result ? (
         <>
