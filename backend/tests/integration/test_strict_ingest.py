@@ -149,6 +149,25 @@ def test_new_source_versions_append_without_overwriting_history(
     )
 
 
+@pytest.mark.postgres
+def test_partial_revision_skips_unchanged_daily_bar_versions(
+    strict_pit_session: Session, pit_bundle: Path
+) -> None:
+    first_bundle = PitBundleManifest.load(pit_bundle)
+    partial_bundle = PitBundleManifest.load(_partial_revision_bundle(pit_bundle))
+    ingestor = StrictPitIngestor(strict_pit_session)
+
+    assert ingestor.ingest(first_bundle) is True
+    assert ingestor.ingest(partial_bundle) is True
+    strict_pit_session.commit()
+
+    assert (
+        strict_pit_session.scalar(select(func.count()).select_from(DailyBarRawRow))
+        == first_bundle.file("daily_bars_raw").row_count
+    )
+    assert strict_pit_session.scalar(select(func.count()).select_from(PolicyDocumentRow)) == 3
+
+
 def _update_checksum(bundle_root: Path, dataset: str) -> None:
     manifest_path = bundle_root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -185,5 +204,23 @@ def _versioned_bundle(source: Path) -> Path:
     manifest_path = destination / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["bundle_id"] = "strict-pit-fixture-v2"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return destination
+
+
+def _partial_revision_bundle(source: Path) -> Path:
+    destination = source.parent / "pit_bundle_partial"
+    shutil.copytree(source, destination)
+    policy_path = destination / "policy_documents.csv"
+    policy_path.write_text(
+        policy_path.read_text(encoding="utf-8")
+        .replace("content-pd-v1", "content-pd-v1-revised")
+        .replace("source-pd-v1", "source-pd-v1-revised"),
+        encoding="utf-8",
+    )
+    _update_checksum(destination, "policy_documents")
+    manifest_path = destination / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["bundle_id"] = "strict-pit-fixture-partial"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return destination

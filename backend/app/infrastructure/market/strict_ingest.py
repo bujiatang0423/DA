@@ -53,14 +53,73 @@ class StrictPitIngestor:
             "daily_bars_raw": self._daily_bars,
             "index_daily_bars": self._index_bars,
         }
-        parsed: list[list[object]] = []
+        parsed: dict[str, list[object]] = {}
+        existing_ids: dict[str, dict[tuple[str, str], str]] = {}
         for item in bundle.files:
             parser = parsers.get(item.dataset, self._temporal_rows)
             rows = parser(item, bundle.manifest_sha256)
             if len(rows) != item.row_count:
                 raise ValueError(f"row_count mismatch: {item.dataset}")
-            parsed.append(rows)
-        return parsed
+            parsed[item.dataset], existing_ids[item.dataset] = self._filter_existing(rows)
+        self._resolve_fact_disclosures(
+            parsed.get("financial_disclosures", []),
+            existing_ids.get("financial_disclosures", {}),
+            parsed.get("financial_facts", []),
+        )
+        return list(parsed.values())
+
+    def _filter_existing(
+        self, rows: list[object]
+    ) -> tuple[list[object], dict[tuple[str, str], str]]:
+        if not rows:
+            return [], {}
+        row_type = rows[0].__class__
+        source_hashes = {str(row.source_artifact_hash) for row in rows}
+        source_record_ids = {str(row.source_record_id) for row in rows}
+        existing = self._session.execute(
+            select(
+                row_type.source_record_id,
+                row_type.source_artifact_hash,
+                row_type.id,
+            ).where(
+                row_type.source_artifact_hash.in_(source_hashes),
+                row_type.source_record_id.in_(source_record_ids),
+            )
+        ).all()
+        existing_ids = {
+            (source_id, source_hash): storage_id
+            for source_id, source_hash, storage_id in existing
+        }
+        new_rows = [
+            row
+            for row in rows
+            if (str(row.source_record_id), str(row.source_artifact_hash))
+            not in existing_ids
+        ]
+        return new_rows, existing_ids
+
+    @staticmethod
+    def _resolve_fact_disclosures(
+        disclosures: list[object],
+        existing_disclosure_ids: dict[tuple[str, str], str],
+        facts: list[object],
+    ) -> None:
+        if not facts:
+            return
+        disclosure_ids = {
+            str(disclosure.source_record_id): str(disclosure.id)
+            for disclosure in disclosures
+        }
+        for (source_record_id, _), existing_storage_id in existing_disclosure_ids.items():
+            disclosure_ids.setdefault(source_record_id, existing_storage_id)
+        for fact in facts:
+            disclosure_source_record_id = str(fact.disclosure_source_record_id)
+            try:
+                fact.disclosure_id = disclosure_ids[disclosure_source_record_id]
+            except KeyError as error:
+                raise ValueError(
+                    f"financial_facts.disclosure_id is missing: {disclosure_source_record_id}"
+                ) from error
 
     @staticmethod
     def _read(item: PitBundleFile) -> list[dict[str, str]]:
