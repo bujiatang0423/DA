@@ -87,9 +87,13 @@ class LegacyImportService:
         batch_id = digest[:24]
         raw_root = self._imports_root / batch_id / "raw"
         raw = []
+        holdings_root = report.source_root / "data" / "holdings"
         for item in files:
-            rel = item.path.relative_to(report.source_root / "data" / "holdings")
-            dest = raw_root / ("current" if rel.name == "持仓.csv" else "history") / rel.name
+            rel = item.path.relative_to(holdings_root)
+            if rel == Path("持仓.csv"):
+                dest = raw_root / "current" / rel
+            else:
+                dest = raw_root / "history" / rel.relative_to("历史持仓")
             dest.parent.mkdir(parents=True, exist_ok=True)
             if not dest.exists():
                 shutil.copyfile(item.path, dest)
