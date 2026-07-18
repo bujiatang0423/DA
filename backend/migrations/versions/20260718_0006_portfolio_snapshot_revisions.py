@@ -20,6 +20,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("portfolio_id", sa.String(length=64), nullable=False),
         sa.Column("as_of_time", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("cash", sa.Numeric(24, 6), nullable=False),
         sa.Column("equity", sa.Numeric(24, 6), nullable=False),
@@ -41,9 +42,15 @@ def upgrade() -> None:
         "portfolio_snapshot_revisions",
         ["as_of_time"],
     )
+    op.create_index(
+        "ix_portfolio_snapshot_revisions_recorded_at",
+        "portfolio_snapshot_revisions",
+        ["recorded_at"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_portfolio_snapshot_revisions_recorded_at", "portfolio_snapshot_revisions")
     op.drop_index("ix_portfolio_snapshot_revisions_as_of_time", "portfolio_snapshot_revisions")
     op.drop_index("ix_portfolio_snapshot_revisions_portfolio_id", "portfolio_snapshot_revisions")
     op.drop_table("portfolio_snapshot_revisions")

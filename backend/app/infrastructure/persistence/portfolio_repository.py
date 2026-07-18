@@ -65,14 +65,18 @@ class SqlPortfolioEventStore:
             if version is None:
                 version = PortfolioVersionRow(portfolio_id=portfolio_id, version=0)
                 session.add(version)
-            current = read_portfolio_snapshot(session, portfolio_id, as_of_time)
+            current = read_portfolio_snapshot(session, portfolio_id, event.recorded_at)
             next_version = current_version + 1
             updated = _apply_payload(current, payload, next_version)
             version.version = next_version
+            current_as_of_time = _current_projection_time(session, portfolio_id, event.recorded_at)
             _write_revision(
-                session, current, _current_projection_time(session, portfolio_id, as_of_time)
+                session,
+                current,
+                current_as_of_time,
+                recorded_at=current_as_of_time,
             )
-            _write_revision(session, updated, updated.as_of_time)
+            _write_revision(session, updated, updated.as_of_time, recorded_at=event.recorded_at)
             _write_projection(session, updated)
             session.add(
                 PortfolioAuditEventRow(
@@ -258,7 +262,13 @@ def _current_projection_time(
     return projection or as_of_time
 
 
-def _write_revision(session: Session, snapshot: PortfolioSnapshot, as_of_time: datetime) -> None:
+def _write_revision(
+    session: Session,
+    snapshot: PortfolioSnapshot,
+    as_of_time: datetime,
+    *,
+    recorded_at: datetime,
+) -> None:
     existing = session.scalar(
         select(PortfolioSnapshotRevisionRow).where(
             PortfolioSnapshotRevisionRow.portfolio_id == snapshot.portfolio_id,
@@ -272,6 +282,7 @@ def _write_revision(session: Session, snapshot: PortfolioSnapshot, as_of_time: d
         PortfolioSnapshotRevisionRow(
             portfolio_id=snapshot.portfolio_id,
             as_of_time=as_of_time,
+            recorded_at=recorded_at,
             version=snapshot.version,
             cash=snapshot.cash,
             equity=snapshot.equity,

@@ -10,6 +10,7 @@ from backend.app.core.portfolio.models import (
     CorrectionSnapshot,
     FillSide,
     ManualFillCommand,
+    PortfolioAuditEvent,
     StrategyBook,
 )
 from backend.app.core.portfolio.writer import AuditedPortfolioWriter
@@ -129,6 +130,41 @@ def test_manual_fill_does_not_mutate_a_prior_point_in_time_snapshot(
     historical = SqlPortfolioReader(portfolio_sessions).snapshot(
         portfolio_id="default",
         as_of_time=before_fill,
+    )
+
+    assert historical.lots[0].quantity == 500
+    assert historical.cash == Decimal("350000")
+
+
+def test_backdated_fill_is_not_visible_before_it_is_recorded(
+    portfolio_sessions: sessionmaker[Session],
+) -> None:
+    store = SqlPortfolioEventStore(portfolio_sessions)
+    decision_time = datetime(2026, 7, 17, 7, 0, tzinfo=UTC)
+    command = ManualFillCommand(
+        portfolio_id="default",
+        security_id="000001.SZ",
+        side=FillSide.SELL,
+        quantity=100,
+        price=Decimal("10.35"),
+        fee=Decimal("5.00"),
+        filled_at=datetime(2026, 7, 17, 6, 59, tzinfo=UTC),
+        strategy_book=StrategyBook.CORE,
+    )
+    event = PortfolioAuditEvent(
+        portfolio_id="default",
+        event_type="manual_fill",
+        recorded_at=datetime(2026, 7, 17, 8, 0, tzinfo=UTC),
+        expected_version=7,
+        reason="backfilled broker confirmation",
+        payload_hash="a" * 64,
+    )
+
+    store.append(event=event, payload=command, expected_version=7)
+
+    historical = SqlPortfolioReader(portfolio_sessions).snapshot(
+        portfolio_id="default",
+        as_of_time=decision_time,
     )
 
     assert historical.lots[0].quantity == 500

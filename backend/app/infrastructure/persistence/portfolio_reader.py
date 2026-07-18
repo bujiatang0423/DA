@@ -50,6 +50,7 @@ def read_portfolio_snapshot(
         .where(
             PortfolioSnapshotRevisionRow.portfolio_id == portfolio_id,
             PortfolioSnapshotRevisionRow.as_of_time <= as_of_time,
+            PortfolioSnapshotRevisionRow.recorded_at <= as_of_time,
         )
         .order_by(
             PortfolioSnapshotRevisionRow.as_of_time.desc(),
