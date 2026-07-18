@@ -22,13 +22,17 @@ def _snapshot_at(p: Path) -> datetime | None:
 
 def inspect_source(source_root: Path) -> LegacyInspectionReport:
     root = source_root.resolve()
-    history = root / "data" / "holdings" / "历史持仓"
+    holdings = root / "data" / "holdings"
+    current = holdings / "持仓.csv"
+    history = holdings / "历史持仓"
     index_path = history / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else []
     actual = {p.name: p for p in history.glob("*.csv")}
     indexed = {Path(str(e.get("archive", ""))).name for e in index}
     files = []
     tags = set()
+    if current.is_file():
+        files.append(LegacyFileInspection(current, _sha256(current), None, ()))
     for e in index:
         name = Path(str(e.get("archive", ""))).name
         p = actual.get(name)

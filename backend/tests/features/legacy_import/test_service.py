@@ -1,8 +1,10 @@
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from backend.app.features.legacy_import.service import LegacyImportService
 
@@ -47,3 +49,41 @@ def test_import_is_read_only_hashed_and_idempotent(tmp_path: Path) -> None:
     assert repo.calls[0][2][0].origin.value == "legacy_opening_balance"
     assert repo.calls[0][3][0].snapshot_at.year == 2025
     assert not hasattr(repo.calls[0][3][0], "trade_id")
+
+
+def test_current_holdings_file_is_frozen_and_changes_the_manifest(tmp_path: Path) -> None:
+    source = tmp_path / "legacy"
+    holdings = source / "data" / "holdings"
+    history = holdings / "历史持仓"
+    history.mkdir(parents=True)
+    current = holdings / "持仓.csv"
+    current.write_text("ts_code,quantity,cost_price\nAAA,10,12.5\n", encoding="utf-8-sig")
+    archive = history / "2025-01-01_100000.csv"
+    archive.write_text(
+        "ts_code,quantity,cost_price,buy_date\nAAA,8,11,2024-01-01\n", encoding="utf-8-sig"
+    )
+    (history / "index.json").write_text(
+        json.dumps([{"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]),
+        encoding="utf-8",
+    )
+    service = LegacyImportService(tmp_path / "imports", Repo())
+    effective_at = datetime(2026, 1, 1, tzinfo=UTC)
+
+    first = service.import_source(source_root=source, portfolio_id="p", effective_at=effective_at)
+    frozen_current = tmp_path / "imports" / first.batch_id / "raw" / "current" / "持仓.csv"
+
+    assert frozen_current.read_bytes() == current.read_bytes()
+    current.write_text("ts_code,quantity,cost_price\nAAA,11,12.5\n", encoding="utf-8-sig")
+    second = service.import_source(source_root=source, portfolio_id="p", effective_at=effective_at)
+
+    assert second.batch_id != first.batch_id
+    assert frozen_current.read_bytes() != current.read_bytes()
+
+
+def test_import_requires_an_aware_effective_at(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="effective_at must be timezone-aware"):
+        LegacyImportService(tmp_path / "imports", Repo()).import_source(
+            source_root=tmp_path,
+            portfolio_id="p",
+            effective_at=datetime(2026, 1, 1),
+        )
