@@ -103,3 +103,24 @@ def test_stop_model_uses_open_for_gap_and_stop_for_intraday_cross() -> None:
 
     assert stop_price(_bar(open=Decimal("9.5")), Decimal("10"), slippage) == Decimal("9.4905")
     assert stop_price(_bar(low=Decimal("9.5")), Decimal("10"), slippage) == Decimal("9.990")
+
+
+@pytest.mark.parametrize(
+    ("bar", "expected_price"),
+    [
+        (_bar(open=Decimal("10.2"), low=Decimal("9.5")), Decimal("9.990")),
+        (_bar(open=Decimal("9.5")), Decimal("9.4905")),
+        (_bar(open=Decimal("10.2"), low=Decimal("10.1")), Decimal("10.1898")),
+    ],
+)
+def test_sell_stop_attempt_uses_triggered_or_normal_open_price(
+    bar: DailyBar,
+    expected_price: Decimal,
+) -> None:
+    intent = _intent(side=OrderSide.SELL, quantity=100, signal_close=Decimal("10"))
+    intent = intent.model_copy(update={"stop_price": Decimal("10")})
+
+    result = ExecutionSimulator().attempt(intent, bar, available_to_sell=100)
+
+    assert isinstance(result, FilledAttempt)
+    assert result.actual_price == expected_price

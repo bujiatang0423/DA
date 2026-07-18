@@ -85,6 +85,8 @@ class ExecutionSimulator:
             price = bar.open * (Decimal(1) + slip)
         else:
             price = bar.open * (Decimal(1) - slip)
+            if intent.stop_price is not None:
+                price = stop_price(bar, intent.stop_price, slip) or price
         fee = calculate_fee(self.fee_schedule, intent.side, price * quantity)
         return FilledAttempt(
             intent.order_id,
