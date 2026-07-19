@@ -7,6 +7,10 @@ from zoneinfo import ZoneInfo
 from .models import LegacyFileInspection, LegacyInspectionReport, LegacyQualityTag
 
 
+class LegacySourcePathError(ValueError):
+    """Raised when a selected legacy source file resolves outside the source root."""
+
+
 def _sha256(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -26,8 +30,14 @@ def inspect_source(source_root: Path) -> LegacyInspectionReport:
     current = holdings / "持仓.csv"
     history = holdings / "历史持仓"
     index_path = history / "index.json"
+    _require_within_root(root, current)
+    _require_within_root(root, history)
+    if index_path.exists():
+        _require_within_root(root, index_path)
     index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else []
     actual = {p.name: p for p in history.glob("*.csv")}
+    for path in actual.values():
+        _require_within_root(root, path)
     indexed = {Path(str(e.get("archive", ""))).name for e in index}
     files = []
     tags = set()
@@ -64,3 +74,10 @@ def inspect_source(source_root: Path) -> LegacyInspectionReport:
     return LegacyInspectionReport(
         root, tuple(sorted(files, key=lambda x: str(x.path))), tuple(sorted(tags))
     )
+
+
+def _require_within_root(root: Path, path: Path) -> None:
+    try:
+        path.resolve(strict=True).relative_to(root)
+    except (FileNotFoundError, ValueError) as exc:
+        raise LegacySourcePathError("legacy source path is outside the configured root") from exc

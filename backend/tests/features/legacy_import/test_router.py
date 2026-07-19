@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.app.bootstrap.application import create_app
 from backend.app.features.legacy_import.module import build_legacy_import_feature
@@ -101,3 +102,43 @@ def test_import_api_only_accepts_configured_sources_and_requires_confirmation(
     assert confirmed.status_code == 200
     batch_id = confirmed.json()["batch_id"]
     assert client.get(f"/api/v1/legacy-imports/{batch_id}").json()["raw_file_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "outside_name"),
+    (
+        ("持仓.csv", "outside-current.csv"),
+        ("历史持仓/2025-01-01_100000.csv", "outside-history.csv"),
+        ("历史持仓/index.json", "outside-index.json"),
+    ),
+)
+def test_import_api_rejects_selected_file_symlinked_outside_selected_source(
+    tmp_path: Path,
+    relative_path: str,
+    outside_name: str,
+) -> None:
+    allowed = tmp_path / "allowed"
+    _source(allowed)
+    target = allowed / "broker-a" / "data" / "holdings" / relative_path
+    outside = tmp_path / outside_name
+    outside.write_bytes(target.read_bytes())
+    target.unlink()
+    target.symlink_to(outside)
+    service = LegacyImportWebService(
+        imports_root=tmp_path / "imports",
+        source_roots=(allowed,),
+        repository_factory=Repository,
+    )
+    client = TestClient(create_app((build_legacy_import_feature(service),)))
+
+    response = client.post(
+        "/api/v1/legacy-imports/preview",
+        json={
+            "source_id": "broker-a",
+            "portfolio_id": "main",
+            "effective_at": datetime(2026, 7, 19, 9, 0, tzinfo=UTC).isoformat(),
+        },
+    )
+
+    assert response.status_code == 409
+    assert str(outside) not in response.text

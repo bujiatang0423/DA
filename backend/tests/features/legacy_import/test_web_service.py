@@ -96,7 +96,7 @@ def test_preview_needs_a_single_use_confirmation_before_freezing(tmp_path: Path)
     assert preview.current_position_count == 1
     assert preview.historical_position_count == 1
     assert preview.quality_tags == ()
-    assert not (tmp_path / "imports").exists()
+    assert not (tmp_path / "imports" / "raw").exists()
     with pytest.raises(LegacyImportConfirmationError):
         service.confirm("invalid", "broker-a", "main", effective_at)
 
@@ -106,6 +106,27 @@ def test_preview_needs_a_single_use_confirmation_before_freezing(tmp_path: Path)
     assert (tmp_path / "imports" / result.batch_id / "raw" / "current" / "持仓.csv").is_file()
     with pytest.raises(LegacyImportConfirmationError):
         service.confirm(preview.confirmation_token, "broker-a", "main", effective_at)
+
+
+def test_confirmation_imports_the_preview_snapshot_after_source_changes(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    source = _source(allowed)
+    repository = Repository()
+    service = LegacyImportWebService(
+        imports_root=tmp_path / "imports",
+        source_roots=(allowed,),
+        repository_factory=lambda: repository,
+    )
+    effective_at = datetime(2026, 7, 19, 9, 0, tzinfo=UTC)
+    current = source / "data" / "holdings" / "持仓.csv"
+    preview_bytes = current.read_bytes()
+    preview = service.preview("broker-a", "main", effective_at)
+    current.write_text("ts_code,quantity,cost_price\nAAA,99,99\n", encoding="utf-8-sig")
+
+    result = service.confirm(preview.confirmation_token, "broker-a", "main", effective_at)
+
+    frozen = tmp_path / "imports" / result.batch_id / "raw" / "current" / "持仓.csv"
+    assert frozen.read_bytes() == preview_bytes
 
 
 def test_confirmation_returns_the_existing_batch_as_idempotent(tmp_path: Path) -> None:

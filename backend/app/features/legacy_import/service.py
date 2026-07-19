@@ -67,11 +67,17 @@ class LegacyImportService:
         self._repository = repository
 
     def import_source(
-        self, *, source_root: Path, portfolio_id: str, effective_at: datetime
+        self,
+        *,
+        source_root: Path,
+        portfolio_id: str,
+        effective_at: datetime,
+        source_metadata_root: Path | None = None,
     ) -> ImportedBatch:
         if effective_at.tzinfo is None:
             raise ValueError("effective_at must be timezone-aware")
         report = inspect_source(source_root)
+        metadata_root = (source_metadata_root or report.source_root).resolve()
         files = tuple(x for x in report.files if x.path.is_file())
         manifest = {
             "portfolio_id": portfolio_id,
@@ -119,7 +125,7 @@ class LegacyImportService:
                 "tags": [t.value for t in report.tags],
                 "files": [
                     {
-                        "source_path": str(x.path),
+                        "source_path": str(x.path.relative_to(report.source_root)),
                         "sha256": x.sha256,
                         "snapshot_at": x.snapshot_at.isoformat() if x.snapshot_at else None,
                         "tags": [t.value for t in x.tags],
@@ -132,8 +138,8 @@ class LegacyImportService:
         )
         batch = ImportedBatch(
             batch_id,
-            str(report.source_root),
-            _git_state(report.source_root),
+            str(metadata_root),
+            _git_state(metadata_root),
             datetime.now(UTC),
             effective_at,
             portfolio_id,

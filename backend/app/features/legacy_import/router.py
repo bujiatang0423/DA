@@ -8,6 +8,7 @@ from backend.app.features.legacy_import.contracts import (
     LegacyImportSourceListResponse,
     LegacyImportSourceResponse,
 )
+from backend.app.features.legacy_import.inspect import LegacySourcePathError
 from backend.app.features.legacy_import.web_service import (
     LegacyImportConfirmationError,
     LegacyImportWebService,
@@ -27,6 +28,12 @@ def build_router(service: LegacyImportWebService) -> APIRouter:
     def preview(request: LegacyImportPreviewRequest) -> LegacyImportPreviewResponse:
         try:
             value = service.preview(**request.model_dump())
+        except LegacyImportConfirmationError as exc:
+            raise HTTPException(
+                status_code=409, detail="legacy import preview must be retried"
+            ) from exc
+        except LegacySourcePathError as exc:
+            raise HTTPException(status_code=409, detail="legacy import source is invalid") from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="legacy import source not found") from exc
         return LegacyImportPreviewResponse(

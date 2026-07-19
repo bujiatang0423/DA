@@ -267,16 +267,20 @@ def build_application() -> FastAPI:
     components = build_components(settings, sessions)
 
     def import_legacy_source(
-        source_root: Path, portfolio_id: str, effective_at: datetime
+        staged_root: Path,
+        source_metadata_root: Path,
+        portfolio_id: str,
+        effective_at: datetime,
     ) -> ImportedBatch:
         with sessions.begin() as session:
             return LegacyImportService(
                 settings.legacy_import_root,
                 SqlLegacyRepository(session),
             ).import_source(
-                source_root=Path(source_root),
+                source_root=staged_root,
                 portfolio_id=portfolio_id,
                 effective_at=effective_at,
+                source_metadata_root=source_metadata_root,
             )
 
     def legacy_import_result(batch_id: str) -> LegacyImportResult | None:
@@ -286,7 +290,7 @@ def build_application() -> FastAPI:
     legacy_imports = LegacyImportWebService(
         imports_root=settings.legacy_import_root,
         source_roots=settings.legacy_import_source_roots,
-        import_source=import_legacy_source,
+        import_snapshot=import_legacy_source,
         result_reader=legacy_import_result,
     )
     return create_app(

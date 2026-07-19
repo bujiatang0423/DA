@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,7 +50,8 @@ class _Confirmation:
     source_id: str
     portfolio_id: str
     effective_at: datetime
-    fingerprint: str
+    staged_root: Path
+    source_root: Path
 
 
 class LegacyImportWebService:
@@ -60,23 +62,26 @@ class LegacyImportWebService:
         *,
         imports_root: Path,
         source_roots: tuple[Path, ...],
-        import_source: Callable[[Path, str, datetime], ImportedBatch] | None = None,
+        import_snapshot: Callable[[Path, Path, str, datetime], ImportedBatch] | None = None,
         result_reader: Callable[[str], LegacyImportResult | None] | None = None,
         repository_factory: Callable[[], object] | None = None,
     ) -> None:
-        self._imports_root = imports_root
+        self._imports_root = imports_root.resolve()
         self._source_roots = tuple(root.resolve() for root in source_roots)
         self._confirmations: dict[str, _Confirmation] = {}
         self._result_reader = result_reader
-        if import_source is not None:
-            self._import_source = import_source
+        if import_snapshot is not None:
+            self._import_snapshot = import_snapshot
         elif repository_factory is not None:
             repository = repository_factory()
             importer = LegacyImportService(imports_root, repository)  # type: ignore[arg-type]
-            self._import_source = lambda source, portfolio, effective: importer.import_source(
-                source_root=source,
-                portfolio_id=portfolio,
-                effective_at=effective,
+            self._import_snapshot = lambda staged, source, portfolio, effective: (
+                importer.import_source(
+                    source_root=staged,
+                    portfolio_id=portfolio,
+                    effective_at=effective,
+                    source_metadata_root=source,
+                )
             )
             self._result_reader = getattr(repository, "get_summary", None)
         else:
@@ -114,19 +119,29 @@ class LegacyImportWebService:
         self._require_aware(effective_at)
         source = self.resolve_source(source_id)
         report = inspect_source(source)
-        current = report.source_root / "data" / "holdings" / "持仓.csv"
+        source_index_hash = self._index_hash(report.source_root)
+        token = secrets.token_urlsafe(32)
+        staged_root = self._stage_snapshot(source, report, token)
+        staged_report = inspect_source(staged_root)
+        if self._fingerprint(report, source_index_hash) != self._fingerprint(
+            staged_report,
+            self._index_hash(staged_report.source_root),
+        ):
+            shutil.rmtree(staged_root.parent, ignore_errors=True)
+            raise LegacyImportConfirmationError("legacy source changed during preview")
+        current = staged_report.source_root / "data" / "holdings" / "持仓.csv"
         current_count = len(LegacyImportService._parse_opening(current, effective_at))
         historical_count = sum(
             len(LegacyImportService._parse_history(item.path, item.snapshot_at, item.sha256))
-            for item in report.files
+            for item in staged_report.files
             if item.snapshot_at is not None
         )
-        token = secrets.token_urlsafe(32)
         self._confirmations[token] = _Confirmation(
             source_id,
             portfolio_id,
             effective_at,
-            self._fingerprint(report),
+            staged_root,
+            source,
         )
         return LegacyImportPreview(
             source_id,
@@ -134,8 +149,8 @@ class LegacyImportWebService:
             effective_at,
             current_count,
             historical_count,
-            len(report.files),
-            tuple(tag.value for tag in report.tags),
+            len(staged_report.files),
+            tuple(tag.value for tag in staged_report.tags),
             token,
         )
 
@@ -147,14 +162,22 @@ class LegacyImportWebService:
         effective_at: datetime,
     ) -> LegacyImportResult:
         confirmation = self._confirmations.pop(confirmation_token, None)
-        if confirmation is None or confirmation != _Confirmation(
-            source_id,
-            portfolio_id,
-            effective_at,
-            self._fingerprint(inspect_source(self.resolve_source(source_id))),
+        if (
+            confirmation is None
+            or confirmation.source_id != source_id
+            or confirmation.portfolio_id != portfolio_id
+            or confirmation.effective_at != effective_at
         ):
             raise LegacyImportConfirmationError("manual confirmation is required")
-        batch = self._import_source(self.resolve_source(source_id), portfolio_id, effective_at)
+        try:
+            batch = self._import_snapshot(
+                confirmation.staged_root,
+                confirmation.source_root,
+                portfolio_id,
+                effective_at,
+            )
+        finally:
+            shutil.rmtree(confirmation.staged_root.parent, ignore_errors=True)
         stored = self.result(batch.batch_id)
         return LegacyImportResult(
             batch_id=stored.batch_id,
@@ -188,19 +211,50 @@ class LegacyImportWebService:
         return cls._is_source(path)
 
     @staticmethod
-    def _fingerprint(report: LegacyInspectionReport) -> str:
-        files = report.files
+    def _fingerprint(report: LegacyInspectionReport, index_hash: str | None) -> str:
         value = [
             {
-                "path": str(item.path),
+                "path": str(item.path.relative_to(report.source_root)),
                 "sha256": item.sha256,
                 "tags": [tag.value for tag in item.tags],
             }
-            for item in files
+            for item in report.files
         ]
+        if index_hash is not None:
+            value.append({"path": "history/index.json", "sha256": index_hash, "tags": []})
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _index_hash(source_root: Path) -> str | None:
+        index = source_root / "data" / "holdings" / "历史持仓" / "index.json"
+        return _sha256(index) if index.exists() else None
+
+    def _stage_snapshot(
+        self,
+        source: Path,
+        report: LegacyInspectionReport,
+        token: str,
+    ) -> Path:
+        staged_root = self._imports_root / ".pending" / token / "source"
+        holdings = source / "data" / "holdings"
+        for item in report.files:
+            destination = staged_root / "data" / "holdings" / item.path.relative_to(holdings)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(item.path, destination)
+            if _sha256(destination) != item.sha256:
+                raise LegacyImportConfirmationError("legacy source changed during preview")
+        index = holdings / "历史持仓" / "index.json"
+        if index.exists():
+            destination = staged_root / "data" / "holdings" / "历史持仓" / "index.json"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(index, destination)
+        return staged_root
 
     @staticmethod
     def _require_aware(value: datetime) -> None:
         if value.tzinfo is None:
             raise ValueError("effective_at must be timezone-aware")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
