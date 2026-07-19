@@ -59,6 +59,8 @@ class RunsService:
                 stage=row.stage,
                 progress=row.progress,
                 heartbeat_at=row.heartbeat_at,
+                retry_count=row.retry_count,
+                error_code=row.error_code,
             )
 
     def list(self, cursor: str | None = None, limit: int = 50) -> Page[RunDetail]:
@@ -108,9 +110,17 @@ class RunsService:
         now: datetime,
         worker_id: str,
         lease_token: str,
+        error_code: str | None = None,
     ) -> RunRow | None:
         with self._factory.begin() as session:
-            return RunRepository(session).transition(run_id, target, now, worker_id, lease_token)
+            return RunRepository(session).transition(
+                run_id,
+                target,
+                now,
+                worker_id,
+                lease_token,
+                error_code,
+            )
 
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:
         with self._factory.begin() as session:

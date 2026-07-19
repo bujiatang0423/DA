@@ -1382,17 +1382,18 @@
             "title": "Auto Trade Enabled",
             "type": "boolean"
           },
-          "error": {
+          "error_code": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Error"
+            "title": "Error Code"
           },
           "heartbeat_at": {
             "anyOf": [
@@ -1423,6 +1424,12 @@
             "maximum": 100.0,
             "minimum": 0.0,
             "title": "Progress",
+            "type": "integer"
+          },
+          "retry_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Retry Count",
             "type": "integer"
           },
           "run_id": {

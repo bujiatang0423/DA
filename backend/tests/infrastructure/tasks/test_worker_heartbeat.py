@@ -11,7 +11,7 @@ class FakeRuns:
     def __init__(self) -> None:
         self.run = SimpleNamespace(id=uuid4(), kind=RunKind.BACKTEST.value, request_payload={})
         self.claims: list[tuple[str, str]] = []
-        self.transitions: list[RunStatus] = []
+        self.transitions: list[tuple[RunStatus, str | None]] = []
 
     def claim_next(self, now: datetime, worker_id: str, lease_token: str) -> SimpleNamespace | None:
         del now
@@ -37,9 +37,10 @@ class FakeRuns:
         now: datetime,
         worker_id: str,
         lease_token: str,
+        error_code: str | None = None,
     ) -> SimpleNamespace:
         del run_id, now, worker_id, lease_token
-        self.transitions.append(target)
+        self.transitions.append((target, error_code))
         return self.run
 
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[object, ...]:
@@ -80,4 +81,25 @@ def test_worker_heartbeats_its_durable_lease_before_claim_and_after_handler() ->
     assert worker.run_once() is True
     assert leases.heartbeats == [("worker-a", "token-a"), ("worker-a", "token-a")]
     assert runs.claims == [("worker-a", "token-a")]
-    assert runs.transitions == [RunStatus.SUCCEEDED]
+    assert runs.transitions == [(RunStatus.SUCCEEDED, None)]
+
+
+def test_worker_records_a_stable_failure_code_without_exception_text() -> None:
+    runs = FakeRuns()
+    leases = FakeLeases()
+    handlers = HandlerRegistry()
+    handlers.register(
+        RunKind.BACKTEST,
+        lambda context: (_ for _ in ()).throw(RuntimeError("account 12345678 failed")),
+    )
+    worker = Worker(
+        runs,
+        handlers,
+        lambda: datetime(2026, 7, 19, 9, 30, tzinfo=UTC),
+        leases,
+        "worker-a",
+        "token-a",
+    )
+
+    assert worker.run_once() is True
+    assert runs.transitions == [(RunStatus.FAILED, "JOB_EXECUTION_FAILED")]
