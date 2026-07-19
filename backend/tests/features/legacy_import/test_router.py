@@ -56,6 +56,16 @@ def _source(root: Path) -> None:
     )
 
 
+def _current_only_source(root: Path, *, empty_history: bool) -> None:
+    holdings = root / "broker-a" / "data" / "holdings"
+    holdings.mkdir(parents=True)
+    (holdings / "持仓.csv").write_text(
+        "ts_code,quantity,cost_price\nAAA,10,12.5\n", encoding="utf-8-sig"
+    )
+    if empty_history:
+        (holdings / "历史持仓").mkdir()
+
+
 def test_import_api_only_accepts_configured_sources_and_requires_confirmation(
     tmp_path: Path,
 ) -> None:
@@ -142,3 +152,40 @@ def test_import_api_rejects_selected_file_symlinked_outside_selected_source(
 
     assert response.status_code == 409
     assert str(outside) not in response.text
+
+
+@pytest.mark.parametrize("empty_history", (False, True))
+def test_import_api_accepts_current_only_sources_with_optional_history(
+    tmp_path: Path,
+    empty_history: bool,
+) -> None:
+    allowed = tmp_path / "allowed"
+    _current_only_source(allowed, empty_history=empty_history)
+    service = LegacyImportWebService(
+        imports_root=tmp_path / "imports",
+        source_roots=(allowed,),
+        repository_factory=Repository,
+    )
+    client = TestClient(create_app((build_legacy_import_feature(service),)))
+    payload = {
+        "source_id": "broker-a",
+        "portfolio_id": "main",
+        "effective_at": datetime(2026, 7, 20, 9, 0, tzinfo=UTC).isoformat(),
+    }
+
+    assert client.get("/api/v1/legacy-imports/sources").json() == {
+        "items": [{"source_id": "broker-a", "label": "broker-a"}]
+    }
+    preview = client.post("/api/v1/legacy-imports/preview", json=payload)
+    assert preview.status_code == 200
+    assert preview.json()["historical_position_count"] == 0
+    assert preview.json()["source_file_count"] == 1
+
+    confirmed = client.post(
+        "/api/v1/legacy-imports/confirm",
+        json={**payload, "confirmation_token": preview.json()["confirmation_token"]},
+    )
+
+    assert confirmed.status_code == 200
+    assert confirmed.json()["raw_file_count"] == 1
+    assert confirmed.json()["historical_snapshot_count"] == 0

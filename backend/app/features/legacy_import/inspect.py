@@ -31,11 +31,14 @@ def inspect_source(source_root: Path) -> LegacyInspectionReport:
     history = holdings / "历史持仓"
     index_path = history / "index.json"
     _require_within_root(root, current)
-    _require_within_root(root, history)
-    if index_path.exists():
+    history_exists = history.exists() or history.is_symlink()
+    if history_exists:
+        _require_within_root(root, history)
+    index_exists = index_path.exists() or index_path.is_symlink()
+    if index_exists:
         _require_within_root(root, index_path)
-    index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else []
-    actual = {p.name: p for p in history.glob("*.csv")}
+    index = json.loads(index_path.read_text(encoding="utf-8")) if index_exists else []
+    actual = {p.name: p for p in history.glob("*.csv")} if history_exists else {}
     for path in actual.values():
         _require_within_root(root, path)
     indexed = {Path(str(e.get("archive", ""))).name for e in index}

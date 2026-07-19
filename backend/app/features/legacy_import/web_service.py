@@ -237,6 +237,7 @@ class LegacyImportWebService:
     ) -> Path:
         staged_root = self._imports_root / ".pending" / token / "source"
         holdings = source / "data" / "holdings"
+        (staged_root / "data" / "holdings" / "历史持仓").mkdir(parents=True, exist_ok=True)
         for item in report.files:
             destination = staged_root / "data" / "holdings" / item.path.relative_to(holdings)
             destination.parent.mkdir(parents=True, exist_ok=True)
