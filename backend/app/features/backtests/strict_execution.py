@@ -19,6 +19,8 @@ from backend.app.infrastructure.market.strict_queries import (
 
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+PRE_OPEN_TIME = time(9)
+BAR_COMPLETION_TIME = time(15)
 
 
 class AttemptSimulator(Protocol):
@@ -119,6 +121,8 @@ class StrictExecutionSimulator:
 
 
 class StrictBacktestExecutionPort(BacktestExecutionPort):
+    """Use pre-open metadata and a completed daily bar for intraday simulation."""
+
     def __init__(
         self,
         simulator: StrictExecutionSimulator,
@@ -132,18 +136,20 @@ class StrictBacktestExecutionPort(BacktestExecutionPort):
     def execute(
         self, intent: OrderIntent, trade_date: date, available_to_sell: int
     ) -> FilledAttempt | RejectedAttempt:
+        pre_open = datetime.combine(trade_date, PRE_OPEN_TIME, self._timezone)
+        completed_bar = datetime.combine(trade_date, BAR_COMPLETION_TIME, self._timezone)
         return self._simulator.attempt(
             intent,
             self._bars.bar_for(
                 intent.security_id,
                 trade_date,
-                as_of_time=datetime.combine(trade_date, time(9), self._timezone),
+                as_of_time=completed_bar,
             ),
             security_id=intent.security_id,
             trade_date=trade_date,
             exchange=_exchange_for(intent.security_id),
             asset_type="stock",
-            as_of_time=datetime.combine(trade_date, time(9), self._timezone),
+            as_of_time=pre_open,
             available_to_sell=available_to_sell,
         )
 

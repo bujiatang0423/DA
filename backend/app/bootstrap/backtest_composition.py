@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from backend.app.contracts.grades import DataGrade
@@ -56,14 +54,12 @@ def build_sqlalchemy_strict_backtest_engine(
     session: Session,
     warehouse: BacktestSnapshotPort,
     decision_port: BacktestDecisionPort,
-    calendar_as_of_time: datetime,
     exchange: str = "SSE",
 ) -> BacktestEngine:
     """Compose a strict engine from PIT SQL data with no permissive data fallback."""
     return build_strict_backtest_engine(
         SqlAlchemyTradingCalendar(
             session,
-            as_of_time=calendar_as_of_time,
             exchange=exchange,
         ),
         warehouse,

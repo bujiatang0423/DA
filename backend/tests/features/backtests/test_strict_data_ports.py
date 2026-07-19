@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 
 import pytest
@@ -54,7 +54,7 @@ def strict_data_session(postgres_engine: Engine) -> Iterator[Session]:
 
 
 @pytest.mark.postgres
-def test_calendar_uses_latest_available_version_and_only_open_days(
+def test_calendar_uses_versions_visible_by_each_trade_date_and_only_open_days(
     strict_data_session: Session,
 ) -> None:
     strict_data_session.add_all(
@@ -69,9 +69,36 @@ def test_calendar_uses_latest_available_version_and_only_open_days(
     )
     strict_data_session.commit()
 
-    calendar = SqlAlchemyTradingCalendar(strict_data_session, as_of_time=AS_OF, exchange="SSE")
+    calendar = SqlAlchemyTradingCalendar(strict_data_session, exchange="SSE")
 
-    assert calendar.between(date(2024, 1, 2), date(2024, 1, 4)) == (date(2024, 1, 3),)
+    assert calendar.between(date(2024, 1, 2), date(2024, 1, 4)) == (
+        date(2024, 1, 2),
+        date(2024, 1, 3),
+    )
+
+
+@pytest.mark.postgres
+def test_calendar_does_not_use_a_later_revision_for_a_historical_trade_date(
+    strict_data_session: Session,
+) -> None:
+    trade_date = date(2024, 1, 2)
+    strict_data_session.add_all(
+        [
+            calendar_row("open-original", trade_date, True, "calendar-2"),
+            calendar_row(
+                "closed-later",
+                trade_date,
+                False,
+                "calendar-2",
+                datetime(2024, 1, 3, tzinfo=UTC),
+            ),
+        ]
+    )
+    strict_data_session.commit()
+
+    calendar = SqlAlchemyTradingCalendar(strict_data_session, exchange="SSE")
+
+    assert calendar.between(trade_date, trade_date) == (trade_date,)
 
 
 @pytest.mark.postgres
@@ -113,6 +140,40 @@ def test_daily_bar_reader_fails_closed_when_prior_close_is_not_visible(
         SqlAlchemyHistoricalDailyBars(strict_data_session).bar_for(
             "000001.SZ", date(2024, 1, 4), as_of_time=AS_OF
         )
+
+
+@pytest.mark.postgres
+def test_daily_bar_reader_only_exposes_completed_bar_after_completion_time(
+    strict_data_session: Session,
+) -> None:
+    trade_date = date(2024, 1, 4)
+    strict_data_session.add_all(
+        [
+            bar_row("prior", date(2024, 1, 3), Decimal("10"), "bar-prior"),
+            bar_row(
+                "completed",
+                trade_date,
+                Decimal("12"),
+                "bar-current",
+                datetime.combine(trade_date, time(15), UTC),
+            ),
+        ]
+    )
+    strict_data_session.commit()
+    reader = SqlAlchemyHistoricalDailyBars(strict_data_session)
+
+    with pytest.raises(StrictDataMissingError, match="daily bar missing: 000001.SZ"):
+        reader.bar_for(
+            "000001.SZ",
+            trade_date,
+            as_of_time=datetime.combine(trade_date, time(9), UTC),
+        )
+
+    assert reader.bar_for(
+        "000001.SZ",
+        trade_date,
+        as_of_time=datetime.combine(trade_date, time(15), UTC),
+    ).close == Decimal("12")
 
 
 def test_snapshot_adapter_rejects_quality_errors_without_leaking_detail() -> None:
@@ -190,6 +251,39 @@ def test_snapshot_adapter_rejects_research_snapshot_before_decision_can_use_it()
                 SnapshotQuality(()),
                 (),
                 "provider-fallback",
+            )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        StrictBacktestSnapshotAdapter(Warehouse()).snapshot(
+            as_of_time=AS_OF,
+            scope=requested_scope,
+        )
+
+
+def test_snapshot_adapter_rejects_future_records_despite_pit_grade() -> None:
+    requested_scope = SnapshotScope(required_kinds=(DataKind.DAILY_BAR_RAW,))
+    future_bar = TemporalRecord(
+        "future-bar",
+        DataKind.DAILY_BAR_RAW,
+        "000001.SZ",
+        AS_OF,
+        AS_OF,
+        AS_OF.replace(hour=10),
+        HASH,
+        {},
+    )
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                requested_scope,
+                DataGrade.PIT_VERIFIED,
+                (future_bar,),
+                (),
+                SnapshotQuality(()),
+                (),
+                "future-input",
             )
 
     with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):

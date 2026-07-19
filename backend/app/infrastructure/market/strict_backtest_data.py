@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from collections.abc import Iterator
+from datetime import date, datetime, time
 from typing import TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from zoneinfo import ZoneInfo
 
 from backend.app.contracts.grades import DataGrade
-from backend.app.core.market.pit_models import PointInTimeSnapshot
+from backend.app.core.market.pit_models import PointInTimeSnapshot, TemporalRecord
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.ports import (
     BacktestSnapshotPort,
@@ -22,12 +24,14 @@ from backend.app.infrastructure.persistence.strict_pit_rows import (
 )
 
 
-class SqlAlchemyTradingCalendar(BacktestTradingDayPort):
-    """Read exchange sessions using only versions visible at the configured cutoff."""
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
-    def __init__(self, session: Session, *, as_of_time: datetime, exchange: str) -> None:
+
+class SqlAlchemyTradingCalendar(BacktestTradingDayPort):
+    """Read each exchange session from versions visible by that session's close."""
+
+    def __init__(self, session: Session, *, exchange: str) -> None:
         self._session = session
-        self._as_of_time = as_of_time
         self._exchange = exchange
 
     def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
@@ -36,10 +40,10 @@ class SqlAlchemyTradingCalendar(BacktestTradingDayPort):
                 TradingCalendarRow.exchange == self._exchange,
                 TradingCalendarRow.trade_date >= start_date,
                 TradingCalendarRow.trade_date <= end_date,
-                TradingCalendarRow.available_at <= self._as_of_time,
             )
         ).all()
-        latest = _latest_by_source(rows)
+        visible = [row for row in rows if row.available_at <= _calendar_close(row.trade_date)]
+        latest = _latest_by_source(visible)
         return tuple(sorted(row.trade_date for row in latest.values() if row.is_open))
 
 
@@ -124,15 +128,13 @@ class StrictBacktestSnapshotAdapter(BacktestSnapshotPort):
             raise BacktestSnapshotQualityError()
         if snapshot.quality.has_errors:
             raise BacktestSnapshotQualityError()
+        records = tuple(_snapshot_records(snapshot))
+        if any(record.available_at > as_of_time for record in records):
+            raise BacktestSnapshotQualityError()
         required = getattr(snapshot.scope, "required_kinds", None)
         if required is None:
             raise BacktestSnapshotQualityError()
-        present_kinds = {
-            record.kind
-            for observation in snapshot.security_observations
-            for record in observation.records
-        }
-        present_kinds.update(record.kind for record in snapshot.market_inputs)
+        present_kinds = {record.kind for record in records}
         if set(required) - present_kinds:
             raise BacktestSnapshotQualityError()
         return snapshot
@@ -152,3 +154,13 @@ def _latest_by_source(rows: list[T]) -> dict[str, T]:
 
 def _row_order(row: TradingCalendarRow | DailyBarRawRow) -> tuple[datetime, str]:
     return row.available_at, row.id
+
+
+def _calendar_close(trade_date: date) -> datetime:
+    return datetime.combine(trade_date, time.max, SHANGHAI)
+
+
+def _snapshot_records(snapshot: PointInTimeSnapshot) -> Iterator[TemporalRecord]:
+    yield from snapshot.market_inputs
+    for observation in snapshot.security_observations:
+        yield from observation.records

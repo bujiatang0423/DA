@@ -104,6 +104,51 @@ def test_strict_engine_rejects_provider_fallback_before_pit_result(
         engine.run(request(), StrategyGroup.A)
 
 
+@pytest.mark.postgres
+def test_strict_engine_rejects_future_snapshot_record_before_decision_or_result(
+    strict_execution_session: Session,
+) -> None:
+    decisions: list[BacktestDecisionContext] = []
+
+    class FutureWarehouse(Warehouse):
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            snapshot = super().snapshot(as_of_time=as_of_time, scope=scope)
+            future = TemporalRecord(
+                "future-bar",
+                DataKind.DAILY_BAR_RAW,
+                "market",
+                as_of_time,
+                as_of_time,
+                as_of_time.replace(hour=16),
+                HASH,
+                {},
+            )
+            return PointInTimeSnapshot(
+                snapshot.as_of_time,
+                snapshot.scope,
+                snapshot.data_grade,
+                snapshot.market_inputs + (future,),
+                snapshot.security_observations,
+                snapshot.quality,
+                snapshot.lineage,
+                snapshot.manifest_hash,
+            )
+
+    class RecordingDecisions:
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            decisions.append(context)
+            return BacktestDecision((), {})
+
+    engine = build_strict_backtest_engine(
+        Days(), FutureWarehouse(), RecordingDecisions(), Bars(), strict_execution_session
+    )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        engine.run(request(), StrategyGroup.A)
+
+    assert decisions == []
+
+
 class Days:
     def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
         return date(2020, 6, 1), date(2020, 6, 2)
@@ -169,7 +214,7 @@ class Bars:
         as_of_time: datetime,
     ) -> DailyBar:
         assert (security_id, trade_date) == ("PAST_DELISTED.SZ", date(2020, 6, 2))
-        assert as_of_time == datetime(2020, 6, 2, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        assert as_of_time == datetime(2020, 6, 2, 15, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
         return DailyBar(
             trade_date=trade_date,
             open=Decimal("11"),
