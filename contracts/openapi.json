@@ -41,6 +41,18 @@
             ],
             "title": "Initial Cash"
           },
+          "out_of_sample_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Of Sample Start"
+          },
           "sell_slippage_bps": {
             "default": 10,
             "minimum": 0.0,
