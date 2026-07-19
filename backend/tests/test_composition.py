@@ -20,6 +20,7 @@ from backend.app.features.candidates.service import (
 )
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
+from backend.app.ports.point_in_time import PointInTimeWarehouse
 
 
 class FrozenWarehouse:
@@ -30,6 +31,22 @@ class FrozenWarehouse:
         scope: SnapshotScope,
     ) -> PointInTimeSnapshot:
         raise AssertionError((as_of_time, scope))
+
+
+class CandidateScopeWithSecurity:
+    def __init__(self, warehouse: PointInTimeWarehouse) -> None:
+        self._warehouse = warehouse
+
+    def snapshot(
+        self,
+        *,
+        as_of_time: datetime,
+        scope: SnapshotScope,
+    ) -> PointInTimeSnapshot:
+        return self._warehouse.snapshot(
+            as_of_time=as_of_time,
+            scope=SnapshotScope(("000001.SZ",), scope.required_kinds, scope.history_start),
+        )
 
 
 class EmptyPortfolioReader:
@@ -129,7 +146,7 @@ def test_configured_provider_failure_is_sanitized_and_cannot_create_candidates()
     issue = next(issue for issue in snapshot.quality.issues if issue.code == "PROVIDER_UNAVAILABLE")
     repository = RecordingCandidateRepository()
     service = CandidateService(
-        components.warehouse,
+        CandidateScopeWithSecurity(components.warehouse),
         EmptyPortfolioReader(),
         components.candidate_service._input_builder,
         V212StrategyEngine(),
@@ -140,4 +157,4 @@ def test_configured_provider_failure_is_sanitized_and_cannot_create_candidates()
     assert snapshot.quality.has_errors
     assert "secret" not in issue.detail
     assert result.items == ()
-    assert "REQUIRED_DATASET_MISSING" in result.quality_codes
+    assert "PROVIDER_UNAVAILABLE" in result.quality_codes
