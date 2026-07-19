@@ -63,7 +63,9 @@ def test_current_holdings_file_is_frozen_and_changes_the_manifest(tmp_path: Path
         "ts_code,quantity,cost_price,buy_date\nAAA,8,11,2024-01-01\n", encoding="utf-8-sig"
     )
     (history / "index.json").write_text(
-        json.dumps([{"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]),
+        json.dumps(
+            [{"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]
+        ),
         encoding="utf-8",
     )
     service = LegacyImportService(tmp_path / "imports", Repo())

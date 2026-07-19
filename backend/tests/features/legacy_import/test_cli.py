@@ -55,7 +55,9 @@ def _source(tmp_path: Path) -> Path:
         "ts_code,quantity,cost_price,buy_date\nAAA,8,11,2024-01-01\n", encoding="utf-8-sig"
     )
     (history / "index.json").write_text(
-        json.dumps([{"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]),
+        json.dumps(
+            [{"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}]
+        ),
         encoding="utf-8",
     )
     return source
