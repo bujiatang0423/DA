@@ -60,7 +60,9 @@ class _MemoryRuns:
             status=RunStatus.QUEUED,
             submitted_at=submitted_at,
             links=RunLinks(
-                self=f"/api/v1/runs/{run_id}", artifacts=f"/api/v1/runs/{run_id}/artifacts"
+                self=f"/api/v1/runs/{run_id}",
+                artifacts=f"/api/v1/runs/{run_id}/artifacts",
+                result=RunsService.result_link(kind, run_id),
             ),
         )
         self._rows[run_id] = RunDetail(**ref.model_dump())

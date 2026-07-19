@@ -23,9 +23,19 @@ class RunsService:
             status=RunStatus(row.status),
             submitted_at=row.submitted_at,
             links=RunLinks(
-                self=f"/api/v1/runs/{run_id}", artifacts=f"/api/v1/runs/{run_id}/artifacts"
+                self=f"/api/v1/runs/{run_id}",
+                artifacts=f"/api/v1/runs/{run_id}/artifacts",
+                result=RunsService.result_link(RunKind(row.kind), run_id),
             ),
         )
+
+    @staticmethod
+    def result_link(kind: RunKind, run_id: str) -> str | None:
+        if kind is RunKind.CANDIDATE_RECOMMENDATION:
+            return f"/api/v1/candidates/{run_id}"
+        if kind is RunKind.HOLDING_ANALYSIS:
+            return f"/api/v1/holding-analyses/{run_id}"
+        return None
 
     def submit(
         self,
