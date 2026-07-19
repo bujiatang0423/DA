@@ -29,6 +29,7 @@ def test_candidate_submission_is_idempotent() -> None:
     assert first.status_code == 202
     assert second.status_code == 202
     assert first.json()["run_id"] == second.json()["run_id"]
+    assert first.json()["links"]["result"] == f"/api/v1/candidates/{first.json()['run_id']}"
 
 
 def test_backtest_plan_rejects_reversed_dates() -> None:
