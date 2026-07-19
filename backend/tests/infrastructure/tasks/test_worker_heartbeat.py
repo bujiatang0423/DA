@@ -51,6 +51,11 @@ class FakeLeases:
     def __init__(self) -> None:
         self.heartbeats: list[tuple[str, str]] = []
 
+    def acquire(self, worker_id: str, lease_token: str, now: datetime) -> bool:
+        del now
+        self.heartbeats.append((worker_id, lease_token))
+        return True
+
     def heartbeat(self, worker_id: str, lease_token: str, now: datetime) -> bool:
         del now
         self.heartbeats.append((worker_id, lease_token))

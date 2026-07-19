@@ -94,10 +94,17 @@ class RunRepository:
         worker_id: str,
         lease_token: str,
     ) -> RunRow | None:
-        row = self._session.get(RunRow, run_id, with_for_update=True)
+        row = self._session.scalar(
+            select(RunRow)
+            .where(
+                RunRow.id == run_id,
+                RunRow.status == RunStatus.RUNNING.value,
+                RunRow.claim_owner == worker_id,
+                RunRow.claim_token == lease_token,
+            )
+            .with_for_update()
+        )
         if row is None:
-            raise KeyError(str(run_id))
-        if row.claim_owner != worker_id or row.claim_token != lease_token:
             return None
         current = RunStatus(row.status)
         if target not in ALLOWED[current]:
@@ -139,6 +146,8 @@ class RunRepository:
                 retry_count=RunRow.retry_count + 1,
                 stage=None,
                 progress=0,
+                claim_owner=None,
+                claim_token=None,
             )
             .returning(RunRow.id)
         )

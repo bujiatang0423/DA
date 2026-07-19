@@ -31,6 +31,8 @@ class RunStore(Protocol):
 
 
 class WorkerLease(Protocol):
+    def acquire(self, worker_id: str, lease_token: str, now: datetime) -> bool: ...
+
     def heartbeat(self, worker_id: str, lease_token: str, now: datetime) -> bool: ...
 
 
@@ -52,7 +54,7 @@ class Worker:
         self.lease_token = lease_token or uuid4().hex
 
     def run_once(self) -> bool:
-        if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
+        if not self.leases.acquire(self.worker_id, self.lease_token, self.clock()):
             return False
         run = self.runs.claim_next(self.clock(), self.worker_id, self.lease_token)
         if run is None:

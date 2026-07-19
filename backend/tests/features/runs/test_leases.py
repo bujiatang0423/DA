@@ -86,6 +86,42 @@ def test_claim_is_not_available_to_a_second_worker(
 
 
 @pytest.mark.postgres
+def test_stale_requeue_clears_claim_and_fences_the_old_worker(
+    run_sessions: sessionmaker[Session],
+) -> None:
+    claimed_at = datetime(2026, 7, 19, 9, 30, tzinfo=UTC)
+    recovered_at = datetime(2026, 7, 19, 9, 32, tzinfo=UTC)
+    with run_sessions.begin() as session:
+        RunRepository(session).submit(RunKind.BACKTEST, {}, None, claimed_at)
+    with run_sessions.begin() as session:
+        claimed = RunRepository(session).claim_next(claimed_at, "worker-a", "token-a")
+    assert claimed is not None
+
+    with run_sessions.begin() as session:
+        requeued = RunRepository(session).requeue_stale(recovered_at, recovered_at)
+    assert requeued == (claimed.id,)
+
+    with run_sessions.begin() as session:
+        progress_updated = RunRepository(session).heartbeat(
+            claimed.id, "persisted", 100, recovered_at, "worker-a", "token-a"
+        )
+        completed = RunRepository(session).transition(
+            claimed.id, RunStatus.SUCCEEDED, recovered_at, "worker-a", "token-a"
+        )
+    assert progress_updated is False
+    assert completed is None
+
+    with run_sessions() as session:
+        row = session.execute(
+            text("SELECT status, claim_owner, claim_token FROM runs WHERE id = :id"),
+            {"id": claimed.id},
+        ).one()
+    assert row.status == RunStatus.QUEUED.value
+    assert row.claim_owner is None
+    assert row.claim_token is None
+
+
+@pytest.mark.postgres
 def test_concurrent_workers_cannot_claim_the_same_run(
     run_sessions: sessionmaker[Session],
 ) -> None:
