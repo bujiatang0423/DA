@@ -136,6 +136,7 @@ class BacktestEngine:
             trades.append(
                 {
                     "order_id": fill.fill_id,
+                    "signal_date": intent.signal_date.isoformat(),
                     "trade_date": fill.filled_at.date().isoformat(),
                     "security_id": fill.security_id,
                     "side": fill.side.value,
