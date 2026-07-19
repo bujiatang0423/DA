@@ -6,6 +6,7 @@ from typing import TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.contracts.grades import DataGrade
 from backend.app.core.market.pit_models import PointInTimeSnapshot
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.ports import (
@@ -117,6 +118,10 @@ class StrictBacktestSnapshotAdapter(BacktestSnapshotPort):
 
     def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
         snapshot = self._warehouse.snapshot(as_of_time=as_of_time, scope=scope)
+        if snapshot.data_grade is not DataGrade.PIT_VERIFIED:
+            raise BacktestSnapshotQualityError()
+        if snapshot.as_of_time != as_of_time or snapshot.scope != scope:
+            raise BacktestSnapshotQualityError()
         if snapshot.quality.has_errors:
             raise BacktestSnapshotQualityError()
         required = getattr(snapshot.scope, "required_kinds", None)

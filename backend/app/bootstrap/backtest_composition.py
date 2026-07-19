@@ -44,7 +44,7 @@ def build_strict_backtest_engine(
     execution_port = StrictBacktestExecutionPort(simulator, bars)
     return BacktestEngine(
         trading_days,
-        warehouse,
+        StrictBacktestSnapshotAdapter(warehouse),
         decision_port,
         execution_port,
         data_grade=DataGrade.PIT_VERIFIED,
@@ -66,7 +66,7 @@ def build_sqlalchemy_strict_backtest_engine(
             as_of_time=calendar_as_of_time,
             exchange=exchange,
         ),
-        StrictBacktestSnapshotAdapter(warehouse),
+        warehouse,
         decision_port,
         SqlAlchemyHistoricalDailyBars(session),
         session,

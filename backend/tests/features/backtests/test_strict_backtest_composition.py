@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from zoneinfo import ZoneInfo
 
 from backend.app.contracts.grades import DataGrade
-from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotQuality
+from backend.app.core.market.pit_models import (
+    DataKind,
+    PointInTimeSnapshot,
+    SnapshotQuality,
+    SnapshotScope,
+    TemporalRecord,
+)
 from backend.app.bootstrap.backtest_composition import build_strict_backtest_engine
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.models import (
@@ -20,7 +26,11 @@ from backend.app.features.backtests.models import (
     OrderSide,
     StrategyGroup,
 )
-from backend.app.features.backtests.ports import BacktestDecision, BacktestDecisionContext
+from backend.app.features.backtests.ports import (
+    BacktestDecision,
+    BacktestDecisionContext,
+    BacktestSnapshotQualityError,
+)
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     FeeScheduleRow,
     SecurityStatusDailyRow,
@@ -82,6 +92,18 @@ def test_strict_engine_rejects_the_same_open_under_a_ten_percent_board(
     assert result.trades == []
 
 
+@pytest.mark.postgres
+def test_strict_engine_rejects_provider_fallback_before_pit_result(
+    strict_execution_session: Session,
+) -> None:
+    engine = build_strict_backtest_engine(
+        Days(), ResearchWarehouse(), Decisions(), Bars(), strict_execution_session
+    )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        engine.run(request(), StrategyGroup.A)
+
+
 class Days:
     def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
         return date(2020, 6, 1), date(2020, 6, 2)
@@ -89,9 +111,48 @@ class Days:
 
 class Warehouse:
     def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+        assert isinstance(scope, SnapshotScope)
         return PointInTimeSnapshot(
-            as_of_time, scope, DataGrade.PIT_VERIFIED, (), (), SnapshotQuality(()), (), "manifest"
+            as_of_time,
+            scope,
+            DataGrade.PIT_VERIFIED,
+            required_records(as_of_time),
+            (),
+            SnapshotQuality(()),
+            (),
+            "manifest",
         )
+
+
+class ResearchWarehouse(Warehouse):
+    def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+        snapshot = super().snapshot(as_of_time=as_of_time, scope=scope)
+        return PointInTimeSnapshot(
+            snapshot.as_of_time,
+            snapshot.scope,
+            DataGrade.RESEARCH,
+            snapshot.market_inputs,
+            snapshot.security_observations,
+            snapshot.quality,
+            snapshot.lineage,
+            snapshot.manifest_hash,
+        )
+
+
+def required_records(as_of_time: datetime) -> tuple[TemporalRecord, ...]:
+    return tuple(
+        TemporalRecord(
+            f"record-{kind.value}",
+            kind,
+            "market",
+            as_of_time,
+            as_of_time,
+            as_of_time,
+            HASH,
+            {},
+        )
+        for kind in DataKind
+    )
 
 
 class Decisions:

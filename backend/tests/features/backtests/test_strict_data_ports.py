@@ -17,6 +17,7 @@ from backend.app.core.market.pit_models import (
     QualitySeverity,
     SnapshotQuality,
     SnapshotScope,
+    TemporalRecord,
 )
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.ports import BacktestSnapshotQualityError
@@ -162,6 +163,85 @@ def test_snapshot_adapter_rejects_missing_required_data_without_quality_issue() 
         StrictBacktestSnapshotAdapter(Warehouse()).snapshot(
             as_of_time=AS_OF,
             scope=SnapshotScope(required_kinds=(DataKind.DAILY_BAR_RAW,)),
+        )
+
+
+def test_snapshot_adapter_rejects_research_snapshot_before_decision_can_use_it() -> None:
+    requested_scope = SnapshotScope(required_kinds=(DataKind.DAILY_BAR_RAW,))
+    daily_bar = TemporalRecord(
+        "bar",
+        DataKind.DAILY_BAR_RAW,
+        "000001.SZ",
+        AS_OF,
+        AS_OF,
+        AS_OF,
+        HASH,
+        {},
+    )
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                requested_scope,
+                DataGrade.RESEARCH,
+                (daily_bar,),
+                (),
+                SnapshotQuality(()),
+                (),
+                "provider-fallback",
+            )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        StrictBacktestSnapshotAdapter(Warehouse()).snapshot(
+            as_of_time=AS_OF,
+            scope=requested_scope,
+        )
+
+
+def test_snapshot_adapter_rejects_returned_as_of_time_mismatch() -> None:
+    requested_scope = SnapshotScope()
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time.replace(hour=10),
+                requested_scope,
+                DataGrade.PIT_VERIFIED,
+                (),
+                (),
+                SnapshotQuality(()),
+                (),
+                "manifest",
+            )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        StrictBacktestSnapshotAdapter(Warehouse()).snapshot(
+            as_of_time=AS_OF,
+            scope=requested_scope,
+        )
+
+
+def test_snapshot_adapter_rejects_returned_scope_mismatch() -> None:
+    requested_scope = SnapshotScope(required_kinds=(DataKind.DAILY_BAR_RAW,))
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                SnapshotScope(),
+                DataGrade.PIT_VERIFIED,
+                (),
+                (),
+                SnapshotQuality(()),
+                (),
+                "manifest",
+            )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        StrictBacktestSnapshotAdapter(Warehouse()).snapshot(
+            as_of_time=AS_OF,
+            scope=requested_scope,
         )
 
 
