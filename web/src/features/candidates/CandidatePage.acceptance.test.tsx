@@ -32,7 +32,9 @@ test("groups executable watchlist and excluded items with grades and safe eviden
   expect(screen.getByRole("heading", { name: "观察列表" })).toBeTruthy();
   expect(screen.getByRole("heading", { name: "排除" })).toBeTruthy();
   expect(screen.getByText("数据等级：research")).toBeTruthy();
+  expect(screen.getByText("研究级数据，不代表正式历史验证")).toBeTruthy();
   expect(screen.getByText("LLM 等级：not_used")).toBeTruthy();
   expect(screen.getByText("pit:bar:abc")).toBeTruthy();
+  expect(screen.getByText("仅供人工确认，不自动下单")).toBeTruthy();
   expect(screen.queryByText("自动下单")).toBeNull();
 });
