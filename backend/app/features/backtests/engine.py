@@ -41,11 +41,13 @@ class BacktestEngine:
         decision_port: BacktestDecisionPort,
         execution_port: BacktestExecutionPort | None = None,
         observed_events: list[str] | None = None,
+        data_grade: DataGrade = DataGrade.RESEARCH,
     ) -> None:
         self._trading_days = trading_days
         self._warehouse = warehouse
         self._decision_port = decision_port
         self._execution_port = execution_port
+        self._data_grade = data_grade
         self.observed_events = observed_events if observed_events is not None else []
 
     def run(
@@ -109,14 +111,14 @@ class BacktestEngine:
                 pending = (decision,)
         return BacktestGroupResult(
             group=group,
-            data_grade=DataGrade.RESEARCH,
+            data_grade=self._data_grade,
             llm_grade=llm_grade,
             input_manifest_hash=self._manifest_hash(request, snapshots),
             equity_curve=curve,
             trades=trades,
             rejected_attempts=rejected_attempts,
             metrics=calculate_metrics(equity_values, request.initial_cash),
-            warnings=["research_only"],
+            warnings=["research_only"] if self._data_grade is DataGrade.RESEARCH else [],
         )
 
     def _execute_intent(
@@ -135,31 +137,37 @@ class BacktestEngine:
             fill = ledger.apply_attempt(
                 attempt, intent.security_id, intent.side, intent.strategy_book
             )
-            trades.append(
-                {
-                    "order_id": fill.fill_id,
-                    "signal_date": intent.signal_date.isoformat(),
-                    "trade_date": fill.filled_at.date().isoformat(),
-                    "security_id": fill.security_id,
-                    "side": fill.side.value,
-                    "quantity": str(fill.quantity),
-                    "price": str(fill.price),
-                    "fee": str(fill.fee),
-                }
-            )
+            trade = {
+                "order_id": fill.fill_id,
+                "signal_date": intent.signal_date.isoformat(),
+                "trade_date": fill.filled_at.date().isoformat(),
+                "security_id": fill.security_id,
+                "side": fill.side.value,
+                "quantity": str(fill.quantity),
+                "price": str(fill.price),
+                "fee": str(fill.fee),
+            }
+            if attempt.fee_schedule_id is not None:
+                trade["fee_schedule_id"] = attempt.fee_schedule_id
+            if attempt.fee_schedule_hash is not None:
+                trade["fee_schedule_hash"] = attempt.fee_schedule_hash
+            trades.append(trade)
         elif isinstance(attempt, RejectedAttempt):
-            rejected_attempts.append(
-                {
-                    "order_id": attempt.order_id,
-                    "signal_date": intent.signal_date.isoformat(),
-                    "trade_date": attempt.trade_date.isoformat(),
-                    "security_id": intent.security_id,
-                    "side": intent.side.value,
-                    "requested_quantity": str(intent.quantity),
-                    "reason_code": attempt.reason_code,
-                    "fee_schedule_version": attempt.fee_schedule_version,
-                }
-            )
+            rejected = {
+                "order_id": attempt.order_id,
+                "signal_date": intent.signal_date.isoformat(),
+                "trade_date": attempt.trade_date.isoformat(),
+                "security_id": intent.security_id,
+                "side": intent.side.value,
+                "requested_quantity": str(intent.quantity),
+                "reason_code": attempt.reason_code,
+                "fee_schedule_version": attempt.fee_schedule_version,
+            }
+            if attempt.fee_schedule_id is not None:
+                rejected["fee_schedule_id"] = attempt.fee_schedule_id
+            if attempt.fee_schedule_hash is not None:
+                rejected["fee_schedule_hash"] = attempt.fee_schedule_hash
+            rejected_attempts.append(rejected)
 
     @staticmethod
     def _manifest_hash(

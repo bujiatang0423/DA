@@ -121,7 +121,8 @@ def test_strict_attempt_injects_dated_fee_and_board_rule() -> None:
     )
 
     result = simulator.attempt(
-        object(),
+        order(),
+        bar(),
         security_id="PAST_DELISTED.SZ",
         trade_date=date(2020, 6, 1),
         exchange="SSE",
@@ -144,7 +145,8 @@ def test_strict_attempt_fails_before_execution_without_dated_fee() -> None:
 
     with pytest.raises(StrictDataMissingError, match="fee schedule missing"):
         simulator.attempt(
-            object(),
+            order(),
+            bar(),
             security_id="PAST_DELISTED.SZ",
             trade_date=date(2020, 6, 1),
             exchange="SSE",
@@ -163,7 +165,8 @@ def test_strict_attempt_fails_before_execution_without_fee_artifact_hash() -> No
 
     with pytest.raises(StrictDataMissingError, match="source artifact hash missing"):
         simulator.attempt(
-            object(),
+            order(),
+            bar(),
             security_id="PAST_DELISTED.SZ",
             trade_date=date(2020, 6, 1),
             exchange="SSE",
@@ -197,6 +200,7 @@ def test_strict_attempt_uses_dated_fee_for_real_execution() -> None:
         low=Decimal("10"),
         close=Decimal("10"),
         volume=1_000,
+        previous_close=Decimal("10"),
     )
 
     result = simulator.attempt(
@@ -212,3 +216,30 @@ def test_strict_attempt_uses_dated_fee_for_real_execution() -> None:
     assert isinstance(result, FilledAttempt)
     assert result.fee == Decimal("5.01")
     assert result.fee_schedule_id == "fee-2020"
+
+
+def order() -> OrderIntent:
+    return OrderIntent(
+        order_id="order-1",
+        security_id="PAST_DELISTED.SZ",
+        side=OrderSide.BUY,
+        quantity=100,
+        signal_date=date(2020, 5, 29),
+        earliest_trade_date=date(2020, 6, 1),
+        strategy_book="core",
+        priority=100,
+        signal_close=Decimal("10"),
+        max_participation_rate=Decimal("1"),
+    )
+
+
+def bar() -> DailyBar:
+    return DailyBar(
+        trade_date=date(2020, 6, 1),
+        open=Decimal("10"),
+        high=Decimal("10"),
+        low=Decimal("10"),
+        close=Decimal("10"),
+        volume=1_000,
+        previous_close=Decimal("10"),
+    )

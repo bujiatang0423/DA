@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, time
+from decimal import Decimal
 from string import hexdigits
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
-from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
+from backend.app.features.backtests.execution import DailyBar, FilledAttempt, RejectedAttempt
 from backend.app.features.backtests.fees import FeeSchedule
+from backend.app.features.backtests.models import OrderIntent
+from backend.app.features.backtests.ports import BacktestExecutionPort
 from backend.app.infrastructure.market.strict_queries import (
     FeeSchedule as HistoricalFeeSchedule,
     SecurityStatus,
@@ -14,13 +18,18 @@ from backend.app.infrastructure.market.strict_queries import (
 )
 
 
+SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
 class AttemptSimulator(Protocol):
     def attempt(
         self,
-        *args: object,
+        intent: OrderIntent,
+        bar: DailyBar,
+        *,
         fee_schedule: FeeSchedule,
-        price_limit_pct: object,
-        **kwargs: object,
+        price_limit_pct: Decimal,
+        available_to_sell: int = 0,
     ) -> FilledAttempt | RejectedAttempt: ...
 
 
@@ -39,6 +48,10 @@ class ExecutionQueries(Protocol):
     ) -> HistoricalFeeSchedule: ...
 
 
+class HistoricalDailyBarReader(Protocol):
+    def bar_for(self, security_id: str, trade_date: date) -> DailyBar: ...
+
+
 class StrictExecutionSimulator:
     def __init__(
         self,
@@ -52,15 +65,18 @@ class StrictExecutionSimulator:
 
     def attempt(
         self,
-        *args: object,
+        intent: OrderIntent,
+        bar: DailyBar,
         security_id: str,
         trade_date: date,
         exchange: str,
         asset_type: str,
         as_of_time: datetime,
-        **kwargs: object,
+        available_to_sell: int = 0,
     ) -> FilledAttempt | RejectedAttempt:
         status = self._securities.status(security_id, as_of_time)
+        if bar.previous_close is None:
+            raise StrictDataMissingError(f"previous close missing: {security_id}")
         dated = self._executions.fee_schedule(
             trade_date=trade_date,
             exchange=exchange,
@@ -76,10 +92,11 @@ class StrictExecutionSimulator:
             transfer_rate=dated.transfer_rate,
         )
         result = self._simulator.attempt(
-            *args,
+            intent,
+            replace(bar, suspended=bar.suspended or status.is_suspended),
             fee_schedule=fee_schedule,
             price_limit_pct=status.price_limit_pct,
-            **kwargs,
+            available_to_sell=available_to_sell,
         )
         return replace(
             result,
@@ -93,3 +110,37 @@ class StrictExecutionSimulator:
             char not in hexdigits for char in source_artifact_hash
         ):
             raise StrictDataMissingError("fee schedule source artifact hash missing")
+
+
+class StrictBacktestExecutionPort(BacktestExecutionPort):
+    def __init__(
+        self,
+        simulator: StrictExecutionSimulator,
+        bars: HistoricalDailyBarReader,
+        timezone: ZoneInfo = SHANGHAI,
+    ) -> None:
+        self._simulator = simulator
+        self._bars = bars
+        self._timezone = timezone
+
+    def execute(
+        self, intent: OrderIntent, trade_date: date, available_to_sell: int
+    ) -> FilledAttempt | RejectedAttempt:
+        return self._simulator.attempt(
+            intent,
+            self._bars.bar_for(intent.security_id, trade_date),
+            security_id=intent.security_id,
+            trade_date=trade_date,
+            exchange=_exchange_for(intent.security_id),
+            asset_type="stock",
+            as_of_time=datetime.combine(trade_date, time(9), self._timezone),
+            available_to_sell=available_to_sell,
+        )
+
+
+def _exchange_for(security_id: str) -> str:
+    if security_id.endswith(".SH"):
+        return "SSE"
+    if security_id.endswith(".SZ"):
+        return "SZSE"
+    raise StrictDataMissingError(f"exchange missing: {security_id}")

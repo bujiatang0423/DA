@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from backend.app.features.backtests.fees import FeeSchedule, RESEARCH_FEE_SCHEDULE, calculate_fee
 from backend.app.features.backtests.models import OrderIntent, OrderSide
@@ -19,6 +19,7 @@ class DailyBar:
     suspended: bool = False
     limit_up: bool = False
     limit_down: bool = False
+    previous_close: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,28 @@ def stop_price(bar: DailyBar, stop: Decimal, slippage: Decimal) -> Decimal | Non
     return None
 
 
+def is_limit_up_locked(bar: DailyBar, price_limit_pct: Decimal | None) -> bool:
+    if bar.limit_up:
+        return True
+    if price_limit_pct is None or bar.previous_close is None:
+        return False
+    return bar.open >= _limit_price(bar.previous_close, price_limit_pct, Decimal(1))
+
+
+def is_limit_down_locked(bar: DailyBar, price_limit_pct: Decimal | None) -> bool:
+    if bar.limit_down:
+        return True
+    if price_limit_pct is None or bar.previous_close is None:
+        return False
+    return bar.open <= _limit_price(bar.previous_close, price_limit_pct, Decimal(-1))
+
+
+def _limit_price(previous_close: Decimal, price_limit_pct: Decimal, direction: Decimal) -> Decimal:
+    return (previous_close * (Decimal(1) + direction * price_limit_pct)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
 class ExecutionSimulator:
     def __init__(self, fee_schedule: FeeSchedule = RESEARCH_FEE_SCHEDULE) -> None:
         self.fee_schedule = fee_schedule
@@ -69,15 +92,14 @@ class ExecutionSimulator:
         fee_schedule: FeeSchedule | None = None,
         price_limit_pct: Decimal | None = None,
     ) -> FilledAttempt | RejectedAttempt:
-        del price_limit_pct
         schedule = fee_schedule or self.fee_schedule
         if intent.earliest_trade_date > bar.trade_date:
             return self._reject(intent, bar, "T_PLUS_ONE", schedule)
         if bar.suspended:
             return self._reject(intent, bar, "SUSPENDED", schedule)
-        if intent.side is OrderSide.BUY and bar.limit_up:
+        if intent.side is OrderSide.BUY and is_limit_up_locked(bar, price_limit_pct):
             return self._reject(intent, bar, "LIMIT_UP_LOCKED", schedule)
-        if intent.side is OrderSide.SELL and bar.limit_down:
+        if intent.side is OrderSide.SELL and is_limit_down_locked(bar, price_limit_pct):
             return self._reject(intent, bar, "LIMIT_DOWN_LOCKED", schedule)
         if intent.side is OrderSide.BUY and bar.open > intent.signal_close * Decimal("1.03"):
             return self._reject(intent, bar, "BUY_GAP_TOO_HIGH", schedule)
