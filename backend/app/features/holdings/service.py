@@ -14,7 +14,7 @@ from backend.app.ports.portfolio import PortfolioReader
 from backend.app.ports.strategy import StrategyDecisionPort
 
 from .models import HoldingAnalysisResult, HoldingRiskSummary
-from .quality import llm_grade_from_snapshot
+from .quality import holding_evidence, llm_grade_from_snapshot
 from .repository import HoldingAnalysisRepository
 from .strategy_projection import project_position
 
@@ -94,8 +94,14 @@ class HoldingAnalysisService:
                 f"{HoldingMarketDataMissing.code}: invalid close for {','.join(invalid_close_ids)}"
             )
         items = tuple(
-            project_position(position, evaluations_by_security[position.security_id])
+            project_position(
+                position,
+                evaluations_by_security[position.security_id],
+                evidence_refs=evidence.refs,
+                evidence_available=evidence.is_available,
+            )
             for position in portfolio.positions
+            for evidence in (holding_evidence(snapshot, position.security_id),)
         )
         portfolio_view = evaluation.portfolio_summary
         result = HoldingAnalysisResult(

@@ -8,7 +8,11 @@ from .priority import PriorityFacts, decide_action
 
 
 def project_position(
-    position: PortfolioPosition, evaluation: SecurityEvaluation
+    position: PortfolioPosition,
+    evaluation: SecurityEvaluation,
+    *,
+    evidence_refs: tuple[str, ...] = (),
+    evidence_available: bool = False,
 ) -> HoldingAdviceItem:
     factors = evaluation.factors
     if factors is None:
@@ -58,6 +62,15 @@ def project_position(
         planned_quantity=planned_quantity,
         pending_target_action=None,
         reason_codes=reasons,
-        quality_codes=evaluation.quality_codes,
-        evidence_refs=(),
+        quality_codes=_quality_codes(evaluation.quality_codes, evidence_available),
+        evidence_refs=evidence_refs,
     )
+
+
+def _quality_codes(
+    quality_codes: tuple[str, ...],
+    evidence_available: bool,
+) -> tuple[str, ...]:
+    if evidence_available:
+        return quality_codes
+    return (*quality_codes, "HOLDING_EVIDENCE_UNAVAILABLE")

@@ -134,6 +134,9 @@ test("renders risk-first, legacy, and manual-only semantics", async () => {
   expect(screen.getByText("T+1 锁定，退出待执行")).toBeTruthy();
   expect(screen.getByText("历史期初持仓，未追认策略账本")).toBeTruthy();
   expect(screen.getByText("仅供人工确认，不自动下单")).toBeTruthy();
+  expect(screen.getByLabelText("PIT 证据").textContent).toContain(
+    "market-close:000001.SZ:2026-07-17",
+  );
 });
 
 test("renders a not-yet-run state when latest analysis is absent", async () => {
