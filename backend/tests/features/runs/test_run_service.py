@@ -16,7 +16,7 @@ from backend.app.infrastructure.persistence.models import RunRow
     (
         (RunKind.CANDIDATE_RECOMMENDATION, "/api/v1/candidates/{run_id}"),
         (RunKind.HOLDING_ANALYSIS, "/api/v1/holding-analyses/{run_id}"),
-        (RunKind.BACKTEST, None),
+        (RunKind.BACKTEST, "/api/v1/backtests/{run_id}"),
         (RunKind.LEGACY_IMPORT, None),
     ),
 )
