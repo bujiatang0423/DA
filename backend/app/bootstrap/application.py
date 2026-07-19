@@ -19,6 +19,7 @@ from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.holdings.module import build_holdings_feature
 from backend.app.features.holdings.repository import HoldingAnalysisNotFound
 from backend.app.features.backtests.module import build_backtests_feature
+from backend.app.features.backtests.repository import SqlBacktestRepository
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
@@ -309,7 +310,7 @@ def build_application() -> FastAPI:
                 components.holding_service,
                 components.portfolio_writer,
             ),
-            build_backtests_feature(runs_service.submit),
+            build_backtests_feature(runs_service.submit, SqlBacktestRepository(sessions)),
             build_legacy_import_feature(legacy_imports),
         )
     )  # type: ignore[arg-type]
