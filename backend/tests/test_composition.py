@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from decimal import Decimal
 from types import ModuleType
 
 import pytest
@@ -10,7 +11,13 @@ from backend.app.bootstrap.composition import (
     build_warehouse,
 )
 from backend.app.bootstrap.settings import Settings
-from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
+from backend.app.core.market.pit_models import DataKind, PointInTimeSnapshot, SnapshotScope
+from backend.app.core.portfolio.models import PortfolioSnapshot
+from backend.app.core.strategy.service import V212StrategyEngine
+from backend.app.features.candidates.service import (
+    CandidateRecommendationCommand,
+    CandidateService,
+)
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 
@@ -23,6 +30,30 @@ class FrozenWarehouse:
         scope: SnapshotScope,
     ) -> PointInTimeSnapshot:
         raise AssertionError((as_of_time, scope))
+
+
+class EmptyPortfolioReader:
+    def snapshot(self, *, portfolio_id: str, as_of_time: datetime) -> PortfolioSnapshot:
+        return PortfolioSnapshot(portfolio_id, as_of_time, 1, Decimal("1000"), Decimal("1000"), ())
+
+
+class RecordingCandidateRepository:
+    def __init__(self) -> None:
+        self.saved: object | None = None
+
+    def save(self, result: object) -> None:
+        self.saved = result
+
+    def get(self, run_id: str) -> None:
+        del run_id
+        return None
+
+    def latest(self) -> None:
+        return None
+
+    def states_before(self, as_of_time: datetime) -> dict[object, object]:
+        del as_of_time
+        return {}
 
 
 def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
@@ -71,3 +102,42 @@ def test_components_share_the_explicit_fake_warehouse() -> None:
     assert components.candidate_service._warehouse is warehouse
     assert components.holding_service._warehouse is warehouse
     assert components.portfolio_writer.__class__.__name__ == "AuditedPortfolioWriter"
+
+
+def test_configured_provider_failure_is_sanitized_and_cannot_create_candidates() -> None:
+    settings = Settings(_env_file=None, provider_mode="production")
+    akshare = ModuleType("akshare")
+    baostock = ModuleType("baostock")
+
+    def unavailable(**kwargs: object) -> None:
+        del kwargs
+        raise RuntimeError("credential=secret upstream response")
+
+    akshare.stock_zh_a_hist = unavailable  # type: ignore[attr-defined]
+    components = build_components(
+        settings,
+        sessionmaker(),
+        akshare_module=akshare,
+        baostock_module=baostock,
+    )
+    as_of_time = datetime(2026, 7, 19, 16, tzinfo=UTC)
+    snapshot = components.warehouse.snapshot(
+        as_of_time=as_of_time,
+        scope=SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,)),
+    )
+
+    issue = next(issue for issue in snapshot.quality.issues if issue.code == "PROVIDER_UNAVAILABLE")
+    repository = RecordingCandidateRepository()
+    service = CandidateService(
+        components.warehouse,
+        EmptyPortfolioReader(),
+        components.candidate_service._input_builder,
+        V212StrategyEngine(),
+        repository,
+    )
+    result = service.run(CandidateRecommendationCommand("run-1", "portfolio-1", as_of_time))
+
+    assert snapshot.quality.has_errors
+    assert "secret" not in issue.detail
+    assert result.items == ()
+    assert "REQUIRED_DATASET_MISSING" in result.quality_codes
