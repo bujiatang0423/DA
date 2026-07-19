@@ -5,6 +5,7 @@ import pytest
 
 from backend.app.features.backtests.ledger import Fill, PortfolioLedger
 from backend.app.features.backtests.models import OrderSide
+from backend.app.features.backtests.execution import FilledAttempt
 
 
 def fill(
@@ -124,3 +125,24 @@ def test_same_day_sell_uses_only_prior_day_lots() -> None:
         )
 
     assert [lot.remaining_quantity for lot in ledger.state.lots] == [100, 100]
+
+
+def test_attempted_sale_reports_the_ledger_realized_pnl() -> None:
+    ledger = PortfolioLedger.opening(Decimal("100000"))
+    ledger.apply_fill(fill("buy-1", OrderSide.BUY, 100, "10", "5"))
+
+    applied = ledger.apply_attempt(
+        FilledAttempt(
+            order_id="sell-1",
+            trade_date=datetime(2024, 1, 3).date(),
+            quantity=100,
+            theoretical_price=Decimal("12"),
+            actual_price=Decimal("12"),
+            fee=Decimal("6"),
+            slippage=Decimal("0"),
+        ),
+        "600000.SH",
+        OrderSide.SELL,
+    )
+
+    assert applied.realized_net_pnl == Decimal("189.00")

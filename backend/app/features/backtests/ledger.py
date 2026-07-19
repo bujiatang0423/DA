@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -23,6 +23,7 @@ class Fill:
     initial_risk_per_share: Decimal | None = None
     effective_stop: Decimal | None = None
     highest_close: Decimal | None = None
+    realized_net_pnl: Decimal | None = None
 
 
 @dataclass
@@ -176,7 +177,10 @@ class PortfolioLedger:
             datetime.combine(attempt.trade_date, datetime.min.time()),
             strategy_book,
         )
+        realized_pnl_before = self.state.realized_pnl
         self.apply_fill(fill)
+        if side is OrderSide.SELL:
+            return replace(fill, realized_net_pnl=self.state.realized_pnl - realized_pnl_before)
         return fill
 
     def to_portfolio_snapshot(self, as_of_time: datetime) -> PortfolioSnapshot:

@@ -150,8 +150,15 @@ class BacktestEngine:
                 "side": fill.side.value,
                 "quantity": str(fill.quantity),
                 "price": str(fill.price),
+                "theoretical_price": str(attempt.theoretical_price),
                 "fee": str(fill.fee),
+                "slippage": str(attempt.slippage),
+                "strategy_book": intent.strategy_book,
             }
+            if attempt.reason_code is not None:
+                trade["reason_code"] = attempt.reason_code
+            if fill.realized_net_pnl is not None:
+                trade["realized_net_pnl"] = str(fill.realized_net_pnl)
             if attempt.fee_schedule_id is not None:
                 trade["fee_schedule_id"] = attempt.fee_schedule_id
             if attempt.fee_schedule_hash is not None:

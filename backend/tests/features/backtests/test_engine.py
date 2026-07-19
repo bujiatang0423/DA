@@ -96,6 +96,9 @@ def test_daily_event_order_and_next_day_execution_are_replayable() -> None:
     assert result.equity_curve[0]["trade_date"] == "2024-01-02"
     assert result.trades[0]["signal_date"] == "2024-01-02"
     assert result.trades[0]["trade_date"] == "2024-01-03"
+    assert result.trades[0]["theoretical_price"] == "10"
+    assert result.trades[0]["slippage"] == "0"
+    assert result.trades[0]["strategy_book"] == "core"
     assert requested_snapshots[:2] == [
         datetime(2024, 1, 2, 15, 30, tzinfo=SHANGHAI),
         datetime(2024, 1, 3, 15, 30, tzinfo=SHANGHAI),
