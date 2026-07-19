@@ -147,6 +147,16 @@ def test_request_rejects_inverted_dates() -> None:
         )
 
 
+def test_request_requires_out_of_sample_boundary_after_backtest_start() -> None:
+    with pytest.raises(ValidationError, match="out_of_sample_start"):
+        BacktestRequest.model_validate(
+            {
+                **request_payload(),
+                "out_of_sample_start": date(2020, 1, 2),
+            }
+        )
+
+
 def test_request_is_frozen_and_uses_research_fee_schedule() -> None:
     request = make_request()
 
