@@ -124,7 +124,8 @@ def test_cli_import_is_idempotent_and_does_not_modify_the_source(
 
 def test_da_runtime_does_not_reference_la_workspace_or_pythonpath() -> None:
     project_root = Path(__file__).resolve().parents[4]
-    forbidden = ("/Users/bujiatang/workspace/LA", "workspace.LA", "PYTHONPATH")
+    la_workspace = "/Users/bujiatang/workspace/" + "LA"
+    forbidden = (la_workspace, "workspace.LA", "PYTHONPATH")
     violations = [
         path
         for path in (project_root / "backend" / "app").rglob("*.py")
