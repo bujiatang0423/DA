@@ -11,6 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.infrastructure.market.strict_queries import (
+    StrictDataMissingError,
     TemporalDisclosureQueries,
     TemporalSecurityQueries,
 )
@@ -76,6 +77,27 @@ def test_universe_uses_available_listing_and_validity_intervals(
 
 
 @pytest.mark.postgres
+def test_universe_does_not_resurrect_an_invalidated_source_record(
+    strict_query_session: Session,
+) -> None:
+    strict_query_session.add_all(
+        [
+            master("active", "PAST.SZ", source_record_id="master-PAST"),
+            master(
+                "invalidated",
+                "PAST.SZ",
+                source_record_id="master-PAST",
+                valid_to=AS_OF.date(),
+                available_at=AS_OF,
+            ),
+        ]
+    )
+    strict_query_session.commit()
+
+    assert TemporalSecurityQueries(strict_query_session).universe(AS_OF) == ()
+
+
+@pytest.mark.postgres
 def test_status_and_industry_select_latest_available_deterministic_version(
     strict_query_session: Session,
 ) -> None:
@@ -98,6 +120,28 @@ def test_status_and_industry_select_latest_available_deterministic_version(
     assert selected_status.board == "main"
     assert selected_status.price_limit_pct == Decimal("0.10")
     assert queries.industry("PAST.SZ", AS_OF) == "OLD_Z"
+
+
+@pytest.mark.postgres
+def test_industry_does_not_resurrect_an_invalidated_source_record(
+    strict_query_session: Session,
+) -> None:
+    strict_query_session.add_all(
+        [
+            industry("active", "OLD", source_record_id="industry-PAST"),
+            industry(
+                "invalidated",
+                "REMOVED",
+                source_record_id="industry-PAST",
+                effective_to=AS_OF.date(),
+                available_at=AS_OF,
+            ),
+        ]
+    )
+    strict_query_session.commit()
+
+    with pytest.raises(StrictDataMissingError, match="industry missing: PAST.SZ"):
+        TemporalSecurityQueries(strict_query_session).industry("PAST.SZ", AS_OF)
 
 
 @pytest.mark.postgres
@@ -178,6 +222,7 @@ def master(
     row_id: str,
     security_id: str,
     *,
+    source_record_id: str | None = None,
     listed_on: date = date(2010, 1, 1),
     delisted_on: date | None = None,
     valid_to: date | None = None,
@@ -185,7 +230,7 @@ def master(
 ) -> SecurityMasterHistoryRow:
     return SecurityMasterHistoryRow(
         id=row_id,
-        source_record_id=row_id,
+        source_record_id=source_record_id or row_id,
         security_id=security_id,
         name=security_id,
         listed_on=listed_on,
@@ -220,11 +265,16 @@ def status(
 
 
 def industry(
-    row_id: str, industry_id: str, *, available_at: datetime = AS_OF
+    row_id: str,
+    industry_id: str,
+    *,
+    source_record_id: str | None = None,
+    effective_to: date | None = None,
+    available_at: datetime = AS_OF,
 ) -> IndustryMembershipHistoryRow:
     return IndustryMembershipHistoryRow(
         id=row_id,
-        source_record_id=row_id,
+        source_record_id=source_record_id or row_id,
         security_id="PAST.SZ",
         available_at=available_at,
         source_artifact_hash=f"hash-{row_id}",
@@ -232,7 +282,7 @@ def industry(
             {
                 "industry_id": industry_id,
                 "effective_from": "2020-01-01",
-                "effective_to": "",
+                "effective_to": effective_to.isoformat() if effective_to else "",
             }
         ),
     )

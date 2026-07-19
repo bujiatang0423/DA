@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TypeVar
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.infrastructure.persistence.strict_pit_rows import (
@@ -58,20 +58,21 @@ class TemporalSecurityQueries:
         rows = self._session.scalars(
             select(SecurityMasterHistoryRow).where(
                 SecurityMasterHistoryRow.available_at <= as_of_time,
-                SecurityMasterHistoryRow.valid_from <= as_of_date,
-                or_(
-                    SecurityMasterHistoryRow.valid_to.is_(None),
-                    SecurityMasterHistoryRow.valid_to > as_of_date,
-                ),
-                SecurityMasterHistoryRow.listed_on <= as_of_date,
-                or_(
-                    SecurityMasterHistoryRow.delisted_on.is_(None),
-                    SecurityMasterHistoryRow.delisted_on > as_of_date,
-                ),
             )
         ).all()
-        latest = _latest_by(rows, lambda row: row.security_id, _master_order)
-        return tuple(sorted(latest))
+        latest = _latest_by(rows, lambda row: row.source_record_id, _master_order)
+        return tuple(
+            sorted(
+                {
+                    row.security_id
+                    for row in latest.values()
+                    if row.valid_from <= as_of_date
+                    and (row.valid_to is None or row.valid_to > as_of_date)
+                    and row.listed_on <= as_of_date
+                    and (row.delisted_on is None or row.delisted_on > as_of_date)
+                }
+            )
+        )
 
     def status(self, security_id: str, as_of_time: datetime) -> SecurityStatus:
         row = self._session.scalar(
@@ -95,8 +96,9 @@ class TemporalSecurityQueries:
                 IndustryMembershipHistoryRow.available_at <= as_of_time,
             )
         ).all()
+        latest = _latest_by(rows, lambda row: row.source_record_id, _available_order)
         candidates = []
-        for row in rows:
+        for row in latest.values():
             payload = json.loads(row.payload_json)
             effective_from = date.fromisoformat(str(payload["effective_from"]))
             effective_to_value = str(payload.get("effective_to") or "")
@@ -182,8 +184,12 @@ def _latest_by(
     return result
 
 
-def _master_order(row: SecurityMasterHistoryRow) -> tuple[date, datetime, str]:
-    return row.valid_from, row.available_at, row.id
+def _master_order(row: SecurityMasterHistoryRow) -> tuple[datetime, str]:
+    return row.available_at, row.id
+
+
+def _available_order(row: IndustryMembershipHistoryRow) -> tuple[datetime, str]:
+    return row.available_at, row.id
 
 
 def _fact_order(row: FinancialFactRow) -> tuple[datetime, str]:
