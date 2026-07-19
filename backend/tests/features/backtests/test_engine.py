@@ -1,15 +1,19 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+import pytest
 from backend.app.contracts.grades import DataGrade, LlmGrade
 from backend.app.core.market.pit_models import (
     DataKind,
     LineageRef,
     PointInTimeSnapshot,
+    QualityIssue,
+    QualitySeverity,
     SnapshotQuality,
     TemporalRecord,
 )
 from backend.app.features.backtests.engine import BacktestEngine, SHANGHAI
+from backend.app.features.backtests.ports import BacktestSnapshotQualityError
 from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
 from backend.app.features.backtests.models import (
     BacktestRequest,
@@ -157,6 +161,55 @@ def test_manifest_changes_when_used_snapshot_batch_changes() -> None:
     )
 
     assert first.input_manifest_hash != second.input_manifest_hash
+
+
+def test_snapshot_quality_error_stops_before_decision_or_result() -> None:
+    decisions: list[BacktestDecisionContext] = []
+
+    class TradingDays:
+        def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
+            return date(2024, 1, 2), date(2024, 1, 3)
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                scope,
+                DataGrade.PIT_VERIFIED,
+                (),
+                (),
+                SnapshotQuality(
+                    (
+                        QualityIssue(
+                            "REQUIRED_DATASET_MISSING",
+                            QualitySeverity.ERROR,
+                            "daily_bar_raw",
+                            None,
+                            "sensitive provider detail",
+                        ),
+                    )
+                ),
+                (),
+                "missing-input",
+            )
+
+    class Decisions:
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            decisions.append(context)
+            return BacktestDecision((), {})
+
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 3),
+        initial_cash=Decimal("10_000"),
+        groups=[StrategyGroup.A],
+    )
+
+    with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
+        BacktestEngine(TradingDays(), Warehouse(), Decisions()).run(request, StrategyGroup.A)
+
+    assert decisions == []
 
 
 def test_rejected_execution_attempt_is_auditable_without_becoming_a_trade() -> None:

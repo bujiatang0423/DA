@@ -31,6 +31,7 @@ from backend.app.features.backtests.ports import (
     BacktestDecisionContext,
     BacktestDecisionPort,
     BacktestExecutionPort,
+    BacktestSnapshotQualityError,
     BacktestSnapshotPort,
     BacktestTradingDayPort,
 )
@@ -106,6 +107,8 @@ class BacktestEngine:
                         (), datetime.combine(request.start_date, time.min, SHANGHAI)
                     ),
                 )
+                if snapshot.quality.has_errors:
+                    raise BacktestSnapshotQualityError()
                 snapshots.append(snapshot)
                 if (market_regime := _market_regime(snapshot)) is not None:
                     market_regimes[days[index + 1]] = market_regime

@@ -49,7 +49,13 @@ class ExecutionQueries(Protocol):
 
 
 class HistoricalDailyBarReader(Protocol):
-    def bar_for(self, security_id: str, trade_date: date) -> DailyBar: ...
+    def bar_for(
+        self,
+        security_id: str,
+        trade_date: date,
+        *,
+        as_of_time: datetime,
+    ) -> DailyBar: ...
 
 
 class StrictExecutionSimulator:
@@ -128,7 +134,11 @@ class StrictBacktestExecutionPort(BacktestExecutionPort):
     ) -> FilledAttempt | RejectedAttempt:
         return self._simulator.attempt(
             intent,
-            self._bars.bar_for(intent.security_id, trade_date),
+            self._bars.bar_for(
+                intent.security_id,
+                trade_date,
+                as_of_time=datetime.combine(trade_date, time(9), self._timezone),
+            ),
             security_id=intent.security_id,
             trade_date=trade_date,
             exchange=_exchange_for(intent.security_id),

@@ -100,8 +100,15 @@ class Decisions:
 
 
 class Bars:
-    def bar_for(self, security_id: str, trade_date: date) -> DailyBar:
+    def bar_for(
+        self,
+        security_id: str,
+        trade_date: date,
+        *,
+        as_of_time: datetime,
+    ) -> DailyBar:
         assert (security_id, trade_date) == ("PAST_DELISTED.SZ", date(2020, 6, 2))
+        assert as_of_time == datetime(2020, 6, 2, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
         return DailyBar(
             trade_date=trade_date,
             open=Decimal("11"),
