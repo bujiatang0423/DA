@@ -124,3 +124,23 @@ def test_sell_stop_attempt_uses_triggered_or_normal_open_price(
 
     assert isinstance(result, FilledAttempt)
     assert result.actual_price == expected_price
+
+
+def test_historical_price_limit_uses_prior_close_and_board_percentage() -> None:
+    intent = _intent(quantity=100, participation=Decimal("1"), signal_close=Decimal("11"))
+    bar = _bar(open=Decimal("11"), high=Decimal("11"), previous_close=Decimal("10"))
+
+    ten_percent = ExecutionSimulator().attempt(
+        intent,
+        bar,
+        price_limit_pct=Decimal("0.10"),
+    )
+    twenty_percent = ExecutionSimulator().attempt(
+        intent,
+        bar,
+        price_limit_pct=Decimal("0.20"),
+    )
+
+    assert isinstance(ten_percent, RejectedAttempt)
+    assert ten_percent.reason_code == "LIMIT_UP_LOCKED"
+    assert isinstance(twenty_percent, FilledAttempt)
