@@ -143,9 +143,7 @@ def test_latest_and_result_return_persisted_advice() -> None:
     assert latest.json()["items"][0]["factors"]["s"] == "62.5"
     assert latest.json()["items"][0]["factors"]["percentile_rank"] == "0.80"
     assert latest.json()["items"][0]["r_multiple"] == "1.50"
-    assert latest.json()["items"][0]["evidence_refs"] == [
-        "market-close:600000.SH:2026-07-17"
-    ]
+    assert latest.json()["items"][0]["evidence_refs"] == ["market-close:600000.SH:2026-07-17"]
 
 
 def test_positions_preserve_legacy_origin_and_unknown_book() -> None:
