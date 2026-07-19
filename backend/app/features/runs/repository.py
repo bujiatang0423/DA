@@ -67,7 +67,7 @@ class RunRepository:
         self._event(row.id, "submitted", now)
         return row
 
-    def claim_next(self, now: datetime) -> RunRow | None:
+    def claim_next(self, now: datetime, worker_id: str, lease_token: str) -> RunRow | None:
         row = self._session.scalar(
             select(RunRow)
             .where(RunRow.status == RunStatus.QUEUED.value)
@@ -80,14 +80,25 @@ class RunRepository:
         row.status = RunStatus.RUNNING.value
         row.started_at = row.started_at or now
         row.heartbeat_at = now
+        row.claim_owner = worker_id
+        row.claim_token = lease_token
         self._event(row.id, "claimed", now)
         self._session.flush()
         return row
 
-    def transition(self, run_id: UUID, target: RunStatus, now: datetime) -> RunRow:
+    def transition(
+        self,
+        run_id: UUID,
+        target: RunStatus,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+    ) -> RunRow | None:
         row = self._session.get(RunRow, run_id, with_for_update=True)
         if row is None:
             raise KeyError(str(run_id))
+        if row.claim_owner != worker_id or row.claim_token != lease_token:
+            return None
         current = RunStatus(row.status)
         if target not in ALLOWED[current]:
             raise InvalidRunTransition(f"{current.value} -> {target.value}")
@@ -98,12 +109,26 @@ class RunRepository:
         self._session.flush()
         return row
 
-    def heartbeat(self, run_id: UUID, stage: str, progress: int, now: datetime) -> None:
-        self._session.execute(
+    def heartbeat(
+        self,
+        run_id: UUID,
+        stage: str,
+        progress: int,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+    ) -> bool:
+        result = self._session.execute(
             update(RunRow)
-            .where(RunRow.id == run_id, RunRow.status == RunStatus.RUNNING.value)
+            .where(
+                RunRow.id == run_id,
+                RunRow.status == RunStatus.RUNNING.value,
+                RunRow.claim_owner == worker_id,
+                RunRow.claim_token == lease_token,
+            )
             .values(heartbeat_at=now, stage=stage, progress=progress)
         )
+        return result.rowcount == 1
 
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:
         result = self._session.execute(

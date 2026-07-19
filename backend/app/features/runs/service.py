@@ -73,17 +73,34 @@ class RunsService:
                 )
             ]
 
-    def claim_next(self, now: datetime) -> RunRow | None:
+    def claim_next(self, now: datetime, worker_id: str, lease_token: str) -> RunRow | None:
         with self._factory.begin() as session:
-            return RunRepository(session).claim_next(now)
+            return RunRepository(session).claim_next(now, worker_id, lease_token)
 
-    def heartbeat(self, run_id: UUID, stage: str, progress: int, now: datetime) -> None:
+    def heartbeat(
+        self,
+        run_id: UUID,
+        stage: str,
+        progress: int,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+    ) -> bool:
         with self._factory.begin() as session:
-            RunRepository(session).heartbeat(run_id, stage, progress, now)
+            return RunRepository(session).heartbeat(
+                run_id, stage, progress, now, worker_id, lease_token
+            )
 
-    def transition(self, run_id: UUID, target: RunStatus, now: datetime) -> RunRow:
+    def transition(
+        self,
+        run_id: UUID,
+        target: RunStatus,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+    ) -> RunRow | None:
         with self._factory.begin() as session:
-            return RunRepository(session).transition(run_id, target, now)
+            return RunRepository(session).transition(run_id, target, now, worker_id, lease_token)
 
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:
         with self._factory.begin() as session:
