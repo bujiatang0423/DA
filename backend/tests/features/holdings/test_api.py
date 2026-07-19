@@ -11,7 +11,7 @@ from backend.app.contracts.runs import RunKind, RunLinks, RunRef, RunStatus
 from backend.app.core.portfolio.analysis import HoldingAnalysisService as LegacyHoldingService
 from backend.app.core.portfolio.models import PositionOrigin
 from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
-from backend.app.features.holdings.router import build_router
+from backend.app.features.holdings.router import LegacyImportProvenance, build_router
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
 from backend.app.infrastructure.tasks.handlers import JobContext
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
@@ -77,6 +77,7 @@ def holding_client(
 def portfolio_client(
     reader: FakePortfolioReader,
     writer: FakePortfolioWriter,
+    import_provenance_reader: object | None = None,
 ) -> TestClient:
     repository = FakeHoldingAnalysisRepository()
     router = build_router(
@@ -84,6 +85,7 @@ def portfolio_client(
         repository=repository,
         portfolio_reader=reader,
         portfolio_writer=writer,
+        import_provenance_reader=import_provenance_reader,
         clock=FakeClock(reader.snapshot_value.as_of_time),
     )
     return TestClient(create_app((FeatureModule("holdings", router, ()),)))
@@ -164,6 +166,68 @@ def test_positions_preserve_legacy_origin_and_unknown_book() -> None:
     position = response.json()["items"][0]
     assert position["origin"] == "legacy_opening_balance"
     assert position["strategy_book"] is None
+
+
+def test_positions_return_only_server_verified_import_provenance() -> None:
+    snapshot = portfolio_snapshot()
+    legacy_lot = replace(
+        snapshot.lots[0],
+        origin=PositionOrigin.LEGACY_OPENING_BALANCE,
+        strategy_book=None,
+        batch_id="batch-1",
+    )
+    reader = FakePortfolioReader(replace(snapshot, lots=(legacy_lot,)))
+    writer = FakePortfolioWriter(reader.snapshot_value)
+
+    def provenance(batch_id: str) -> LegacyImportProvenance | None:
+        if batch_id != "batch-1":
+            return None
+        return LegacyImportProvenance(
+            batch_id="batch-1",
+            manifest_sha256="a" * 64,
+            portfolio_id="default",
+            effective_at=reader.snapshot_value.as_of_time,
+        )
+
+    client = portfolio_client(reader, writer, provenance)
+    response = client.get(
+        f"/api/v1/portfolio/positions?import_batch_id=batch-1&import_manifest_sha256={'a' * 64}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["import_provenance"] == {
+        "batch_id": "batch-1",
+        "manifest_sha256": "a" * 64,
+    }
+
+
+def test_positions_reject_tampered_import_manifest_without_echoing_it() -> None:
+    snapshot = portfolio_snapshot()
+    legacy_lot = replace(
+        snapshot.lots[0],
+        origin=PositionOrigin.LEGACY_OPENING_BALANCE,
+        batch_id="batch-1",
+    )
+    reader = FakePortfolioReader(replace(snapshot, lots=(legacy_lot,)))
+    writer = FakePortfolioWriter(reader.snapshot_value)
+    client = portfolio_client(
+        reader,
+        writer,
+        lambda _batch_id: LegacyImportProvenance(
+            batch_id="batch-1",
+            manifest_sha256="a" * 64,
+            portfolio_id="default",
+            effective_at=reader.snapshot_value.as_of_time,
+        ),
+    )
+
+    response = client.get(
+        "/api/v1/portfolio/positions?import_batch_id=batch-1&"
+        "import_manifest_sha256=not-the-real-manifest"
+    )
+
+    assert response.status_code == 409
+    assert "not-the-real-manifest" not in response.text
 
 
 def test_position_correction_is_audited_and_optimistic() -> None:

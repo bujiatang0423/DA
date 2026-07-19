@@ -4,6 +4,7 @@ import {
   HoldingApiError,
   holdingApi,
   type HoldingResult,
+  type ImportProvenanceRequest,
   type ManualFill,
   type PositionCorrection,
   type PositionPage,
@@ -43,6 +44,11 @@ export function HoldingAnalysisPage(): JSX.Element {
   const importedContext = importedPortfolioContext();
   const portfolioId = importedContext?.portfolioId ?? DEFAULT_PORTFOLIO_ID;
   const requestedAsOfTime = importedContext?.asOfTime;
+  const importBatchId = importedContext?.batchId;
+  const importManifestSha256 = importedContext?.manifestSha256;
+  const requestedImportProvenance: ImportProvenanceRequest | undefined = importedContext
+    ? { batchId: importedContext.batchId, manifestSha256: importedContext.manifestSha256 }
+    : undefined;
   const [positionPage, setPositionPage] = useState<PositionPage | null>(null);
   const [result, setResult] = useState<HoldingResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +65,7 @@ export function HoldingAnalysisPage(): JSX.Element {
     setLoadError(false);
     try {
       const [positions, latest] = await Promise.all([
-        holdingApi.positions(portfolioId, requestedAsOfTime),
+        holdingApi.positions(portfolioId, requestedAsOfTime, requestedImportProvenance),
         holdingApi.latest(portfolioId),
       ]);
       setPositionPage(positions);
@@ -73,10 +79,14 @@ export function HoldingAnalysisPage(): JSX.Element {
 
   useEffect(() => {
     void load();
-  }, [portfolioId, requestedAsOfTime]);
+  }, [portfolioId, requestedAsOfTime, importBatchId, importManifestSha256]);
 
   const reloadPositions = async (): Promise<void> => {
-    const positions = await holdingApi.positions(portfolioId, requestedAsOfTime);
+    const positions = await holdingApi.positions(
+      portfolioId,
+      requestedAsOfTime,
+      requestedImportProvenance,
+    );
     setPositionPage(positions);
   };
 
@@ -178,10 +188,10 @@ export function HoldingAnalysisPage(): JSX.Element {
         </div>
       </div>
       <div className="alert">仅供人工确认，不自动下单</div>
-      {importedContext ? (
+      {positionPage?.import_provenance ? (
         <div className="alert">
-          <div>导入批次：{importedContext.batchId}</div>
-          <div>导入 Manifest：{importedContext.manifestSha256}</div>
+          <div>导入批次：{positionPage.import_provenance.batch_id}</div>
+          <div>导入 Manifest：{positionPage.import_provenance.manifest_sha256}</div>
         </div>
       ) : null}
       {mutationError ? (

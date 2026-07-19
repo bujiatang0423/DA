@@ -876,6 +876,24 @@
         "title": "LegacyImportPreviewResponse",
         "type": "object"
       },
+      "LegacyImportProvenanceResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256"
+        ],
+        "title": "LegacyImportProvenanceResponse",
+        "type": "object"
+      },
       "LegacyImportResultResponse": {
         "properties": {
           "batch_id": {
@@ -1402,6 +1420,16 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Equity",
             "type": "string"
+          },
+          "import_provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegacyImportProvenanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "items": {
             "items": {
@@ -2994,6 +3022,38 @@
                 }
               ],
               "title": "As Of Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_manifest_sha256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Manifest Sha256"
             }
           }
         ],

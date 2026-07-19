@@ -6,15 +6,20 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.contracts.runs import RunKind
+from backend.app.bootstrap.application import create_app
+from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder
+from backend.app.core.portfolio.analysis import HoldingAnalysisService as LegacyHoldingService
 from backend.app.core.strategy.service import V212StrategyEngine
 from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
 from backend.app.features.holdings.repository import SqlHoldingAnalysisRepository
+from backend.app.features.holdings.router import LegacyImportProvenance, build_router
 from backend.app.features.holdings.service import HoldingAnalysisService, HoldingMarketDataMissing
 from backend.app.features.legacy_import.repository import SqlLegacyRepository
 from backend.app.features.legacy_import.service import LegacyImportService
@@ -86,6 +91,59 @@ def test_imported_opening_position_can_only_be_manually_analyzed_and_fails_close
     opening = reader.snapshot(portfolio_id="main", as_of_time=as_of_time)
     assert opening.lots[0].batch_id == imported.batch_id
     assert opening.lots[0].average_cost == Decimal("10.500000")
+
+    def import_provenance(batch_id: str) -> LegacyImportProvenance | None:
+        with sessions() as session:
+            result = SqlLegacyRepository(session).get_summary(batch_id)
+        if result is None:
+            return None
+        return LegacyImportProvenance(
+            batch_id=result.batch_id,
+            manifest_sha256=result.manifest_sha256,
+            portfolio_id=result.portfolio_id,
+            effective_at=result.effective_at,
+        )
+
+    client = TestClient(
+        create_app(
+            (
+                FeatureModule(
+                    "holdings",
+                    build_router(
+                        LegacyHoldingService(reader),
+                        portfolio_reader=reader,
+                        import_provenance_reader=import_provenance,
+                    ),
+                    (),
+                ),
+            )
+        )
+    )
+    verified = client.get(
+        "/api/v1/portfolio/positions",
+        params={
+            "portfolio_id": "main",
+            "as_of_time": as_of_time.isoformat(),
+            "import_batch_id": imported.batch_id,
+            "import_manifest_sha256": imported.manifest_sha256,
+        },
+    )
+    tampered = client.get(
+        "/api/v1/portfolio/positions",
+        params={
+            "portfolio_id": "main",
+            "as_of_time": as_of_time.isoformat(),
+            "import_batch_id": imported.batch_id,
+            "import_manifest_sha256": "b" * 64,
+        },
+    )
+    assert verified.status_code == 200
+    assert verified.json()["import_provenance"] == {
+        "batch_id": imported.batch_id,
+        "manifest_sha256": imported.manifest_sha256,
+    }
+    assert tampered.status_code == 409
+    assert "b" * 64 not in tampered.text
 
     submitted = RunsService(sessions).submit(
         RunKind.HOLDING_ANALYSIS,

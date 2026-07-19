@@ -76,6 +76,15 @@ export interface PositionPage {
   cash: string;
   equity: string;
   items: PositionItem[];
+  import_provenance: {
+    batch_id: string;
+    manifest_sha256: string;
+  } | null;
+}
+
+export interface ImportProvenanceRequest {
+  batchId: string;
+  manifestSha256: string;
 }
 
 export interface PositionCorrection {
@@ -128,18 +137,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function queryForPortfolio(portfolioId: string, asOfTime?: string): string {
+function queryForPortfolio(
+  portfolioId: string,
+  asOfTime?: string,
+  importProvenance?: ImportProvenanceRequest,
+): string {
   const query = new URLSearchParams({ portfolio_id: portfolioId });
   if (asOfTime) {
     query.set("as_of_time", asOfTime);
+  }
+  if (importProvenance) {
+    query.set("import_batch_id", importProvenance.batchId);
+    query.set("import_manifest_sha256", importProvenance.manifestSha256);
   }
   return `?${query.toString()}`;
 }
 
 export const holdingApi = {
-  positions: (portfolioId: string, asOfTime?: string): Promise<PositionPage> =>
+  positions: (
+    portfolioId: string,
+    asOfTime?: string,
+    importProvenance?: ImportProvenanceRequest,
+  ): Promise<PositionPage> =>
     request<PositionPage>(
-      `/api/v1/portfolio/positions${queryForPortfolio(portfolioId, asOfTime)}`,
+      `/api/v1/portfolio/positions${queryForPortfolio(
+        portfolioId,
+        asOfTime,
+        importProvenance,
+      )}`,
     ),
   correctPositions: (requestBody: PositionCorrection): Promise<PositionPage> =>
     request<PositionPage>("/api/v1/portfolio/positions", {

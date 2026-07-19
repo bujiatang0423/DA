@@ -256,6 +256,7 @@ def build_application() -> FastAPI:
         LegacyImportResult,
         LegacyImportWebService,
     )
+    from backend.app.features.holdings.router import LegacyImportProvenance
     from backend.app.infrastructure.persistence.portfolio_maintenance import (
         SqlPortfolioMaintenanceService,
     )
@@ -287,6 +288,17 @@ def build_application() -> FastAPI:
         with sessions() as session:
             return SqlLegacyRepository(session).get_summary(batch_id)
 
+    def holding_import_provenance(batch_id: str) -> LegacyImportProvenance | None:
+        result = legacy_import_result(batch_id)
+        if result is None:
+            return None
+        return LegacyImportProvenance(
+            batch_id=result.batch_id,
+            manifest_sha256=result.manifest_sha256,
+            portfolio_id=result.portfolio_id,
+            effective_at=result.effective_at,
+        )
+
     legacy_imports = LegacyImportWebService(
         imports_root=settings.legacy_import_root,
         source_roots=settings.legacy_import_source_roots,
@@ -308,6 +320,7 @@ def build_application() -> FastAPI:
                 components.holding_repository,
                 components.holding_service,
                 components.portfolio_writer,
+                import_provenance_reader=holding_import_provenance,
             ),
             build_backtests_feature(runs_service.submit),
             build_legacy_import_feature(legacy_imports),
