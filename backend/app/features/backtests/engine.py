@@ -206,13 +206,9 @@ class BacktestEngine:
             }
             for snapshot in snapshots
         ]
-        universe_payload = [
-            sorted(snapshot.scope.security_ids)
-            for snapshot in snapshots
-        ]
+        universe_payload = [sorted(snapshot.scope.security_ids) for snapshot in snapshots]
         market_filter_payload = [
-            sorted(kind.value for kind in snapshot.scope.required_kinds)
-            for snapshot in snapshots
+            sorted(kind.value for kind in snapshot.scope.required_kinds) for snapshot in snapshots
         ]
         execution_payload = {
             "buy_slippage_bps": request.buy_slippage_bps,
