@@ -57,6 +57,13 @@ def build_warehouse(
     akshare_module: ModuleType | None = None,
     baostock_module: ModuleType | None = None,
 ) -> PointInTimeWarehouse:
+    if settings.environment != "test" and (
+        akshare_module is not None or baostock_module is not None
+    ):
+        raise ProviderConfigurationError(
+            "injected provider modules are allowed only in test environment"
+        )
+
     if settings.provider_mode == "fake":
         if fake_warehouse is None:
             raise ProviderConfigurationError(
@@ -82,13 +89,20 @@ def build_components(
     sessions: sessionmaker[Session],
     *,
     fake_warehouse: PointInTimeWarehouse | None = None,
+    akshare_module: ModuleType | None = None,
+    baostock_module: ModuleType | None = None,
 ) -> ApplicationComponents:
     """Build shared strategy dependencies without duplicating feature logic.
 
     Fake data is accepted only through the explicit test-mode seam. Production always selects the
     real provider chain and missing datasets remain subject to the warehouse's fail-closed checks.
     """
-    warehouse = build_warehouse(settings, fake_warehouse=fake_warehouse)
+    warehouse = build_warehouse(
+        settings,
+        fake_warehouse=fake_warehouse,
+        akshare_module=akshare_module,
+        baostock_module=baostock_module,
+    )
     strategy = V212StrategyEngine()
     service = CandidateService(
         warehouse,
