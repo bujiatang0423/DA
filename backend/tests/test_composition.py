@@ -85,7 +85,7 @@ def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
 
 
 def test_production_provider_mode_builds_the_real_fallback_chain() -> None:
-    settings = Settings(_env_file=None, provider_mode="production")
+    settings = Settings(_env_file=None, environment="test", provider_mode="production")
     akshare = ModuleType("akshare")
     baostock = ModuleType("baostock")
 
@@ -109,6 +109,13 @@ def test_production_provider_mode_rejects_a_fake_override() -> None:
         build_warehouse(settings, fake_warehouse=FrozenWarehouse())
 
 
+def test_non_test_environment_rejects_injected_provider_modules() -> None:
+    settings = Settings(_env_file=None, environment="production", provider_mode="production")
+
+    with pytest.raises(ProviderConfigurationError, match="test environment"):
+        build_warehouse(settings, akshare_module=ModuleType("akshare"))
+
+
 def test_components_share_the_explicit_fake_warehouse() -> None:
     settings = Settings(_env_file=None, environment="test", provider_mode="fake")
     warehouse = FrozenWarehouse()
@@ -122,7 +129,7 @@ def test_components_share_the_explicit_fake_warehouse() -> None:
 
 
 def test_configured_provider_failure_is_sanitized_and_cannot_create_candidates() -> None:
-    settings = Settings(_env_file=None, provider_mode="production")
+    settings = Settings(_env_file=None, environment="test", provider_mode="production")
     akshare = ModuleType("akshare")
     baostock = ModuleType("baostock")
 

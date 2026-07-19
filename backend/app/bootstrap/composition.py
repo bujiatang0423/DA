@@ -57,6 +57,13 @@ def build_warehouse(
     akshare_module: ModuleType | None = None,
     baostock_module: ModuleType | None = None,
 ) -> PointInTimeWarehouse:
+    if settings.environment != "test" and (
+        akshare_module is not None or baostock_module is not None
+    ):
+        raise ProviderConfigurationError(
+            "injected provider modules are allowed only in test environment"
+        )
+
     if settings.provider_mode == "fake":
         if fake_warehouse is None:
             raise ProviderConfigurationError(
