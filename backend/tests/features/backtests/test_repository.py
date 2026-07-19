@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from threading import Barrier, Thread
 from uuid import UUID
 
 import pytest
@@ -170,3 +171,42 @@ def test_publish_result_commits_result_and_artifact_together(
 
     assert repository.fetch_result(run_id) == fixed_result
     assert len(artifacts.refs) == 1
+
+
+def test_concurrent_duplicate_result_publication_is_idempotent(
+    repository: SqlBacktestRepository,
+    fixed_result: BacktestExperimentResult,
+) -> None:
+    run_id = UUID("00000000-0000-0000-0000-000000000005")
+    barrier = Barrier(2)
+
+    class CoordinatedRepository(SqlBacktestRepository):
+        def _save_result(
+            self,
+            session: Session,
+            run_id: UUID,
+            result: BacktestExperimentResult,
+            created_at: datetime | None,
+        ) -> bool:
+            barrier.wait()
+            return super()._save_result(session, run_id, result, created_at)
+
+    repository = CoordinatedRepository(repository._session_factory)
+    errors: list[Exception] = []
+
+    def save() -> None:
+        try:
+            barrier.wait()
+            repository.save_result(run_id, fixed_result)
+        except Exception as exc:  # The assertion below reports unexpected persistence failures.
+            errors.append(exc)
+
+    first = Thread(target=save)
+    second = Thread(target=save)
+    first.start()
+    second.start()
+    first.join()
+    second.join()
+
+    assert errors == []
+    assert repository.fetch_result(run_id) == fixed_result

@@ -7,6 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.contracts.grades import DataGrade, LlmGrade
@@ -69,8 +70,11 @@ class SqlBacktestRepository:
         *,
         created_at: datetime | None = None,
     ) -> None:
-        with self._session_factory.begin() as session:
-            self._save_result(session, run_id, result, created_at)
+        try:
+            with self._session_factory.begin() as session:
+                self._save_result(session, run_id, result, created_at)
+        except IntegrityError as exc:
+            self._resolve_duplicate(run_id, result, exc)
 
     def publish_result(
         self,
@@ -78,12 +82,15 @@ class SqlBacktestRepository:
         result: BacktestExperimentResult,
         artifacts: ArtifactRepository,
     ) -> None:
-        with self._session_factory.begin() as session:
-            if not self._save_result(session, run_id, result, None):
-                return
-            artifacts.save_json(
-                session, run_id, "backtest-result.json", result.model_dump(mode="json")
-            )
+        try:
+            with self._session_factory.begin() as session:
+                if not self._save_result(session, run_id, result, None):
+                    return
+                artifacts.save_json(
+                    session, run_id, "backtest-result.json", result.model_dump(mode="json")
+                )
+        except IntegrityError as exc:
+            self._resolve_duplicate(run_id, result, exc)
 
     def fetch_result(self, run_id: UUID) -> BacktestExperimentResult | None:
         with self._session_factory() as session:
@@ -230,6 +237,19 @@ class SqlBacktestRepository:
         for group_result in result.groups:
             self._save_group(session, run_id, group_result)
         return True
+
+    def _resolve_duplicate(
+        self,
+        run_id: UUID,
+        result: BacktestExperimentResult,
+        original_error: IntegrityError,
+    ) -> None:
+        with self._session_factory() as session:
+            existing = session.get(BacktestResultRow, run_id)
+            if existing is None:
+                raise original_error
+            if existing.content_hash != _content_hash(result):
+                raise BacktestResultConflict(str(run_id)) from original_error
 
     def _group_payloads(
         self, session: Session, run_id: UUID, group: str

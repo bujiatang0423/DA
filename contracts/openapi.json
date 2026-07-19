@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "BacktestGroupSummary": {
+        "properties": {
+          "data_grade": {
+            "$ref": "#/components/schemas/DataGrade"
+          },
+          "group": {
+            "$ref": "#/components/schemas/StrategyGroup"
+          },
+          "input_manifest_hash": {
+            "title": "Input Manifest Hash",
+            "type": "string"
+          },
+          "llm_grade": {
+            "$ref": "#/components/schemas/LlmGrade"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "group",
+          "data_grade",
+          "llm_grade",
+          "input_manifest_hash",
+          "metrics"
+        ],
+        "title": "BacktestGroupSummary",
+        "type": "object"
+      },
       "BacktestRequest": {
         "additionalProperties": false,
         "properties": {
@@ -77,6 +120,97 @@
           "groups"
         ],
         "title": "BacktestRequest",
+        "type": "object"
+      },
+      "BacktestResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "equity_curve": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "group": {
+            "$ref": "#/components/schemas/StrategyGroup"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestGroupSummary"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "input_manifest_hash": {
+            "title": "Input Manifest Hash",
+            "type": "string"
+          },
+          "metric_details": {
+            "additionalProperties": true,
+            "title": "Metric Details",
+            "type": "object"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "rejected_attempts": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_version": {
+            "title": "Strategy Version",
+            "type": "string"
+          },
+          "trades": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "strategy_version",
+          "input_manifest_hash",
+          "created_at",
+          "groups",
+          "group",
+          "metrics",
+          "metric_details",
+          "warnings",
+          "equity_curve",
+          "trades",
+          "rejected_attempts"
+        ],
+        "title": "BacktestResultResponse",
         "type": "object"
       },
       "CandidateFactorsResponse": {
@@ -366,6 +500,14 @@
         ],
         "title": "CorrectedPositionRequest",
         "type": "object"
+      },
+      "DataGrade": {
+        "enum": [
+          "research",
+          "pit_verified"
+        ],
+        "title": "DataGrade",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -948,6 +1090,15 @@
         "title": "LegacyImportSourceResponse",
         "type": "object"
       },
+      "LlmGrade": {
+        "enum": [
+          "not_used",
+          "reconstructed",
+          "forward_observed"
+        ],
+        "title": "LlmGrade",
+        "type": "string"
+      },
       "ManualFillRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1052,6 +1203,37 @@
           "items"
         ],
         "title": "Page[RunDetail]",
+        "type": "object"
+      },
+      "Page_dict_str__str__": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[dict[str, str]]",
         "type": "object"
       },
       "PortfolioMaintenanceRequest": {
@@ -2150,6 +2332,142 @@
           }
         },
         "summary": "Plan",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/v1/backtests/{run_id}": {
+      "get": {
+        "operationId": "result_api_v1_backtests__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StrategyGroup",
+              "default": "A"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curve_limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Curve Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curve_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Curve Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Trade Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rejected_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Rejected Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rejected_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rejected Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Result",
         "tags": [
           "backtests"
         ]

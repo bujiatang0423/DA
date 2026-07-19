@@ -310,7 +310,6 @@ def build_application() -> FastAPI:
                 components.holding_service,
                 components.portfolio_writer,
             ),
-<<<<<<< HEAD
             build_backtests_feature(runs_service.submit, SqlBacktestRepository(sessions)),
             build_legacy_import_feature(legacy_imports),
         )
