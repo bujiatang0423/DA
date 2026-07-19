@@ -7,12 +7,13 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     FinancialDisclosureRow,
     FinancialFactRow,
+    FeeScheduleRow,
     IndustryMembershipHistoryRow,
     PolicyDocumentRow,
     SecurityMasterHistoryRow,
@@ -30,6 +31,16 @@ class SecurityStatus:
     is_suspended: bool
     board: str
     price_limit_pct: Decimal
+
+
+@dataclass(frozen=True)
+class FeeSchedule:
+    record_id: str
+    source_artifact_hash: str
+    commission_rate: Decimal
+    minimum_commission: Decimal
+    stamp_tax_sell_rate: Decimal
+    transfer_rate: Decimal
 
 
 @dataclass(frozen=True)
@@ -111,6 +122,48 @@ class TemporalSecurityQueries:
             raise StrictDataMissingError(f"industry missing: {security_id}")
         selected = max(candidates, key=lambda item: item[:3])
         return str(selected[3]["industry_id"])
+
+
+class TemporalExecutionQueries:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def fee_schedule(
+        self,
+        *,
+        trade_date: date,
+        exchange: str,
+        asset_type: str,
+        as_of_time: datetime,
+    ) -> FeeSchedule:
+        row = self._session.scalar(
+            select(FeeScheduleRow)
+            .where(
+                FeeScheduleRow.exchange == exchange,
+                FeeScheduleRow.asset_type == asset_type,
+                FeeScheduleRow.effective_from <= trade_date,
+                or_(
+                    FeeScheduleRow.effective_to.is_(None), FeeScheduleRow.effective_to > trade_date
+                ),
+                FeeScheduleRow.available_at <= as_of_time,
+            )
+            .order_by(
+                FeeScheduleRow.effective_from.desc(),
+                FeeScheduleRow.available_at.desc(),
+                FeeScheduleRow.id.desc(),
+            )
+            .limit(1)
+        )
+        if row is None:
+            raise StrictDataMissingError("fee schedule missing")
+        return FeeSchedule(
+            row.source_record_id,
+            row.source_artifact_hash,
+            row.commission_rate,
+            row.minimum_commission,
+            row.stamp_tax_sell_rate,
+            row.transfer_rate,
+        )
 
 
 class TemporalDisclosureQueries:
