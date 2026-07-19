@@ -38,9 +38,11 @@ class BacktestRequest(BaseModel):
         if self.start_date > self.end_date:
             raise ValueError("start_date must not exceed end_date")
         if self.out_of_sample_start is not None and not (
-            self.start_date <= self.out_of_sample_start <= self.end_date
+            self.start_date < self.out_of_sample_start <= self.end_date
         ):
-            raise ValueError("out_of_sample_start must be within the backtest period")
+            raise ValueError(
+                "out_of_sample_start must be after start_date and within the backtest period"
+            )
         return self
 
     def with_period(self, start_date: date, end_date: date) -> BacktestRequest:

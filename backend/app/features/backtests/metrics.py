@@ -107,6 +107,7 @@ class MetricsReporter:
                 False,
                 "OUT_OF_SAMPLE_BOUNDARY_REQUIRED",
             )
+            sample_out_trades: list[dict[str, str]] | None = None
         else:
             closed_trades, diagnostic = _closed_trades_after(result.trades, boundary)
             sample_out_gate = (
@@ -114,8 +115,11 @@ class MetricsReporter:
                 if diagnostic is not None
                 else closed_trade_gate(len(closed_trades))
             )
-        profit_factor = _metric_value(metrics["profit_factor"])
-        expectancy = _metric_value(metrics["expectancy"])
+            sample_out_trades = closed_trades if diagnostic is None else None
+        profit_factor = (
+            _profit_factor(sample_out_trades).value if sample_out_trades is not None else None
+        )
+        expectancy = _expectancy(sample_out_trades).value if sample_out_trades is not None else None
         drawdown = _metric_value(metrics["maximum_drawdown"])
         return (
             sample_out_gate,

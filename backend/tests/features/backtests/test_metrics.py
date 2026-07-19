@@ -151,6 +151,19 @@ def test_sample_out_gate_fails_closed_when_a_closed_trade_lacks_its_date() -> No
     assert gates[0].reason == "MISSING_CLOSED_TRADE_DATE"
 
 
+def test_sample_out_profit_factor_and_expectancy_exclude_in_sample_wins() -> None:
+    gates = MetricsReporter(out_of_sample_start=date(2024, 1, 1)).acceptance_gates(
+        _fixed_metric_result()
+    )
+
+    profit_factor = next(gate for gate in gates if gate.name == "net_profit_factor")
+    expectancy = next(gate for gate in gates if gate.name == "net_expectancy")
+    assert profit_factor.observed == Decimal("0")
+    assert profit_factor.passed is False
+    assert expectancy.observed == Decimal("-0.50")
+    assert expectancy.passed is False
+
+
 def test_recovery_reports_days_from_peak_to_full_recovery() -> None:
     result = _fixed_metric_result()
     result.equity_curve[-1]["equity"] = "125"
