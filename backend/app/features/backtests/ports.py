@@ -16,6 +16,8 @@ from backend.app.features.backtests.models import (
 )
 from backend.app.ports.artifacts import ArtifactRepository
 
+ALL_STRATEGY_FACTORS = frozenset({"P", "F", "R", "T", "V"})
+
 
 @dataclass(frozen=True)
 class BacktestDecisionContext:
@@ -26,6 +28,7 @@ class BacktestDecisionContext:
     snapshot: PointInTimeSnapshot
     portfolio: PortfolioSnapshot
     candidate_states: Mapping[str, str]
+    factor_mask: frozenset[str] = ALL_STRATEGY_FACTORS
 
 
 @dataclass(frozen=True)

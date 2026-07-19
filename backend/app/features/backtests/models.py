@@ -87,6 +87,7 @@ class BacktestGroupResult(BaseModel):
     trades: list[dict[str, str]]
     rejected_attempts: list[dict[str, str]] = Field(default_factory=list)
     metrics: dict[str, str | int | None]
+    comparison_inputs: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = []
 
 
