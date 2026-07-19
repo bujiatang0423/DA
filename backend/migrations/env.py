@@ -10,6 +10,7 @@ from backend.app.infrastructure.persistence import (  # noqa: F401
     portfolio_rows,
     strict_pit_rows,
 )
+from backend.app.infrastructure.tasks import db_models as worker_models  # noqa: F401
 from backend.app.features.candidates import repository as candidate_rows  # noqa: F401
 from backend.app.features.holdings import repository as holding_rows  # noqa: F401
 

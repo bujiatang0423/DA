@@ -30,6 +30,8 @@ class RunRow(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    claim_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class RunEventRow(Base):

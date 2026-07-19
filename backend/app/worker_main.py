@@ -3,6 +3,7 @@ from __future__ import annotations
 import signal
 from datetime import UTC, datetime
 from os import environ
+from socket import gethostname
 
 from backend.app.bootstrap.settings import Settings
 from backend.app.bootstrap.composition import build_components
@@ -12,6 +13,7 @@ from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
 from backend.app.features.runs.service import RunsService
 from backend.app.infrastructure.persistence.database import build_engine, build_session_factory
 from backend.app.infrastructure.tasks.handlers import HandlerRegistry
+from backend.app.infrastructure.tasks.health import WorkerLeaseStore
 from backend.app.infrastructure.tasks.worker import build_worker, run
 
 
@@ -28,7 +30,13 @@ def main() -> None:
     handlers.register(
         RunKind.HOLDING_ANALYSIS, HoldingAnalysisJobHandler(components.holding_service)
     )
-    worker = build_worker(runs, handlers, lambda: datetime.now(UTC))
+    worker = build_worker(
+        runs,
+        handlers,
+        lambda: datetime.now(UTC),
+        WorkerLeaseStore(sessions),
+        environ.get("DA_WORKER_ID", gethostname()),
+    )
     stopping = False
 
     def stop_handler(signum: int, frame: object) -> None:
