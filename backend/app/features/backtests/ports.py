@@ -19,6 +19,13 @@ from backend.app.ports.artifacts import ArtifactRepository
 ALL_STRATEGY_FACTORS = frozenset({"P", "F", "R", "T", "V"})
 
 
+class BacktestSnapshotQualityError(RuntimeError):
+    """Stable fail-closed error for unusable point-in-time backtest data."""
+
+    def __init__(self) -> None:
+        super().__init__("BACKTEST_SNAPSHOT_QUALITY_ERROR")
+
+
 @dataclass(frozen=True)
 class BacktestDecisionContext:
     as_of_time: datetime

@@ -19,6 +19,11 @@ from backend.app.infrastructure.market.strict_queries import (
     TemporalExecutionQueries,
     TemporalSecurityQueries,
 )
+from backend.app.infrastructure.market.strict_backtest_data import (
+    SqlAlchemyHistoricalDailyBars,
+    SqlAlchemyTradingCalendar,
+    StrictBacktestSnapshotAdapter,
+)
 
 
 def build_strict_backtest_engine(
@@ -37,8 +42,28 @@ def build_strict_backtest_engine(
     execution_port = StrictBacktestExecutionPort(simulator, bars)
     return BacktestEngine(
         trading_days,
-        warehouse,
+        StrictBacktestSnapshotAdapter(warehouse),
         decision_port,
         execution_port,
         data_grade=DataGrade.PIT_VERIFIED,
+    )
+
+
+def build_sqlalchemy_strict_backtest_engine(
+    *,
+    session: Session,
+    warehouse: BacktestSnapshotPort,
+    decision_port: BacktestDecisionPort,
+    exchange: str = "SSE",
+) -> BacktestEngine:
+    """Compose a strict engine from PIT SQL data with no permissive data fallback."""
+    return build_strict_backtest_engine(
+        SqlAlchemyTradingCalendar(
+            session,
+            exchange=exchange,
+        ),
+        warehouse,
+        decision_port,
+        SqlAlchemyHistoricalDailyBars(session),
+        session,
     )
