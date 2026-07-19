@@ -153,6 +153,27 @@ def test_policies_apply_availability_evidence_and_deterministic_ties(
     }
 
 
+@pytest.mark.postgres
+def test_policies_do_not_score_b_evidence_with_b_or_c_parent(
+    strict_query_session: Session,
+) -> None:
+    strict_query_session.add_all(
+        [
+            policy("b-parent", "B_PARENT", "B"),
+            policy("b-child", "B_CHILD", "B", official_parent_id="B_PARENT"),
+            policy("c-parent", "C_PARENT", "C"),
+            policy("c-child", "C_CHILD", "B", official_parent_id="C_PARENT"),
+        ]
+    )
+    strict_query_session.commit()
+
+    documents = TemporalDisclosureQueries(strict_query_session).policies(AS_OF)
+    by_id = {document.document_id: document for document in documents}
+
+    assert not by_id["B_CHILD"].scoreable
+    assert not by_id["C_CHILD"].scoreable
+
+
 def master(
     row_id: str,
     security_id: str,

@@ -151,13 +151,13 @@ class TemporalDisclosureQueries:
             select(PolicyDocumentRow).where(PolicyDocumentRow.available_at <= as_of_time)
         ).all()
         latest = _latest_by(rows, lambda row: row.source_record_id, _policy_order)
-        available_ids = set(latest)
         documents = []
         for document_id, row in latest.items():
             if row.available_at != max(row.published_at, row.first_observed_at):
                 raise ValueError(f"policy available_at mismatch: {document_id}")
+            parent = latest.get(row.official_parent_id)
             scoreable = row.evidence_grade == "A" or (
-                row.evidence_grade == "B" and row.official_parent_id in available_ids
+                row.evidence_grade == "B" and parent is not None and parent.evidence_grade == "A"
             )
             documents.append(
                 PolicyDocument(document_id, row.available_at, row.evidence_grade, scoreable)
