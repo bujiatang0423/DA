@@ -12,7 +12,13 @@ from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScop
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.features.backtests.ledger import PortfolioLedger
 from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
-from backend.app.features.backtests.metrics import calculate_metrics
+from backend.app.features.backtests.metrics import (
+    AcceptanceGate,
+    MetricValue,
+    MetricsReporter,
+    ReportedMetric,
+    calculate_metrics,
+)
 from backend.app.features.backtests.models import (
     BacktestGroupResult,
     BacktestRequest,
@@ -69,6 +75,7 @@ class BacktestEngine:
         pending: tuple[BacktestDecision, ...] = ()
         equity_values: list[Decimal] = []
         states: Mapping[str, str] = {}
+        market_regimes: dict[date, str] = {}
         for index, trading_day in enumerate(days):
             self.observed_events.append("pre_open_risk")
             self.observed_events.append("open_execution")
@@ -86,7 +93,10 @@ class BacktestEngine:
                 Decimal(0),
             )
             equity_values.append(equity)
-            curve.append({"trade_date": trading_day.isoformat(), "equity": str(equity)})
+            curve_entry = {"trade_date": trading_day.isoformat(), "equity": str(equity)}
+            if (market_regime := market_regimes.get(trading_day)) is not None:
+                curve_entry["market_regime"] = market_regime
+            curve.append(curve_entry)
             if index + 1 < len(days):
                 self.observed_events.append("post_close_decision")
                 as_of = datetime.combine(trading_day, time(15, 30), SHANGHAI)
@@ -97,6 +107,8 @@ class BacktestEngine:
                     ),
                 )
                 snapshots.append(snapshot)
+                if (market_regime := _market_regime(snapshot)) is not None:
+                    market_regimes[days[index + 1]] = market_regime
                 decision: BacktestDecision = self._decision_port.decide(
                     BacktestDecisionContext(
                         as_of,
@@ -113,7 +125,7 @@ class BacktestEngine:
                 )
                 states = decision.candidate_states
                 pending = (decision,)
-        return BacktestGroupResult(
+        result = BacktestGroupResult(
             group=group,
             data_grade=self._data_grade,
             llm_grade=llm_grade,
@@ -123,8 +135,17 @@ class BacktestEngine:
             rejected_attempts=rejected_attempts,
             metrics=calculate_metrics(equity_values, request.initial_cash),
             comparison_inputs=self._comparison_inputs(request, snapshots),
+            out_of_sample_start=request.out_of_sample_start,
             warnings=["research_only"] if self._data_grade is DataGrade.RESEARCH else [],
         )
+        reported = MetricsReporter(
+            initial_cash=request.initial_cash,
+            out_of_sample_start=request.out_of_sample_start,
+        )
+        report = reported.calculate(result)
+        gates = reported.acceptance_gates(result)
+        metrics, metric_details = _report_metrics(result.metrics, report, gates)
+        return result.model_copy(update={"metrics": metrics, "metric_details": metric_details})
 
     def _execute_intent(
         self,
@@ -242,3 +263,47 @@ def _empty_portfolio(as_of: datetime, cash: Decimal) -> PortfolioSnapshot:
 def _hash_payload(payload: object) -> str:
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(raw).hexdigest()
+
+
+def _report_metrics(
+    legacy_metrics: dict[str, str | int | None],
+    report: dict[str, ReportedMetric],
+    gates: tuple[AcceptanceGate, ...],
+) -> tuple[dict[str, str | int | None], dict[str, object]]:
+    metrics = dict(legacy_metrics)
+    values: dict[str, dict[str, str | None]] = {}
+    breakdowns: dict[str, dict[str, str]] = {}
+    for name in sorted(report):
+        metric = report[name]
+        if isinstance(metric, MetricValue):
+            rendered = str(metric.value) if metric.value is not None else None
+            values[name] = {"value": rendered, "diagnostic": metric.diagnostic}
+            metrics[name] = rendered
+        else:
+            breakdowns[name] = {key: str(value) for key, value in sorted(metric.breakdown.items())}
+            values[name] = {"value": None, "diagnostic": metric.diagnostic}
+    return metrics, {
+        "values": values,
+        "breakdowns": breakdowns,
+        "acceptance_gates": [_render_gate(gate) for gate in gates],
+    }
+
+
+def _render_gate(gate: AcceptanceGate) -> dict[str, str | int | bool | None]:
+    observed = str(gate.observed) if isinstance(gate.observed, Decimal) else gate.observed
+    threshold = str(gate.threshold) if isinstance(gate.threshold, Decimal) else gate.threshold
+    return {
+        "name": gate.name,
+        "observed": observed,
+        "threshold": threshold,
+        "passed": gate.passed,
+        "reason": gate.reason,
+    }
+
+
+def _market_regime(snapshot: PointInTimeSnapshot) -> str | None:
+    for record in snapshot.market_inputs:
+        regime = record.payload.get("market_regime")
+        if isinstance(regime, str) and regime in {"bull", "neutral", "bear"}:
+            return regime
+    return None

@@ -52,10 +52,15 @@ def closed_trade_gate(count: int) -> AcceptanceGate:
 class MetricsReporter:
     """Derive research metrics only from the result's auditable event records."""
 
-    def __init__(self, initial_cash: Decimal | None = None) -> None:
+    def __init__(
+        self,
+        initial_cash: Decimal | None = None,
+        out_of_sample_start: date | None = None,
+    ) -> None:
         if initial_cash is not None and initial_cash <= 0:
             raise ValueError("initial_cash must be positive")
         self._initial_cash = initial_cash
+        self._out_of_sample_start = out_of_sample_start
 
     def calculate(self, result: BacktestGroupResult) -> dict[str, ReportedMetric]:
         curve = result.equity_curve
@@ -69,8 +74,8 @@ class MetricsReporter:
         metrics: dict[str, ReportedMetric] = {
             "annualized_return": annualized_return,
             "maximum_drawdown": maximum_drawdown,
-            "recovery": _recovery(annualized_return, maximum_drawdown),
-            "calmar": _recovery(annualized_return, maximum_drawdown),
+            "recovery": _recovery_duration(curve),
+            "calmar": _calmar(annualized_return, maximum_drawdown),
             "profit_factor": _profit_factor(closed_trades),
             "net_win_rate": _net_win_rate(closed_trades),
             "average_win_loss": _average_win_loss(closed_trades),
@@ -93,12 +98,27 @@ class MetricsReporter:
 
     def acceptance_gates(self, result: BacktestGroupResult) -> tuple[AcceptanceGate, ...]:
         metrics = self.calculate(result)
-        closed_trades = _closed_trades(result.trades)
+        boundary = self._out_of_sample_start or result.out_of_sample_start
+        if boundary is None:
+            sample_out_gate = AcceptanceGate(
+                "sample_out_closed_trades",
+                None,
+                200,
+                False,
+                "OUT_OF_SAMPLE_BOUNDARY_REQUIRED",
+            )
+        else:
+            closed_trades, diagnostic = _closed_trades_after(result.trades, boundary)
+            sample_out_gate = (
+                AcceptanceGate("sample_out_closed_trades", None, 200, False, diagnostic)
+                if diagnostic is not None
+                else closed_trade_gate(len(closed_trades))
+            )
         profit_factor = _metric_value(metrics["profit_factor"])
         expectancy = _metric_value(metrics["expectancy"])
         drawdown = _metric_value(metrics["maximum_drawdown"])
         return (
-            closed_trade_gate(len(closed_trades)),
+            sample_out_gate,
             _minimum_gate("net_profit_factor", profit_factor, Decimal("1.30")),
             _strictly_positive_gate("net_expectancy", expectancy),
             _minimum_gate("maximum_drawdown", drawdown, Decimal("-0.25")),
@@ -195,7 +215,7 @@ def _maximum_drawdown(curve: list[dict[str, str]]) -> MetricValue:
     return MetricValue(maximum)
 
 
-def _recovery(return_value: MetricValue, drawdown: MetricValue) -> MetricValue:
+def _calmar(return_value: MetricValue, drawdown: MetricValue) -> MetricValue:
     if return_value.value is None:
         return MetricValue(None, return_value.diagnostic)
     if drawdown.value is None:
@@ -203,8 +223,56 @@ def _recovery(return_value: MetricValue, drawdown: MetricValue) -> MetricValue:
     return safe_ratio(return_value.value, abs(drawdown.value))
 
 
+def _recovery_duration(curve: list[dict[str, str]]) -> MetricValue:
+    values = _decimal_values(curve, "equity")
+    if len(values) != len(curve) or not values:
+        return MetricValue(None, "MISSING_EQUITY")
+    peak = values[0]
+    peak_index = 0
+    drawdown = Decimal(0)
+    drawdown_peak_index = 0
+    trough_index = 0
+    for index, value in enumerate(values):
+        if value > peak:
+            peak = value
+            peak_index = index
+        if peak == 0:
+            return MetricValue(None, "ZERO_EQUITY_PEAK")
+        current_drawdown = value / peak - 1
+        if current_drawdown < drawdown:
+            drawdown = current_drawdown
+            drawdown_peak_index = peak_index
+            trough_index = index
+    if drawdown == 0:
+        return MetricValue(Decimal(0))
+    for index in range(trough_index + 1, len(values)):
+        if values[index] >= values[drawdown_peak_index]:
+            duration = _days_between(curve[drawdown_peak_index], curve[index])
+            if duration is None:
+                return MetricValue(None, "MISSING_RECOVERY_DATES")
+            return MetricValue(Decimal(duration))
+    return MetricValue(None, "DRAWDOWN_NOT_RECOVERED")
+
+
 def _closed_trades(trades: list[dict[str, str]]) -> list[dict[str, str]]:
     return [trade for trade in trades if _decimal(trade.get("realized_net_pnl")) is not None]
+
+
+def _closed_trades_after(
+    trades: list[dict[str, str]], out_of_sample_start: date
+) -> tuple[list[dict[str, str]], str | None]:
+    closed_trades = _closed_trades(trades)
+    parsed_dates = [_trade_date(trade) for trade in closed_trades]
+    if any(trade_date is None for trade_date in parsed_dates):
+        return [], "MISSING_CLOSED_TRADE_DATE"
+    return (
+        [
+            trade
+            for trade, trade_date in zip(closed_trades, parsed_dates, strict=True)
+            if trade_date is not None and trade_date >= out_of_sample_start
+        ],
+        None,
+    )
 
 
 def _profit_factor(trades: list[dict[str, str]]) -> MetricValue:
@@ -317,23 +385,36 @@ def _r_distribution(trades: list[dict[str, str]]) -> MetricBreakdown:
 
 def _market_regime_breakdown(curve: list[dict[str, str]]) -> MetricBreakdown:
     regimes = [entry.get("market_regime") for entry in curve]
-    if not curve or any(regime not in {"bull", "neutral", "bear"} for regime in regimes):
+    if len(curve) < 2 or any(regime not in {"bull", "neutral", "bear"} for regime in regimes[1:]):
         return MetricBreakdown({}, "MISSING_MARKET_REGIME")
-    return MetricBreakdown(
-        {
-            regime: Decimal(sum(observed == regime for observed in regimes))
-            for regime in ("bull", "neutral", "bear")
-        }
-    )
+    values = _decimal_values(curve, "equity")
+    if len(values) != len(curve):
+        return MetricBreakdown({}, "MISSING_EQUITY")
+    performance = {"bull": Decimal(1), "neutral": Decimal(1), "bear": Decimal(1)}
+    for previous, current, regime in zip(values[:-1], values[1:], regimes[1:], strict=True):
+        if previous == 0:
+            return MetricBreakdown({}, "ZERO_EQUITY")
+        performance[str(regime)] *= current / previous
+    return MetricBreakdown({regime: value - 1 for regime, value in performance.items()})
 
 
 def _strategy_book_breakdown(trades: list[dict[str, str]]) -> MetricBreakdown:
     books = [trade.get("strategy_book") for trade in trades]
     if not trades or any(not book for book in books):
         return MetricBreakdown({}, "MISSING_STRATEGY_BOOK")
+    pnl = _decimal_values(trades, "realized_net_pnl")
+    if len(pnl) != len(trades):
+        return MetricBreakdown({}, "MISSING_REALIZED_PNL")
     return MetricBreakdown(
         {
-            str(book): Decimal(sum(trade.get("strategy_book") == book for trade in trades))
+            str(book): sum(
+                (
+                    _decimal(trade.get("realized_net_pnl")) or Decimal(0)
+                    for trade in trades
+                    if trade.get("strategy_book") == book
+                ),
+                Decimal(0),
+            )
             for book in sorted(set(books))
         }
     )
@@ -382,3 +463,19 @@ def _decimal(raw: str | None) -> Decimal | None:
 
 def _is_limit_blocked(attempt: dict[str, str]) -> bool:
     return attempt.get("reason_code", "").startswith("LIMIT_")
+
+
+def _days_between(start: dict[str, str], end: dict[str, str]) -> int | None:
+    try:
+        return (
+            date.fromisoformat(end["trade_date"]) - date.fromisoformat(start["trade_date"])
+        ).days
+    except (KeyError, ValueError):
+        return None
+
+
+def _trade_date(trade: dict[str, str]) -> date | None:
+    try:
+        return date.fromisoformat(trade["trade_date"])
+    except (KeyError, ValueError):
+        return None

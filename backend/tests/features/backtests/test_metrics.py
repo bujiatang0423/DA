@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from backend.app.contracts.grades import DataGrade, LlmGrade
@@ -91,7 +92,6 @@ def test_hand_calculated_metrics_use_only_auditable_values() -> None:
     expected = {
         "annualized_return": Decimal("0.10"),
         "maximum_drawdown": Decimal("-0.20"),
-        "recovery": Decimal("0.50"),
         "calmar": Decimal("0.50"),
         "profit_factor": Decimal("2.00"),
         "net_win_rate": Decimal("0.50"),
@@ -108,19 +108,56 @@ def test_hand_calculated_metrics_use_only_auditable_values() -> None:
     }
 
     assert {name: observed[name].value for name in expected} == expected
+    assert observed["recovery"].value is None
+    assert observed["recovery"].diagnostic == "DRAWDOWN_NOT_RECOVERED"
     assert observed["r_distribution"].breakdown == {
         "negative": Decimal("1"),
         "zero": Decimal("0"),
         "positive": Decimal("1"),
     }
-    assert set(observed["market_regime"].breakdown) == {"bull", "neutral", "bear"}
-    assert set(observed["strategy_book"].breakdown) == {"growth", "value"}
+    assert observed["market_regime"].breakdown == {
+        "bear": Decimal("-0.20"),
+        "bull": Decimal("0.10"),
+        "neutral": Decimal("0.25"),
+    }
+    assert observed["strategy_book"].breakdown == {
+        "growth": Decimal("20"),
+        "value": Decimal("-10"),
+    }
 
 
 def test_zero_denominator_and_sample_size_fail_closed() -> None:
     assert safe_ratio(Decimal("1"), Decimal("0")).diagnostic == "ZERO_DENOMINATOR"
     assert closed_trade_gate(199).passed is False
     assert closed_trade_gate(200).passed is True
+
+
+def test_sample_out_gate_requires_an_explicit_boundary() -> None:
+    gates = MetricsReporter().acceptance_gates(_fixed_metric_result())
+
+    sample_out = gates[0]
+    assert sample_out.observed is None
+    assert sample_out.passed is False
+    assert sample_out.reason == "OUT_OF_SAMPLE_BOUNDARY_REQUIRED"
+
+
+def test_sample_out_gate_fails_closed_when_a_closed_trade_lacks_its_date() -> None:
+    result = _fixed_metric_result()
+    result.trades[0].pop("trade_date")
+
+    gates = MetricsReporter(out_of_sample_start=date(2023, 1, 3)).acceptance_gates(result)
+
+    assert gates[0].passed is False
+    assert gates[0].reason == "MISSING_CLOSED_TRADE_DATE"
+
+
+def test_recovery_reports_days_from_peak_to_full_recovery() -> None:
+    result = _fixed_metric_result()
+    result.equity_curve[-1]["equity"] = "125"
+
+    observed = MetricsReporter().calculate(result)
+
+    assert observed["recovery"].value == Decimal("184")
 
 
 def test_missing_execution_price_does_not_produce_partial_turnover() -> None:

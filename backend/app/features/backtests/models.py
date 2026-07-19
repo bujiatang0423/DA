@@ -31,11 +31,16 @@ class BacktestRequest(BaseModel):
     buy_slippage_bps: int = Field(default=10, ge=0)
     sell_slippage_bps: int = Field(default=10, ge=0)
     fee_schedule_version: str = "research-cn-a-2023-08-28"
+    out_of_sample_start: date | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> BacktestRequest:
         if self.start_date > self.end_date:
             raise ValueError("start_date must not exceed end_date")
+        if self.out_of_sample_start is not None and not (
+            self.start_date <= self.out_of_sample_start <= self.end_date
+        ):
+            raise ValueError("out_of_sample_start must be within the backtest period")
         return self
 
     def with_period(self, start_date: date, end_date: date) -> BacktestRequest:
@@ -88,6 +93,8 @@ class BacktestGroupResult(BaseModel):
     rejected_attempts: list[dict[str, str]] = Field(default_factory=list)
     metrics: dict[str, str | int | None]
     comparison_inputs: dict[str, str] = Field(default_factory=dict)
+    out_of_sample_start: date | None = None
+    metric_details: dict[str, object] = Field(default_factory=dict)
     warnings: list[str] = []
 
 
