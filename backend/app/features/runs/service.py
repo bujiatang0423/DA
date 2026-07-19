@@ -35,6 +35,8 @@ class RunsService:
             return f"/api/v1/candidates/{run_id}"
         if kind is RunKind.HOLDING_ANALYSIS:
             return f"/api/v1/holding-analyses/{run_id}"
+        if kind is RunKind.BACKTEST:
+            return f"/api/v1/backtests/{run_id}"
         return None
 
     def submit(
