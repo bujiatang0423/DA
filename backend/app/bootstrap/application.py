@@ -3,6 +3,7 @@ from collections.abc import Callable, Sequence
 import builtins
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -248,6 +249,13 @@ def build_application() -> FastAPI:
     settings = Settings()
     from backend.app.infrastructure.persistence.database import build_engine, build_session_factory
     from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
+    from backend.app.features.legacy_import.module import build_legacy_import_feature
+    from backend.app.features.legacy_import.repository import SqlLegacyRepository
+    from backend.app.features.legacy_import.service import ImportedBatch, LegacyImportService
+    from backend.app.features.legacy_import.web_service import (
+        LegacyImportResult,
+        LegacyImportWebService,
+    )
     from backend.app.infrastructure.persistence.portfolio_maintenance import (
         SqlPortfolioMaintenanceService,
     )
@@ -257,6 +265,34 @@ def build_application() -> FastAPI:
     sessions = build_session_factory(engine)
     runs_service = RunsService(sessions)
     components = build_components(settings, sessions)
+
+    def import_legacy_source(
+        staged_root: Path,
+        source_metadata_root: Path,
+        portfolio_id: str,
+        effective_at: datetime,
+    ) -> ImportedBatch:
+        with sessions.begin() as session:
+            return LegacyImportService(
+                settings.legacy_import_root,
+                SqlLegacyRepository(session),
+            ).import_source(
+                source_root=staged_root,
+                portfolio_id=portfolio_id,
+                effective_at=effective_at,
+                source_metadata_root=source_metadata_root,
+            )
+
+    def legacy_import_result(batch_id: str) -> LegacyImportResult | None:
+        with sessions() as session:
+            return SqlLegacyRepository(session).get_summary(batch_id)
+
+    legacy_imports = LegacyImportWebService(
+        imports_root=settings.legacy_import_root,
+        source_roots=settings.legacy_import_source_roots,
+        import_snapshot=import_legacy_source,
+        result_reader=legacy_import_result,
+    )
     return create_app(
         (
             build_runs_feature(runs_service),
@@ -274,5 +310,6 @@ def build_application() -> FastAPI:
                 components.portfolio_writer,
             ),
             build_backtests_feature(runs_service.submit),
+            build_legacy_import_feature(legacy_imports),
         )
     )  # type: ignore[arg-type]

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from backend.app.core.portfolio.models import OpeningPosition
 from backend.app.infrastructure.persistence.legacy_rows import (
@@ -8,6 +8,7 @@ from backend.app.infrastructure.persistence.legacy_rows import (
     OpeningPositionRow,
 )
 from .service import ImportedBatch, ImportedHistoricalPosition, ImportedRawFile
+from .web_service import LegacyImportResult
 
 
 class SqlLegacyRepository:
@@ -76,3 +77,46 @@ class SqlLegacyRepository:
         )
         self.session.flush()
         return True
+
+    def get_summary(self, batch_id: str) -> LegacyImportResult | None:
+        batch = self.session.get(LegacyImportBatchRow, batch_id)
+        if batch is None:
+            return None
+        return LegacyImportResult(
+            batch_id=batch.id,
+            manifest_sha256=batch.manifest_sha256,
+            raw_file_count=self._raw_file_count(batch_id),
+            opening_position_count=self._opening_position_count(batch_id),
+            historical_snapshot_count=self._historical_snapshot_count(batch_id),
+            idempotent=False,
+        )
+
+    def _raw_file_count(self, batch_id: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(LegacyRawFileRow)
+                .where(LegacyRawFileRow.batch_id == batch_id)
+            )
+            or 0
+        )
+
+    def _opening_position_count(self, batch_id: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(OpeningPositionRow)
+                .where(OpeningPositionRow.batch_id == batch_id)
+            )
+            or 0
+        )
+
+    def _historical_snapshot_count(self, batch_id: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(LegacyPositionSnapshotRow)
+                .where(LegacyPositionSnapshotRow.batch_id == batch_id)
+            )
+            or 0
+        )

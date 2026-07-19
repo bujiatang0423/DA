@@ -761,6 +761,193 @@
         "title": "HoldingRiskSummaryResponse",
         "type": "object"
       },
+      "LegacyImportConfirmRequest": {
+        "properties": {
+          "confirmation_token": {
+            "maxLength": 256,
+            "minLength": 20,
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at",
+          "confirmation_token"
+        ],
+        "title": "LegacyImportConfirmRequest",
+        "type": "object"
+      },
+      "LegacyImportPreviewRequest": {
+        "properties": {
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at"
+        ],
+        "title": "LegacyImportPreviewRequest",
+        "type": "object"
+      },
+      "LegacyImportPreviewResponse": {
+        "properties": {
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "current_position_count": {
+            "title": "Current Position Count",
+            "type": "integer"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "historical_position_count": {
+            "title": "Historical Position Count",
+            "type": "integer"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "quality_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quality Tags",
+            "type": "array"
+          },
+          "source_file_count": {
+            "title": "Source File Count",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at",
+          "current_position_count",
+          "historical_position_count",
+          "source_file_count",
+          "quality_tags",
+          "confirmation_token"
+        ],
+        "title": "LegacyImportPreviewResponse",
+        "type": "object"
+      },
+      "LegacyImportResultResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "historical_snapshot_count": {
+            "title": "Historical Snapshot Count",
+            "type": "integer"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "opening_position_count": {
+            "title": "Opening Position Count",
+            "type": "integer"
+          },
+          "raw_file_count": {
+            "title": "Raw File Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256",
+          "raw_file_count",
+          "opening_position_count",
+          "historical_snapshot_count",
+          "idempotent"
+        ],
+        "title": "LegacyImportResultResponse",
+        "type": "object"
+      },
+      "LegacyImportSourceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LegacyImportSourceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "LegacyImportSourceListResponse",
+        "type": "object"
+      },
+      "LegacyImportSourceResponse": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "label"
+        ],
+        "title": "LegacyImportSourceResponse",
+        "type": "object"
+      },
       "ManualFillRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2578,6 +2765,151 @@
         "tags": [
           "holdings",
           "portfolio-maintenance"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/confirm": {
+      "post": {
+        "operationId": "confirm_api_v1_legacy_imports_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/preview": {
+      "post": {
+        "operationId": "preview_api_v1_legacy_imports_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/sources": {
+      "get": {
+        "operationId": "sources_api_v1_legacy_imports_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sources",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/{batch_id}": {
+      "get": {
+        "operationId": "result_api_v1_legacy_imports__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Result",
+        "tags": [
+          "legacy-imports"
         ]
       }
     },
