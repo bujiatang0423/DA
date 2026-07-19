@@ -7,6 +7,7 @@ const icons: Record<string, string> = {
   maintenance: "✎",
   backtests: "◒",
   runs: "☷",
+  "legacy-import": "⇩",
 };
 
 export function App({ features }: { features: readonly FeatureDefinition[] }): JSX.Element {
