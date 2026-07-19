@@ -47,8 +47,13 @@ def valid_evidence_refs(manifest: Mapping[str, object] | None) -> tuple[str, ...
 
 def holding_evidence(snapshot: PointInTimeSnapshot, security_id: str) -> HoldingEvidence:
     records = (*snapshot.market_inputs, *_security_records(snapshot, security_id))
+    lineage_hashes = {
+        normalized
+        for lineage in snapshot.lineage
+        if (normalized := _normalized_artifact_hash(lineage.source_artifact_hash)) is not None
+    }
     refs = {
-        _safe_evidence_ref(record)
+        _safe_evidence_ref(record, lineage_hashes)
         for record in records
         if _is_point_in_time_visible(record, snapshot.as_of_time)
     }
@@ -65,11 +70,17 @@ def _security_records(
     return ()
 
 
-def _safe_evidence_ref(record: TemporalRecord) -> str | None:
-    artifact_hash = record.source_artifact_hash
+def _safe_evidence_ref(record: TemporalRecord, lineage_hashes: set[str]) -> str | None:
+    artifact_hash = _normalized_artifact_hash(record.source_artifact_hash)
+    if artifact_hash is None or artifact_hash not in lineage_hashes:
+        return None
+    return f"pit:{record.kind.value}:{artifact_hash}"
+
+
+def _normalized_artifact_hash(artifact_hash: str) -> str | None:
     if len(artifact_hash) != 64 or any(character not in hexdigits for character in artifact_hash):
         return None
-    return f"pit:{record.kind.value}:{artifact_hash.lower()}"
+    return artifact_hash.lower()
 
 
 def _is_point_in_time_visible(record: TemporalRecord, as_of_time: datetime) -> bool:

@@ -5,6 +5,7 @@ import pytest
 
 from backend.app.core.market.pit_models import (
     DataKind,
+    LineageRef,
     QualityIssue,
     QualitySeverity,
     SecurityObservation,
@@ -145,6 +146,10 @@ def test_service_projects_only_safe_point_in_time_evidence_for_each_holding() ->
                 ),
             ),
         ),
+        lineage=(
+            LineageRef("daily-bar-batch", "pit", ("b" * 64).upper()),
+            LineageRef("market-batch", "pit", artifact_hash.upper()),
+        ),
     )
 
     result = service.run(command)
@@ -154,6 +159,37 @@ def test_service_projects_only_safe_point_in_time_evidence_for_each_holding() ->
         f"pit:index_daily_bar:{artifact_hash}",
     )
     assert repository.saved == [result]
+
+
+def test_service_rejects_evidence_hashes_missing_from_snapshot_lineage() -> None:
+    service, command, warehouse, *_ = build_service()
+    unmatched_hash = "d" * 64
+    warehouse.snapshot_value = replace(
+        warehouse.snapshot_value,
+        security_observations=(
+            SecurityObservation(
+                "000001.SZ",
+                (
+                    TemporalRecord(
+                        record_id="unmatched-record",
+                        kind=DataKind.DAILY_BAR_RAW,
+                        entity_id="000001.SZ",
+                        event_time=command.as_of_time,
+                        observed_at=command.as_of_time,
+                        available_at=command.as_of_time,
+                        source_artifact_hash=unmatched_hash,
+                        payload={},
+                    ),
+                ),
+            ),
+        ),
+        lineage=(LineageRef("other-batch", "pit", "e" * 64),),
+    )
+
+    result = service.run(command)
+
+    assert result.items[0].evidence_refs == ()
+    assert "HOLDING_EVIDENCE_UNAVAILABLE" in result.items[0].quality_codes
 
 
 def test_service_never_leaks_unsafe_evidence_and_marks_it_unavailable() -> None:
