@@ -62,7 +62,9 @@ class SqlCandidateRepository:
     def latest(self) -> CandidateRecommendationResult | None:
         with self._session_factory() as session:
             row = session.scalar(
-                select(CandidateResultRow).order_by(CandidateResultRow.as_of_time.desc()).limit(1)
+                select(CandidateResultRow)
+                .order_by(CandidateResultRow.as_of_time.desc(), CandidateResultRow.run_id.desc())
+                .limit(1)
             )
             return _decode(row.payload) if row else None
 
@@ -77,7 +79,7 @@ class SqlCandidateRepository:
             row = session.scalar(
                 select(CandidateResultRow)
                 .where(CandidateResultRow.as_of_time <= as_of_time)
-                .order_by(CandidateResultRow.as_of_time.desc())
+                .order_by(CandidateResultRow.as_of_time.desc(), CandidateResultRow.run_id.desc())
                 .limit(1)
             )
             return _decode(row.payload) if row else None
