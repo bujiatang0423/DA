@@ -85,3 +85,4 @@ def test_repository_round_trips_on_postgresql(postgres_engine: Engine) -> None:
     assert stored.run_id == result.run_id
     assert latest.run_id == result.run_id
     assert stored.manifest_hash == result.manifest_hash
+    assert stored.items[0].evidence_refs == ("market-close:000001.SZ:2026-07-17",)

@@ -79,7 +79,7 @@ export function HoldingCard({ item }: { item: HoldingItem }): JSX.Element {
           ))}
         </div>
         {item.evidence_refs.length > 0 ? (
-          <div className="disclosure">
+          <div aria-label="PIT 证据" className="disclosure">
             <strong>证据：</strong>
             {item.evidence_refs.map((ref) => (
               <div key={ref}>{ref}</div>
