@@ -20,6 +20,7 @@ from backend.app.features.backtests.models import (
     StrategyGroup,
 )
 from backend.app.features.backtests.ports import (
+    ALL_STRATEGY_FACTORS,
     BacktestDecision,
     BacktestDecisionContext,
     BacktestDecisionPort,
@@ -55,6 +56,8 @@ class BacktestEngine:
         request: BacktestRequest,
         group: StrategyGroup,
         llm_grade: LlmGrade = LlmGrade.NOT_USED,
+        *,
+        factor_mask: frozenset[str] = ALL_STRATEGY_FACTORS,
     ) -> BacktestGroupResult:
         request = request.with_group(group)
         ledger = PortfolioLedger.opening(request.initial_cash)
@@ -105,6 +108,7 @@ class BacktestEngine:
                         if hasattr(ledger, "to_portfolio_snapshot")
                         else _empty_portfolio(as_of, ledger.state.cash),
                         states,
+                        factor_mask,
                     )
                 )
                 states = decision.candidate_states
@@ -118,6 +122,7 @@ class BacktestEngine:
             trades=trades,
             rejected_attempts=rejected_attempts,
             metrics=calculate_metrics(equity_values, request.initial_cash),
+            comparison_inputs=self._comparison_inputs(request, snapshots),
             warnings=["research_only"] if self._data_grade is DataGrade.RESEARCH else [],
         )
 
@@ -188,7 +193,49 @@ class BacktestEngine:
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
         return hashlib.sha256(raw).hexdigest()
 
+    @staticmethod
+    def _comparison_inputs(
+        request: BacktestRequest,
+        snapshots: list[PointInTimeSnapshot],
+    ) -> dict[str, str]:
+        snapshot_payload = [
+            {
+                "as_of_time": snapshot.as_of_time.isoformat(),
+                "batch_ids": sorted(lineage.batch_id for lineage in snapshot.lineage),
+                "snapshot_manifest_hash": snapshot.manifest_hash,
+            }
+            for snapshot in snapshots
+        ]
+        universe_payload = [
+            sorted(snapshot.scope.security_ids)
+            for snapshot in snapshots
+        ]
+        market_filter_payload = [
+            sorted(kind.value for kind in snapshot.scope.required_kinds)
+            for snapshot in snapshots
+        ]
+        execution_payload = {
+            "buy_slippage_bps": request.buy_slippage_bps,
+            "sell_slippage_bps": request.sell_slippage_bps,
+            "fee_schedule_version": request.fee_schedule_version,
+        }
+        return {
+            "pit_input_manifest_hash": _hash_payload(snapshot_payload),
+            "universe_hash": _hash_payload(universe_payload),
+            "market_filter_hash": _hash_payload(market_filter_payload),
+            "execution_settings_hash": _hash_payload(execution_payload),
+            "fee_schedule_version": request.fee_schedule_version,
+            "risk_budget": "not_configured",
+            "start_date": request.start_date.isoformat(),
+            "end_date": request.end_date.isoformat(),
+        }
+
 
 def _empty_portfolio(as_of: datetime, cash: Decimal) -> PortfolioSnapshot:
 
     return PortfolioSnapshot("backtest", as_of, 0, cash, cash, ())
+
+
+def _hash_payload(payload: object) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(raw).hexdigest()

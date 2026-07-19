@@ -27,6 +27,8 @@ class BacktestGroupRunner(Protocol):
         request: BacktestRequest,
         group: StrategyGroup,
         llm_grade: LlmGrade,
+        *,
+        factor_mask: frozenset[str],
     ) -> BacktestGroupResult: ...
 
 
@@ -39,6 +41,7 @@ def combine_group_results(
     results: Sequence[BacktestGroupResult],
 ) -> BacktestExperimentResult:
     ordered_results = tuple(sorted(results, key=lambda result: result.group.value))
+    _verify_comparison_inputs(ordered_results)
     manifest_input = "|".join(result.input_manifest_hash for result in ordered_results)
     return BacktestExperimentResult(
         request=request,
@@ -68,7 +71,19 @@ class ExperimentRunner:
                 request.with_group(group),
                 group,
                 llm_grade_for(group),
+                factor_mask=FACTOR_MASKS[group],
             )
             for group in request.groups
         )
         return combine_group_results(request, results)
+
+
+def _verify_comparison_inputs(results: Sequence[BacktestGroupResult]) -> None:
+    if not results:
+        return
+    baseline = results[0].comparison_inputs
+    if not baseline:
+        raise ValueError("non-factor comparison inputs are missing")
+    for result in results[1:]:
+        if result.comparison_inputs != baseline:
+            raise ValueError("non-factor comparison input differs between experiment groups")
