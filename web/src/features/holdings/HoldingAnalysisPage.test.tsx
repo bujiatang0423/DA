@@ -124,7 +124,10 @@ beforeEach(() => {
   vi.mocked(holdingApi.latest).mockResolvedValue(holdingResultFixture);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/holdings");
+});
 
 test("renders risk-first, legacy, and manual-only semantics", async () => {
   renderPage();
@@ -160,6 +163,33 @@ test("submits an asynchronous analysis for the loaded portfolio", async () => {
   expect(
     screen.getByRole("link", { name: "查看运行进度" }).getAttribute("href"),
   ).toBe(`/runs/${runRefFixture.run_id}`);
+});
+
+test("uses explicit imported portfolio context only after manual analysis submission", async () => {
+  window.history.pushState(
+    {},
+    "",
+    "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00Z&batch_id=batch-1&manifest_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  );
+  vi.mocked(holdingApi.positions).mockResolvedValue({
+    ...positionPageFixture,
+    portfolio_id: "main",
+    as_of_time: "2026-07-19T09:00:00Z",
+  });
+  vi.mocked(holdingApi.submit).mockResolvedValue(runRefFixture);
+
+  renderPage();
+
+  await screen.findByText("导入批次：batch-1");
+  expect(holdingApi.positions).toHaveBeenCalledWith("main", "2026-07-19T09:00:00Z");
+  expect(holdingApi.submit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "分析当前持仓" }));
+
+  await waitFor(() => expect(holdingApi.submit).toHaveBeenCalledOnce());
+  expect(holdingApi.submit).toHaveBeenCalledWith(
+    { portfolio_id: "main", as_of_time: "2026-07-19T09:00:00Z" },
+    "holding:main:2026-07-19T09:00:00Z",
+  );
 });
 
 test("records the user-entered actual execution time", async () => {

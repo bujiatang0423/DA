@@ -882,6 +882,11 @@
             "title": "Batch Id",
             "type": "string"
           },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
           "historical_snapshot_count": {
             "title": "Historical Snapshot Count",
             "type": "integer"
@@ -898,6 +903,10 @@
             "title": "Opening Position Count",
             "type": "integer"
           },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
           "raw_file_count": {
             "title": "Raw File Count",
             "type": "integer"
@@ -906,6 +915,8 @@
         "required": [
           "batch_id",
           "manifest_sha256",
+          "portfolio_id",
+          "effective_at",
           "raw_file_count",
           "opening_position_count",
           "historical_snapshot_count",

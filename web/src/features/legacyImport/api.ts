@@ -17,6 +17,8 @@ export interface LegacyImportPreview {
 export interface LegacyImportResult {
   batch_id: string;
   manifest_sha256: string;
+  portfolio_id: string;
+  effective_at: string;
   raw_file_count: number;
   opening_position_count: number;
   historical_snapshot_count: number;

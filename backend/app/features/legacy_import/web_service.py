@@ -39,6 +39,8 @@ class LegacyImportPreview:
 class LegacyImportResult:
     batch_id: str
     manifest_sha256: str
+    portfolio_id: str
+    effective_at: datetime
     raw_file_count: int
     opening_position_count: int
     historical_snapshot_count: int
@@ -182,6 +184,8 @@ class LegacyImportWebService:
         return LegacyImportResult(
             batch_id=stored.batch_id,
             manifest_sha256=stored.manifest_sha256,
+            portfolio_id=stored.portfolio_id,
+            effective_at=stored.effective_at,
             raw_file_count=stored.raw_file_count,
             opening_position_count=stored.opening_position_count,
             historical_snapshot_count=stored.historical_snapshot_count,

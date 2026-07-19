@@ -128,14 +128,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function queryForPortfolio(portfolioId: string): string {
-  return `?portfolio_id=${encodeURIComponent(portfolioId)}`;
+function queryForPortfolio(portfolioId: string, asOfTime?: string): string {
+  const query = new URLSearchParams({ portfolio_id: portfolioId });
+  if (asOfTime) {
+    query.set("as_of_time", asOfTime);
+  }
+  return `?${query.toString()}`;
 }
 
 export const holdingApi = {
-  positions: (portfolioId: string): Promise<PositionPage> =>
+  positions: (portfolioId: string, asOfTime?: string): Promise<PositionPage> =>
     request<PositionPage>(
-      `/api/v1/portfolio/positions${queryForPortfolio(portfolioId)}`,
+      `/api/v1/portfolio/positions${queryForPortfolio(portfolioId, asOfTime)}`,
     ),
   correctPositions: (requestBody: PositionCorrection): Promise<PositionPage> =>
     request<PositionPage>("/api/v1/portfolio/positions", {

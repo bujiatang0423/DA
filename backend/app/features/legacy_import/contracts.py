@@ -36,6 +36,8 @@ class LegacyImportConfirmRequest(LegacyImportPreviewRequest):
 class LegacyImportResultResponse(BaseModel):
     batch_id: str
     manifest_sha256: str
+    portfolio_id: str
+    effective_at: datetime
     raw_file_count: int
     opening_position_count: int
     historical_snapshot_count: int

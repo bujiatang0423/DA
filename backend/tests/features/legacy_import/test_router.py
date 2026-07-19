@@ -26,6 +26,8 @@ class Repository:
         self._rows[batch.batch_id] = {
             "batch_id": batch.batch_id,
             "manifest_sha256": batch.manifest_sha256,
+            "portfolio_id": batch.portfolio_id,
+            "effective_at": batch.effective_at,
             "raw_file_count": len(raw_files),
             "opening_position_count": len(positions),
             "historical_snapshot_count": len(snapshots),
@@ -111,6 +113,8 @@ def test_import_api_only_accepts_configured_sources_and_requires_confirmation(
 
     assert confirmed.status_code == 200
     batch_id = confirmed.json()["batch_id"]
+    assert confirmed.json()["portfolio_id"] == "main"
+    assert confirmed.json()["effective_at"] == "2026-07-19T09:00:00Z"
     assert client.get(f"/api/v1/legacy-imports/{batch_id}").json()["raw_file_count"] == 2
 
 

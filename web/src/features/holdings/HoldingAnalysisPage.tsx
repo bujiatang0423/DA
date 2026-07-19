@@ -15,7 +15,34 @@ import { PositionCorrectionForm } from "./PositionCorrectionForm";
 
 const DEFAULT_PORTFOLIO_ID = "default";
 
+interface ImportedPortfolioContext {
+  portfolioId: string;
+  asOfTime: string;
+  batchId: string;
+  manifestSha256: string;
+}
+
+function importedPortfolioContext(): ImportedPortfolioContext | null {
+  const query = new URLSearchParams(window.location.search);
+  const portfolioId = query.get("portfolio_id");
+  const asOfTime = query.get("as_of_time");
+  const batchId = query.get("batch_id");
+  const manifestSha256 = query.get("manifest_sha256");
+  if (
+    !portfolioId || !/^[A-Za-z0-9._-]{1,64}$/.test(portfolioId)
+    || !asOfTime || Number.isNaN(Date.parse(asOfTime))
+    || !batchId || !/^[A-Za-z0-9._-]{1,64}$/.test(batchId)
+    || !manifestSha256 || !/^[a-f0-9]{64}$/i.test(manifestSha256)
+  ) {
+    return null;
+  }
+  return { portfolioId, asOfTime, batchId, manifestSha256 };
+}
+
 export function HoldingAnalysisPage(): JSX.Element {
+  const importedContext = importedPortfolioContext();
+  const portfolioId = importedContext?.portfolioId ?? DEFAULT_PORTFOLIO_ID;
+  const requestedAsOfTime = importedContext?.asOfTime;
   const [positionPage, setPositionPage] = useState<PositionPage | null>(null);
   const [result, setResult] = useState<HoldingResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,8 +59,8 @@ export function HoldingAnalysisPage(): JSX.Element {
     setLoadError(false);
     try {
       const [positions, latest] = await Promise.all([
-        holdingApi.positions(DEFAULT_PORTFOLIO_ID),
-        holdingApi.latest(DEFAULT_PORTFOLIO_ID),
+        holdingApi.positions(portfolioId, requestedAsOfTime),
+        holdingApi.latest(portfolioId),
       ]);
       setPositionPage(positions);
       setResult(latest);
@@ -46,10 +73,10 @@ export function HoldingAnalysisPage(): JSX.Element {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [portfolioId, requestedAsOfTime]);
 
   const reloadPositions = async (): Promise<void> => {
-    const positions = await holdingApi.positions(DEFAULT_PORTFOLIO_ID);
+    const positions = await holdingApi.positions(portfolioId, requestedAsOfTime);
     setPositionPage(positions);
   };
 
@@ -99,8 +126,8 @@ export function HoldingAnalysisPage(): JSX.Element {
     try {
       setRun(
         await holdingApi.submit(
-          { portfolio_id: DEFAULT_PORTFOLIO_ID, as_of_time: asOfTime },
-          `holding:${DEFAULT_PORTFOLIO_ID}:${asOfTime}`,
+          { portfolio_id: portfolioId, as_of_time: asOfTime },
+          `holding:${portfolioId}:${asOfTime}`,
         ),
       );
     } catch {
@@ -151,6 +178,12 @@ export function HoldingAnalysisPage(): JSX.Element {
         </div>
       </div>
       <div className="alert">仅供人工确认，不自动下单</div>
+      {importedContext ? (
+        <div className="alert">
+          <div>导入批次：{importedContext.batchId}</div>
+          <div>导入 Manifest：{importedContext.manifestSha256}</div>
+        </div>
+      ) : null}
       {mutationError ? (
         <div className="alert" role="alert">
           {mutationError}
