@@ -8,10 +8,10 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from backend.app.contracts.grades import DataGrade, LlmGrade
-from backend.app.core.market.pit_models import SnapshotScope
+from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.features.backtests.ledger import PortfolioLedger
-from backend.app.features.backtests.execution import FilledAttempt
+from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
 from backend.app.features.backtests.metrics import calculate_metrics
 from backend.app.features.backtests.models import (
     BacktestGroupResult,
@@ -55,13 +55,12 @@ class BacktestEngine:
         llm_grade: LlmGrade = LlmGrade.NOT_USED,
     ) -> BacktestGroupResult:
         request = request.with_group(group)
-        manifest = hashlib.sha256(
-            json.dumps(request.model_dump(mode="json"), sort_keys=True).encode()
-        ).hexdigest()
         ledger = PortfolioLedger.opening(request.initial_cash)
         days = self._trading_days.between(request.start_date, request.end_date)
         curve: list[dict[str, str]] = []
         trades: list[dict[str, str]] = []
+        rejected_attempts: list[dict[str, str]] = []
+        snapshots: list[PointInTimeSnapshot] = []
         pending: tuple[BacktestDecision, ...] = ()
         equity_values: list[Decimal] = []
         states: Mapping[str, str] = {}
@@ -70,7 +69,7 @@ class BacktestEngine:
             self.observed_events.append("open_execution")
             for decision in pending:
                 for intent in decision.intents:
-                    self._execute_intent(intent, trading_day, ledger, trades)
+                    self._execute_intent(intent, trading_day, ledger, trades, rejected_attempts)
             pending = ()
             self.observed_events.append("intraday_stops")
             self.observed_events.append("close_valuation")
@@ -92,6 +91,7 @@ class BacktestEngine:
                         (), datetime.combine(request.start_date, time.min, SHANGHAI)
                     ),
                 )
+                snapshots.append(snapshot)
                 decision: BacktestDecision = self._decision_port.decide(
                     BacktestDecisionContext(
                         as_of,
@@ -111,9 +111,10 @@ class BacktestEngine:
             group=group,
             data_grade=DataGrade.RESEARCH,
             llm_grade=llm_grade,
-            input_manifest_hash=manifest,
+            input_manifest_hash=self._manifest_hash(request, snapshots),
             equity_curve=curve,
             trades=trades,
+            rejected_attempts=rejected_attempts,
             metrics=calculate_metrics(equity_values, request.initial_cash),
             warnings=["research_only"],
         )
@@ -124,6 +125,7 @@ class BacktestEngine:
         trade_date: date,
         ledger: PortfolioLedger,
         trades: list[dict[str, str]],
+        rejected_attempts: list[dict[str, str]],
     ) -> None:
         if self._execution_port is None:
             return
@@ -136,6 +138,7 @@ class BacktestEngine:
             trades.append(
                 {
                     "order_id": fill.fill_id,
+                    "signal_date": intent.signal_date.isoformat(),
                     "trade_date": fill.filled_at.date().isoformat(),
                     "security_id": fill.security_id,
                     "side": fill.side.value,
@@ -144,6 +147,38 @@ class BacktestEngine:
                     "fee": str(fill.fee),
                 }
             )
+        elif isinstance(attempt, RejectedAttempt):
+            rejected_attempts.append(
+                {
+                    "order_id": attempt.order_id,
+                    "signal_date": intent.signal_date.isoformat(),
+                    "trade_date": attempt.trade_date.isoformat(),
+                    "security_id": intent.security_id,
+                    "side": intent.side.value,
+                    "requested_quantity": str(intent.quantity),
+                    "reason_code": attempt.reason_code,
+                    "fee_schedule_version": attempt.fee_schedule_version,
+                }
+            )
+
+    @staticmethod
+    def _manifest_hash(
+        request: BacktestRequest,
+        snapshots: list[PointInTimeSnapshot],
+    ) -> str:
+        payload = {
+            "request": request.model_dump(mode="json"),
+            "snapshots": [
+                {
+                    "as_of_time": snapshot.as_of_time.isoformat(),
+                    "batch_ids": sorted(lineage.batch_id for lineage in snapshot.lineage),
+                    "snapshot_manifest_hash": snapshot.manifest_hash,
+                }
+                for snapshot in snapshots
+            ],
+        }
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        return hashlib.sha256(raw).hexdigest()
 
 
 def _empty_portfolio(as_of: datetime, cash: Decimal) -> PortfolioSnapshot:
