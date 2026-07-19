@@ -4,26 +4,31 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.contracts.grades import DataGrade
 from backend.app.core.market.pit_models import DataKind, SnapshotScope
-from backend.app.features.backtests.pit_certificate import PitCertificate
+from backend.app.infrastructure.market.build import build_strict_pit_warehouse
 from backend.app.infrastructure.market.strict_bundle import PitBundleManifest
-from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
-from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
-from backend.app.infrastructure.market.strict_warehouse import (
-    StrictPointInTimeWarehouse,
-    UnverifiedPitDataError,
+from backend.app.infrastructure.market.strict_certificates import (
+    SqlPitCertificateAuthority,
+    bundle_set_hash_for,
 )
+from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
+from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitDataError
 from backend.app.infrastructure.persistence.models import Base
-from backend.app.infrastructure.persistence.strict_pit_rows import DailyBarRawRow
+from backend.app.infrastructure.persistence.strict_pit_rows import (
+    DailyBarRawRow,
+    PitAuditReportRow,
+    PitCertificateRow,
+)
 
 
 AS_OF = datetime(2020, 6, 1, 15, 30, tzinfo=UTC)
 HASH = "a" * 64
+SECRET = "test-pit-certificate-secret"
 SUPPORTED_KINDS = (
     DataKind.SECURITY_MASTER,
     DataKind.SECURITY_STATUS,
@@ -40,10 +45,11 @@ SUPPORTED_KINDS = (
     DataKind.FEE_SCHEDULE,
 )
 STRICT_TABLES = (
-    "pit_bundles, security_master_history, security_status_daily, trading_calendar, "
-    "daily_bars_raw, index_daily_bars, corporate_actions, adjustment_factors, "
-    "industry_membership_history, theme_membership_history, financial_disclosures, "
-    "financial_facts, policy_documents, fee_schedules"
+    "pit_certificates, pit_audit_reports, pit_bundles, security_master_history, "
+    "security_status_daily, trading_calendar, daily_bars_raw, index_daily_bars, "
+    "corporate_actions, adjustment_factors, industry_membership_history, "
+    "theme_membership_history, financial_disclosures, financial_facts, policy_documents, "
+    "fee_schedules"
 )
 
 
@@ -64,70 +70,196 @@ def strict_session(postgres_engine: Engine) -> Session:
             connection.execute(text(f"TRUNCATE TABLE {STRICT_TABLES} CASCADE"))
 
 
-def certificate() -> PitCertificate:
-    return PitCertificate("audit-1", AS_OF.date(), AS_OF.date(), HASH, HASH)
+def persist_audit_report(
+    session: Session,
+    *,
+    report_id: str = "audit-1",
+    passed: bool = True,
+    bundle_hash: str | None = None,
+    audit_hash: str = HASH,
+) -> None:
+    session.add(
+        PitAuditReportRow(
+            id=report_id,
+            passed=passed,
+            coverage_start=AS_OF.date(),
+            coverage_end=AS_OF.date(),
+            bundle_set_hash=bundle_hash or bundle_set_hash_for(session, AS_OF.date()),
+            audit_hash=audit_hash,
+            verified_at=AS_OF,
+        )
+    )
+    session.commit()
 
 
 @pytest.mark.postgres
-def test_sql_strict_warehouse_assembles_complete_verified_snapshot(
+def test_production_build_requires_approved_persisted_audit_report(
     strict_session: Session,
 ) -> None:
-    scope = SnapshotScope(("000001.SZ",), SUPPORTED_KINDS)
-    warehouse = StrictPointInTimeWarehouse(SqlStrictRecordReader(strict_session), certificate())
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
 
-    snapshot = warehouse.snapshot(as_of_time=AS_OF, scope=scope)
-    records = tuple(snapshot.market_inputs) + tuple(
-        record for item in snapshot.security_observations for record in item.records
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+    persist_audit_report(strict_session)
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+    SqlPitCertificateAuthority(strict_session, SECRET).approve(
+        "audit-1", as_of_time=AS_OF, scope=SnapshotScope()
     )
+    snapshot = warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
 
     assert snapshot.data_grade is DataGrade.PIT_VERIFIED
-    assert {record.kind for record in records} == set(SUPPORTED_KINDS)
-    assert all(record.available_at <= AS_OF for record in records)
-    assert (
-        tuple(sorted(snapshot.lineage, key=lambda item: item.source_artifact_hash))
-        == snapshot.lineage
-    )
-    assert snapshot.quality.issues == ()
 
 
 @pytest.mark.postgres
-def test_sql_strict_warehouse_excludes_future_versions_and_marks_missing_required_data(
+def test_certificate_is_bound_to_the_approved_query_scope(
     strict_session: Session,
 ) -> None:
+    persist_audit_report(strict_session)
+    full_scope = SnapshotScope(("000001.SZ",), SUPPORTED_KINDS)
+    SqlPitCertificateAuthority(strict_session, SECRET).approve(
+        "audit-1", as_of_time=AS_OF, scope=full_scope
+    )
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    full = warehouse.snapshot(
+        as_of_time=AS_OF,
+        scope=full_scope,
+    )
+    assert full.data_grade is DataGrade.PIT_VERIFIED
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(
+            as_of_time=AS_OF,
+            scope=SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,)),
+        )
+
+
+@pytest.mark.postgres
+def test_certificate_cannot_be_replayed_outside_its_approved_date(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+    authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+    later = AS_OF.replace(day=2).date()
+
+    assert (
+        authority.certificate_for(
+            as_of_time=AS_OF.replace(day=2),
+            scope=SnapshotScope(),
+            bundle_set_hash=bundle_set_hash_for(strict_session, later),
+            lineage_hash="a" * 64,
+        )
+        is None
+    )
+
+
+@pytest.mark.postgres
+def test_later_strict_row_invalidates_certified_snapshot_identity(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+    SqlPitCertificateAuthority(strict_session, SECRET).approve(
+        "audit-1", as_of_time=AS_OF, scope=SnapshotScope()
+    )
+    strict_session.execute(
+        update(DailyBarRawRow)
+        .where(DailyBarRawRow.source_record_id == "dbr-1")
+        .values(source_artifact_hash="b" * 64)
+    )
+    strict_session.commit()
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+def test_rejects_forged_certificate_row_without_matching_verified_audit(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
     strict_session.add(
-        DailyBarRawRow(
-            id="future-bar",
-            source_record_id="dbr-1",
-            security_id="000001.SZ",
-            trade_date=AS_OF.date(),
-            open=99,
-            high=99,
-            low=99,
-            close=99,
-            volume=1,
-            amount=99,
-            available_at=datetime(2020, 6, 2, tzinfo=UTC),
-            source_artifact_hash="b" * 64,
+        PitCertificateRow(
+            audit_report_id="audit-1",
+            coverage_start=AS_OF.date(),
+            coverage_end=AS_OF.date(),
+            bundle_set_hash="b" * 64,
+            audit_hash=HASH,
+            approval_token="0" * 64,
+            approved_at=AS_OF,
+            certified_as_of=AS_OF,
+            scope_hash="0" * 64,
+            lineage_hash="0" * 64,
         )
     )
     strict_session.commit()
-    scope = SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW, DataKind.LLM_FACTOR))
-    warehouse = StrictPointInTimeWarehouse(SqlStrictRecordReader(strict_session), certificate())
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
 
-    snapshot = warehouse.snapshot(as_of_time=AS_OF, scope=scope)
-
-    assert all(
-        record.record_id != "future-bar"
-        for item in snapshot.security_observations
-        for record in item.records
-    )
-    assert [(issue.code, issue.dataset) for issue in snapshot.quality.issues] == [
-        ("REQUIRED_DATASET_MISSING", "llm_factor"),
-    ]
-
-
-def test_sql_strict_warehouse_requires_matching_certificate() -> None:
-    warehouse = StrictPointInTimeWarehouse(reader=object(), certificate=None)  # type: ignore[arg-type]
-
-    with pytest.raises(UnverifiedPitDataError, match="certificate required"):
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
         warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+def test_rejects_matching_certificate_row_inserted_outside_approval_flow(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+    strict_session.add(
+        PitCertificateRow(
+            audit_report_id="audit-1",
+            coverage_start=AS_OF.date(),
+            coverage_end=AS_OF.date(),
+            bundle_set_hash=bundle_set_hash_for(strict_session, AS_OF.date()),
+            audit_hash=HASH,
+            approval_token="0" * 64,
+            approved_at=AS_OF,
+            certified_as_of=AS_OF,
+            scope_hash="0" * 64,
+            lineage_hash="0" * 64,
+        )
+    )
+    strict_session.commit()
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+def test_failed_or_bundle_mismatched_audit_cannot_be_approved(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session, passed=False)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+
+    with pytest.raises(ValueError, match="passed audit report"):
+        authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+
+    strict_session.query(PitAuditReportRow).delete()
+    strict_session.commit()
+    persist_audit_report(strict_session, bundle_hash="b" * 64)
+
+    with pytest.raises(ValueError, match="persisted bundle set"):
+        authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize("unsupported", [DataKind.LLM_FACTOR, DataKind.REALTIME_QUOTE])
+def test_production_build_fails_closed_for_unsupported_required_kind(
+    strict_session: Session,
+    unsupported: DataKind,
+) -> None:
+    persist_audit_report(strict_session)
+    SqlPitCertificateAuthority(strict_session, SECRET).approve(
+        "audit-1", as_of_time=AS_OF, scope=SnapshotScope()
+    )
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    with pytest.raises(UnverifiedPitDataError, match="required strict data"):
+        warehouse.snapshot(
+            as_of_time=AS_OF,
+            scope=SnapshotScope(required_kinds=(DataKind.DAILY_BAR_RAW, unsupported)),
+        )
