@@ -2,9 +2,9 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from backend.app.contracts.grades import DataGrade, LlmGrade
-from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotQuality
+from backend.app.core.market.pit_models import LineageRef, PointInTimeSnapshot, SnapshotQuality
 from backend.app.features.backtests.engine import BacktestEngine, SHANGHAI
-from backend.app.features.backtests.execution import FilledAttempt
+from backend.app.features.backtests.execution import FilledAttempt, RejectedAttempt
 from backend.app.features.backtests.models import (
     BacktestRequest,
     OrderIntent,
@@ -101,3 +101,125 @@ def test_daily_event_order_and_next_day_execution_are_replayable() -> None:
         datetime(2024, 1, 3, 15, 30, tzinfo=SHANGHAI),
     ]
     assert result.model_dump(mode="json") == replay.model_dump(mode="json")
+
+
+def test_manifest_changes_when_used_snapshot_batch_changes() -> None:
+    class TradingDays:
+        def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
+            return (date(2024, 1, 2), date(2024, 1, 3))
+
+    class Decisions:
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            return BacktestDecision((), {})
+
+    class Warehouse:
+        def __init__(self, batch_id: str) -> None:
+            self._batch_id = batch_id
+
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                scope,
+                DataGrade.RESEARCH,
+                (),
+                (),
+                SnapshotQuality(()),
+                (LineageRef(self._batch_id, "fixture", "artifact"),),
+                "unchanged-snapshot-manifest",
+            )
+
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 3),
+        initial_cash=Decimal("10_000"),
+        groups=[StrategyGroup.A],
+    )
+
+    first = BacktestEngine(TradingDays(), Warehouse("batch-1"), Decisions()).run(
+        request, StrategyGroup.A
+    )
+    second = BacktestEngine(TradingDays(), Warehouse("batch-2"), Decisions()).run(
+        request, StrategyGroup.A
+    )
+
+    assert first.input_manifest_hash != second.input_manifest_hash
+
+
+def test_rejected_execution_attempt_is_auditable_without_becoming_a_trade() -> None:
+    class TradingDays:
+        def between(self, start_date: date, end_date: date) -> tuple[date, ...]:
+            return (date(2024, 1, 2), date(2024, 1, 3))
+
+    class Warehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                scope,
+                DataGrade.RESEARCH,
+                (),
+                (),
+                SnapshotQuality(()),
+                (),
+                "batch-1",
+            )
+
+    class Decisions:
+        def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
+            return BacktestDecision(
+                (
+                    OrderIntent(
+                        order_id="rejected-order",
+                        security_id="600000.SH",
+                        side=OrderSide.BUY,
+                        quantity=100,
+                        signal_date=date(2024, 1, 2),
+                        earliest_trade_date=date(2024, 1, 3),
+                        strategy_book="core",
+                        priority=100,
+                        signal_close=Decimal("10"),
+                    ),
+                ),
+                {},
+            )
+
+    class Execution:
+        def execute(
+            self,
+            intent: OrderIntent,
+            trade_date: date,
+            available_to_sell: int,
+        ) -> RejectedAttempt:
+            return RejectedAttempt(
+                intent.order_id,
+                trade_date,
+                0,
+                "SUSPENDED",
+                "pit:fee-2024",
+            )
+
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 3),
+        initial_cash=Decimal("10_000"),
+        groups=[StrategyGroup.A],
+    )
+
+    result = BacktestEngine(TradingDays(), Warehouse(), Decisions(), Execution()).run(
+        request, StrategyGroup.A
+    )
+
+    assert result.trades == []
+    assert result.rejected_attempts == [
+        {
+            "order_id": "rejected-order",
+            "signal_date": "2024-01-02",
+            "trade_date": "2024-01-03",
+            "security_id": "600000.SH",
+            "side": "buy",
+            "requested_quantity": "100",
+            "reason_code": "SUSPENDED",
+            "fee_schedule_version": "pit:fee-2024",
+        }
+    ]

@@ -85,6 +85,7 @@ class BacktestGroupResult(BaseModel):
     input_manifest_hash: str
     equity_curve: list[dict[str, str]]
     trades: list[dict[str, str]]
+    rejected_attempts: list[dict[str, str]] = Field(default_factory=list)
     metrics: dict[str, str | int | None]
     warnings: list[str] = []
 
