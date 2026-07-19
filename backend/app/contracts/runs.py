@@ -55,4 +55,5 @@ class RunDetail(RunRef):
     stage: str | None = None
     progress: int = Field(default=0, ge=0, le=100)
     heartbeat_at: datetime | None = None
-    error: dict[str, object] | None = None
+    retry_count: int = Field(default=0, ge=0)
+    error_code: str | None = Field(default=None, min_length=1, max_length=64)

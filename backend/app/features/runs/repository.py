@@ -93,6 +93,7 @@ class RunRepository:
         now: datetime,
         worker_id: str,
         lease_token: str,
+        error_code: str | None = None,
     ) -> RunRow | None:
         row = self._session.scalar(
             select(RunRow)
@@ -112,6 +113,8 @@ class RunRepository:
         row.status = target.value
         if target in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}:
             row.finished_at = now
+        if target is RunStatus.FAILED:
+            row.error_code = error_code or "JOB_EXECUTION_FAILED"
         self._event(run_id, target.value, now)
         self._session.flush()
         return row

@@ -66,3 +66,33 @@ test("shows result and artifact links only when the run kind has an available re
   expect(screen.getAllByRole("link", { name: "查看产物" })).toHaveLength(3);
   expect(screen.queryByRole("link", { name: "查看回测结果" })).toBeNull();
 });
+
+test("shows safe execution status fields without rendering raw failure text", async () => {
+  vi.mocked(listRuns).mockResolvedValue({
+    items: [{
+      run_id: "backtest-1",
+      kind: "backtest",
+      status: "failed",
+      submitted_at: "2026-07-19T09:00:00+08:00",
+      links: { self: "/api/v1/runs/backtest-1" },
+      stage: "loading_market_data",
+      progress: 40,
+      heartbeat_at: "2026-07-19T09:05:00+08:00",
+      retry_count: 2,
+      error_code: "PROVIDER_UNAVAILABLE",
+      error_message: "upstream diagnostic: connection reset",
+    }],
+    next_cursor: null,
+  } as never);
+
+  render(<RunsPage />);
+
+  await waitFor(() => {
+    expect(document.body.textContent).toContain("loading_market_data");
+  });
+  expect(document.body.textContent).toContain("40%");
+  expect(document.body.textContent).toContain("心跳");
+  expect(document.body.textContent).toContain("PROVIDER_UNAVAILABLE");
+  expect(document.body.textContent).toContain("已重试 2 次");
+  expect(document.body.textContent).not.toContain("connection reset");
+});

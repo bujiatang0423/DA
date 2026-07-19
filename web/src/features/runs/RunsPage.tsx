@@ -130,7 +130,8 @@ export function RunsPage(): JSX.Element {
                 <th>任务</th>
                 <th>状态</th>
                 <th>提交时间</th>
-                <th>进度</th>
+                <th>执行状态</th>
+                <th>错误与重试</th>
                 <th>结果与产物</th>
                 <th>确认要求</th>
               </tr>
@@ -138,7 +139,7 @@ export function RunsPage(): JSX.Element {
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <div className="empty-state">
                       {loading ? "正在加载任务…" : "暂无运行记录"}
                     </div>
@@ -158,8 +159,21 @@ export function RunsPage(): JSX.Element {
                   </td>
                   <td>{new Date(run.submitted_at).toLocaleString("zh-CN")}</td>
                   <td>
-                    {run.progress ?? 0}%
-                    {run.stage ? <span className="muted"> · {run.stage}</span> : null}
+                    <div>
+                      {run.progress ?? 0}%
+                      {run.stage ? <span className="muted"> · {run.stage}</span> : null}
+                    </div>
+                    {run.heartbeat_at ? (
+                      <div className="muted">
+                        心跳 {new Date(run.heartbeat_at).toLocaleString("zh-CN")}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td>
+                    {run.error_code ? <div className="code">{run.error_code}</div> : null}
+                    <div className="muted">
+                      {run.retry_count ? `已重试 ${run.retry_count} 次` : "尚未重试"}
+                    </div>
                   </td>
                   <td><RunLinks run={run} /></td>
                   <td><span className="status-badge status-warning">人工确认</span></td>

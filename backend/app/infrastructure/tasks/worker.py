@@ -26,6 +26,7 @@ class RunStore(Protocol):
         now: datetime,
         worker_id: str,
         lease_token: str,
+        error_code: str | None = None,
     ) -> object | None: ...
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[object, ...]: ...
 
@@ -78,7 +79,12 @@ class Worker:
             if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
                 return True
             self.runs.transition(
-                run.id, RunStatus.FAILED, self.clock(), self.worker_id, self.lease_token
+                run.id,
+                RunStatus.FAILED,
+                self.clock(),
+                self.worker_id,
+                self.lease_token,
+                "JOB_EXECUTION_FAILED",
             )
             return True
         if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
