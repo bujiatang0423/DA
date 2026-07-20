@@ -265,8 +265,8 @@ def _security_status(
     if record is None:
         raise StrictDataMissingError(f"certified security status missing: {security_id}")
     return SecurityStatus(
-        bool(record.payload["is_st"]),
-        bool(record.payload["is_suspended"]),
+        _boolean(record, "is_st"),
+        _boolean(record, "is_suspended"),
         str(record.payload["board"]),
         _decimal(record, "price_limit_pct"),
     )
@@ -308,3 +308,16 @@ def _date(record: TemporalRecord, field: str) -> date:
 
 def _decimal(record: TemporalRecord, field: str) -> Decimal:
     return Decimal(str(record.payload[field]))
+
+
+def _boolean(record: TemporalRecord, field: str) -> bool:
+    value = record.payload.get(field)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise StrictDataMissingError(f"certified security status invalid: {field}")

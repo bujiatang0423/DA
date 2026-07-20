@@ -281,8 +281,8 @@ def test_certified_execution_inputs_use_one_attested_snapshot_for_bar_status_and
                         "PAST_DELISTED.SZ",
                         {
                             "trade_date": "2020-06-01",
-                            "is_st": False,
-                            "is_suspended": False,
+                            "is_st": "False",
+                            "is_suspended": "False",
                             "board": "main",
                             "price_limit_pct": "0.10",
                         },
@@ -339,6 +339,8 @@ def test_certified_execution_inputs_use_one_attested_snapshot_for_bar_status_and
 
     assert len(warehouse.calls) == 1
     assert inputs.bar.close == Decimal("10")
+    assert inputs.status.is_st is False
+    assert inputs.status.is_suspended is False
     assert inputs.status.price_limit_pct == Decimal("0.10")
     assert inputs.fee.record_id == "fee-2020"
 
