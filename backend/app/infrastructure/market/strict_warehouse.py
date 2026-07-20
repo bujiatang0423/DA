@@ -44,7 +44,7 @@ class PitCertificateAuthority(Protocol):
 
 
 class UnverifiedPitDataError(RuntimeError):
-    pass
+    code = "BACKTEST_SNAPSHOT_QUALITY_ERROR"
 
 
 class StrictPointInTimeWarehouse:

@@ -25,6 +25,10 @@ test("shows result and artifact links only when the run kind has an available re
         kind: "candidate_recommendation",
         status: "succeeded",
         submitted_at: "2026-07-19T09:00:00+08:00",
+        auto_trade_enabled: false,
+        human_confirm_required: true,
+        progress: 100,
+        retry_count: 0,
         links: {
           self: "/api/v1/runs/candidate-1",
           result: "/api/v1/candidates/candidate-1",
@@ -36,6 +40,10 @@ test("shows result and artifact links only when the run kind has an available re
         kind: "holding_analysis",
         status: "succeeded",
         submitted_at: "2026-07-19T09:01:00+08:00",
+        auto_trade_enabled: false,
+        human_confirm_required: true,
+        progress: 100,
+        retry_count: 0,
         links: {
           self: "/api/v1/runs/holding-1",
           result: "/api/v1/holding-analyses/holding-1",
@@ -47,6 +55,10 @@ test("shows result and artifact links only when the run kind has an available re
         kind: "backtest",
         status: "succeeded",
         submitted_at: "2026-07-19T09:02:00+08:00",
+        auto_trade_enabled: false,
+        human_confirm_required: true,
+        progress: 100,
+        retry_count: 0,
         links: {
           self: "/api/v1/runs/backtest-1",
           artifacts: "/api/v1/runs/backtest-1/artifacts",

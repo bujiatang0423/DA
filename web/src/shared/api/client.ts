@@ -1,15 +1,8 @@
-import type { RunDetail, RunPage } from "../../generated/schema";
-export type { RunDetail } from "../../generated/schema";
+import type { components } from "../../generated/schema";
 
-export interface RunRef {
-  run_id: string;
-  kind: string;
-  status: string;
-  submitted_at: string;
-  links: RunDetail["links"];
-  auto_trade_enabled: false;
-  human_confirm_required: true;
-}
+export type RunDetail = components["schemas"]["RunDetail"];
+export type RunPage = components["schemas"]["Page_RunDetail_"];
+export type RunRef = components["schemas"]["RunRef"];
 
 export async function listRuns(cursor?: string): Promise<RunPage> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";

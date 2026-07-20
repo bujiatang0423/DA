@@ -93,7 +93,7 @@ def _result(run_id: str, as_of_time: datetime) -> CandidateRecommendationResult:
     )
 
 
-def test_submit_returns_result_location_and_manual_only_contract() -> None:
+def test_submit_returns_run_location_and_manual_only_contract() -> None:
     submitter = RecordingSubmitter()
     client = TestClient(create_app((FeatureModule("candidates", build_router(submitter), ()),)))
 
@@ -104,7 +104,7 @@ def test_submit_returns_result_location_and_manual_only_contract() -> None:
     )
 
     assert response.status_code == 202
-    assert response.headers["location"] == "/api/v1/candidates/candidate-run"
+    assert response.headers["location"] == "/api/v1/runs/candidate-run"
     assert response.json()["auto_trade_enabled"] is False
     assert response.json()["human_confirm_required"] is True
     assert submitter.calls[0][1] == {
