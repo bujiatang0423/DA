@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunRef, RunLinks, RunStatus
+from backend.app.contracts.run_errors import safe_run_message
 from backend.app.features.runs.repository import RunRepository
 from backend.app.infrastructure.persistence.models import RunArtifactRow, RunRow
 
@@ -63,6 +64,7 @@ class RunsService:
                 heartbeat_at=row.heartbeat_at,
                 retry_count=row.retry_count,
                 error_code=row.error_code,
+                error_message=safe_run_message(row.error_code),
             )
 
     def list(self, cursor: str | None = None, limit: int = 50) -> Page[RunDetail]:
@@ -113,6 +115,7 @@ class RunsService:
         worker_id: str,
         lease_token: str,
         error_code: str | None = None,
+        error_message: str | None = None,
     ) -> RunRow | None:
         with self._factory.begin() as session:
             return RunRepository(session).transition(
@@ -122,6 +125,7 @@ class RunsService:
                 worker_id,
                 lease_token,
                 error_code,
+                error_message,
             )
 
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:

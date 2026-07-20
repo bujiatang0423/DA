@@ -22,6 +22,8 @@ ALL_STRATEGY_FACTORS = frozenset({"P", "F", "R", "T", "V"})
 class BacktestSnapshotQualityError(RuntimeError):
     """Stable fail-closed error for unusable point-in-time backtest data."""
 
+    code = "BACKTEST_SNAPSHOT_QUALITY_ERROR"
+
     def __init__(self) -> None:
         super().__init__("BACKTEST_SNAPSHOT_QUALITY_ERROR")
 

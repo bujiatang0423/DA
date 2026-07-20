@@ -185,6 +185,7 @@ export function RunsPage(): JSX.Element {
                   </td>
                   <td>
                     {run.error_code ? <div className="code">{run.error_code}</div> : null}
+                    {run.error_message ? <div className="muted">{run.error_message}</div> : null}
                     <div className="muted">
                       {run.retry_count ? `已重试 ${run.retry_count} 次` : "尚未重试"}
                     </div>

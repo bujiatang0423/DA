@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.contracts.runs import RunKind, RunStatus
+from backend.app.contracts.run_errors import safe_run_message
 from backend.app.infrastructure.persistence.models import RunEventRow, RunRow
 
 
@@ -98,6 +99,7 @@ class RunRepository:
         worker_id: str,
         lease_token: str,
         error_code: str | None = None,
+        error_message: str | None = None,
     ) -> RunRow | None:
         row = self._session.scalar(
             select(RunRow)
@@ -119,6 +121,8 @@ class RunRepository:
             row.finished_at = now
         if target is RunStatus.FAILED:
             row.error_code = error_code or "JOB_EXECUTION_FAILED"
+            safe_message = safe_run_message(row.error_code)
+            row.error_message = error_message if error_message == safe_message else safe_message
         self._event(run_id, target.value, now)
         self._session.flush()
         return row

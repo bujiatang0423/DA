@@ -79,7 +79,16 @@ def test_run_detail_projects_observable_status_without_raw_failure_text(
     assert detail.heartbeat_at == heartbeat_at
     assert detail.retry_count == 2
     assert detail.error_code == "PROVIDER_UNAVAILABLE"
+    assert detail.error_message == "数据源暂时不可用，请稍后重试。"
     assert "connection reset" not in detail.model_dump_json()
+
+    response = TestClient(create_app((build_runs_feature(RunsService(factory)),))).get(
+        f"/api/v1/runs/{run_id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error_message"] == "数据源暂时不可用，请稍后重试。"
+    assert "connection reset" not in response.text
 
 
 @pytest.mark.postgres
