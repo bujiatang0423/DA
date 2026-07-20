@@ -23,6 +23,7 @@ from backend.app.infrastructure.persistence.strict_pit_rows import (
     FinancialFactRow,
     IndexDailyBarRow,
     IndustryMembershipHistoryRow,
+    MarketBreadthRow,
     PitBundleRow,
     PolicyDocumentRow,
     SecurityMasterHistoryRow,
@@ -39,6 +40,7 @@ STRICT_TABLES = (
     TradingCalendarRow.__table__,
     DailyBarRawRow.__table__,
     IndexDailyBarRow.__table__,
+    MarketBreadthRow.__table__,
     CorporateActionRow.__table__,
     AdjustmentFactorRow.__table__,
     IndustryMembershipHistoryRow.__table__,
@@ -92,6 +94,10 @@ def test_ingest_is_idempotent_and_append_only(
     assert (
         strict_pit_session.scalar(select(func.count()).select_from(DailyBarRawRow))
         == bundle.file("daily_bars_raw").row_count
+    )
+    assert (
+        strict_pit_session.scalar(select(func.count()).select_from(MarketBreadthRow))
+        == bundle.file("market_breadth").row_count
     )
 
 

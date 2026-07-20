@@ -18,6 +18,7 @@ from backend.app.infrastructure.market.strict_certificates import (
     bundle_set_hash_for,
 )
 from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
+from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
 from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitDataError
 from backend.app.infrastructure.persistence.models import Base
 from backend.app.infrastructure.persistence.strict_pit_rows import (
@@ -49,6 +50,7 @@ SUPPORTED_KINDS = (
 STRICT_TABLES = (
     "pit_certificates, pit_audit_reports, pit_bundles, security_master_history, "
     "security_status_daily, trading_calendar, daily_bars_raw, index_daily_bars, "
+    "market_breadth, "
     "corporate_actions, adjustment_factors, industry_membership_history, "
     "theme_membership_history, financial_disclosures, financial_facts, policy_documents, "
     "fee_schedules"
@@ -113,6 +115,21 @@ def test_production_build_requires_approved_persisted_audit_report(
     snapshot = warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
 
     assert snapshot.data_grade is DataGrade.PIT_VERIFIED
+
+
+@pytest.mark.postgres
+def test_strict_reader_selects_only_market_breadth_visible_at_the_snapshot(
+    strict_session: Session,
+) -> None:
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.MARKET_BREADTH,)),
+    )
+
+    assert issues == ()
+    assert [(record.kind, record.payload["breadth"]) for record in records] == [
+        (DataKind.MARKET_BREADTH, "0.620000")
+    ]
 
 
 @pytest.mark.postgres

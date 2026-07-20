@@ -12,6 +12,7 @@ from backend.app.infrastructure.market.strict_row_mapping import parse_temporal_
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
     IndexDailyBarRow,
+    MarketBreadthRow,
     PitBundleRow,
     SecurityMasterHistoryRow,
     SecurityStatusDailyRow,
@@ -52,6 +53,7 @@ class StrictPitIngestor:
             "trading_calendar": self._trading_calendar,
             "daily_bars_raw": self._daily_bars,
             "index_daily_bars": self._index_bars,
+            "market_breadth": self._market_breadth,
         }
         parsed: dict[str, list[object]] = {}
         existing_ids: dict[str, dict[tuple[str, str], str]] = {}
@@ -208,6 +210,21 @@ class StrictPitIngestor:
                 close=_decimal(row, "close", dataset),
                 volume=_integer(row, "volume", dataset),
                 amount=_decimal(row, "amount", dataset),
+                available_at=_datetime(row, "available_at", dataset),
+                source_artifact_hash=_required(row, "source_artifact_hash", dataset),
+            )
+            for row in self._read(item)
+        ]
+
+    def _market_breadth(self, item: PitBundleFile, bundle_manifest_hash: str) -> list[object]:
+        dataset = item.dataset
+        return [
+            MarketBreadthRow(
+                id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
+                source_record_id=_required(row, "record_id", dataset),
+                trade_date=_date(row, "trade_date", dataset),
+                breadth=_decimal(row, "breadth", dataset),
+                security_count=_integer(row, "security_count", dataset),
                 available_at=_datetime(row, "available_at", dataset),
                 source_artifact_hash=_required(row, "source_artifact_hash", dataset),
             )

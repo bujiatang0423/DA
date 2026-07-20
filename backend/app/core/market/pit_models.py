@@ -33,6 +33,27 @@ class QualitySeverity(StrEnum):
     ERROR = "error"
 
 
+# These datasets have append-only SQL rows, bundle ingestion, and strict snapshot
+# selection.  Real-time and LLM inputs deliberately stay out of a certified
+# historical replay until they have the same persisted provenance contract.
+STRICT_BACKTEST_DATA_KINDS = (
+    DataKind.SECURITY_MASTER,
+    DataKind.SECURITY_STATUS,
+    DataKind.TRADING_CALENDAR,
+    DataKind.DAILY_BAR_RAW,
+    DataKind.INDEX_DAILY_BAR,
+    DataKind.MARKET_BREADTH,
+    DataKind.CORPORATE_ACTION,
+    DataKind.ADJUSTMENT_FACTOR,
+    DataKind.INDUSTRY_MEMBERSHIP,
+    DataKind.THEME_MEMBERSHIP,
+    DataKind.FINANCIAL_DISCLOSURE,
+    DataKind.FINANCIAL_FACT,
+    DataKind.POLICY_DOCUMENT,
+    DataKind.FEE_SCHEDULE,
+)
+
+
 @dataclass(frozen=True)
 class SnapshotScope:
     security_ids: tuple[str, ...] = ()
@@ -49,7 +70,7 @@ class SnapshotScope:
 
     @classmethod
     def backtest(cls, security_ids: tuple[str, ...], history_start: datetime) -> SnapshotScope:
-        return cls(security_ids, cls.candidate_recommendation().required_kinds, history_start)
+        return cls(security_ids, STRICT_BACKTEST_DATA_KINDS, history_start)
 
 
 @dataclass(frozen=True)

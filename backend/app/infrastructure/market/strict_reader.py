@@ -26,6 +26,7 @@ from backend.app.infrastructure.persistence.strict_pit_rows import (
     FinancialFactRow,
     IndexDailyBarRow,
     IndustryMembershipHistoryRow,
+    MarketBreadthRow,
     PolicyDocumentRow,
     SecurityMasterHistoryRow,
     SecurityStatusDailyRow,
@@ -65,6 +66,7 @@ ROW_MODELS: dict[DataKind, type[object]] = {
     DataKind.TRADING_CALENDAR: TradingCalendarRow,
     DataKind.DAILY_BAR_RAW: DailyBarRawRow,
     DataKind.INDEX_DAILY_BAR: IndexDailyBarRow,
+    DataKind.MARKET_BREADTH: MarketBreadthRow,
     DataKind.CORPORATE_ACTION: CorporateActionRow,
     DataKind.ADJUSTMENT_FACTOR: AdjustmentFactorRow,
     DataKind.INDUSTRY_MEMBERSHIP: IndustryMembershipHistoryRow,
@@ -213,6 +215,8 @@ def _version_key(kind: DataKind, row: StrictRow) -> object:
         return row.security_id, row.trade_date
     if kind is DataKind.INDEX_DAILY_BAR:
         return row.index_id, row.trade_date
+    if kind is DataKind.MARKET_BREADTH:
+        return row.trade_date
     if kind is DataKind.FINANCIAL_DISCLOSURE:
         return row.security_id, row.report_period
     if kind is DataKind.FEE_SCHEDULE:

@@ -140,6 +140,18 @@ class IndexDailyBarRow(Base):
     source_artifact_hash: Mapped[str] = mapped_column(String(64))
 
 
+class MarketBreadthRow(Base):
+    __tablename__ = "market_breadth"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(128), index=True)
+    trade_date: Mapped[date] = mapped_column(Date, index=True)
+    breadth: Mapped[Decimal] = mapped_column(Numeric(8, 6))
+    security_count: Mapped[int] = mapped_column(Integer)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    source_artifact_hash: Mapped[str] = mapped_column(String(64))
+
+
 class TemporalJsonRow(Base):
     __abstract__ = True
 

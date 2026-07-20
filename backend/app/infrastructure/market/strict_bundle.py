@@ -14,6 +14,7 @@ REQUIRED_DATASETS = frozenset(
         "trading_calendar",
         "daily_bars_raw",
         "index_daily_bars",
+        "market_breadth",
         "corporate_actions",
         "adjustment_factors",
         "industry_membership_history",
