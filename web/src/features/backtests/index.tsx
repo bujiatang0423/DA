@@ -1,17 +1,135 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-interface BacktestWindow { development_start: string; development_end: string; validation_start: string; validation_end: string }
-interface BacktestPlan { strategy_version: string; holdout: { start: string; end: string }; windows: BacktestWindow[]; groups: string[] }
-export async function submitBacktest(payload: object): Promise<BacktestPlan> { const response = await fetch("/api/v1/backtests/plan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error(`回测请求失败（${response.status}）`); return response.json() as Promise<BacktestPlan>; }
+import {
+  BacktestApiError,
+  getBacktest,
+  submitBacktest,
+  type BacktestResult,
+} from "./api";
+import { BacktestSummary } from "./BacktestSummary";
+
+const GROUPS = ["A", "B", "C", "D"];
 
 export function BacktestsPage(): JSX.Element {
-  const [start, setStart] = useState("2020-01-01"); const [end, setEnd] = useState("2025-12-31"); const [plan, setPlan] = useState<BacktestPlan | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
-  const submit = async (): Promise<void> => { setLoading(true); setError(null); try { setPlan(await submitBacktest({ strategy_version: "v2.12", start_date: start, end_date: end, initial_cash: "1000000", groups: ["A", "B", "C", "D"] })); } catch (err) { setError(err instanceof Error ? err.message : "请求失败"); } finally { setLoading(false); } };
-  return <section className="page-shell"><div className="page-heading"><div><h1>历史回测</h1><p>点时数据驱动的 V2.12 walk-forward 研究，不把未来数据带入过去。</p></div><button className="btn" onClick={() => void submit()} disabled={loading}>{loading ? "规划中…" : "生成回测计划"}</button></div>
-    <div className="panel"><div className="panel-title"><h2>研究参数</h2><span>Research only · 不自动交易</span></div><div className="control-grid"><label className="field">开始日期<input type="date" value={start} onChange={(event) => setStart(event.target.value)} /></label><label className="field">结束日期<input type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></label><div className="field"><span>策略版本</span><strong>四维盾剑 v2.12</strong></div><div className="field"><span>初始资金 / 分组</span><strong>¥1,000,000 · A/B/C/D</strong></div></div></div>
-    {error && <div className="alert" role="alert">{error}</div>}
-    {plan && <><div className="metric-grid"><div className="metric-card"><span className="metric-label">策略版本</span><div className="metric-value">{plan.strategy_version}</div><span className="metric-note">混合量化版</span></div><div className="metric-card"><span className="metric-label">Holdout 起点</span><div className="metric-value">{plan.holdout.start}</div><span className="metric-note">最终验证集</span></div><div className="metric-card"><span className="metric-label">Holdout 终点</span><div className="metric-value">{plan.holdout.end}</div><span className="metric-note">禁止调参触碰</span></div><div className="metric-card"><span className="metric-label">滚动窗口</span><div className="metric-value">{plan.windows.length}</div><span className="metric-note">开发 / 验证组合</span></div></div><div className="panel"><div className="panel-title"><h2>Walk-forward 时间窗</h2><span>分组：{plan.groups.join(" · ")}</span></div><div className="timeline">{plan.windows.length === 0 ? <div className="empty-state">当前区间不足以生成滚动窗口。</div> : plan.windows.map((window, index) => <div className="timeline-row" key={`${window.development_start}-${index}`}><strong>窗口 {index + 1}</strong><div><div className="muted">开发 {window.development_start} — {window.development_end}</div><div className="timeline-bar"><span style={{ width: "66%" }} /></div><div className="muted">验证 {window.validation_start} — {window.validation_end}</div></div><strong>点时锁定</strong></div>)}</div></div></>}
-  </section>;
+  const [start, setStart] = useState("2020-01-01");
+  const [end, setEnd] = useState("2025-12-31");
+  const [runId, setRunId] = useState<string>();
+  const [group, setGroup] = useState("A");
+  const [result, setResult] = useState<BacktestResult>();
+  const [submitting, setSubmitting] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState<string>();
+  const request = useMemo(
+    () => ({
+      strategy_version: "v2.12",
+      start_date: start,
+      end_date: end,
+      initial_cash: "1000000",
+      groups: GROUPS,
+    }),
+    [start, end],
+  );
+
+  useEffect(() => {
+    if (!runId) {
+      return undefined;
+    }
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const load = async (): Promise<void> => {
+      try {
+        const next = await getBacktest(runId, group);
+        if (!cancelled) {
+          setResult(next);
+          setWaiting(false);
+        }
+      } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+        if (loadError instanceof BacktestApiError && loadError.status === 404) {
+          setWaiting(true);
+          retry = setTimeout(() => void load(), 1500);
+          return;
+        }
+        setWaiting(false);
+        setError("回测结果加载失败，请稍后重试。");
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (retry) {
+        clearTimeout(retry);
+      }
+    };
+  }, [group, runId]);
+
+  const submit = async (): Promise<void> => {
+    setSubmitting(true);
+    setError(undefined);
+    setResult(undefined);
+    try {
+      const run = await submitBacktest(request);
+      setRunId(run.run_id);
+    } catch {
+      setError("回测任务提交失败，请检查研究参数后重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="page-shell">
+      <div className="page-heading">
+        <div>
+          <h1>历史回测</h1>
+          <p>点时数据驱动的 V2.12 walk-forward 研究，不把未来数据带入过去。</p>
+        </div>
+        <button className="btn" onClick={() => void submit()} disabled={submitting}>
+          {submitting ? "提交中..." : "开始回测"}
+        </button>
+      </div>
+      <div className="panel">
+        <div className="panel-title"><h2>研究参数</h2><span>Research only</span></div>
+        <div className="control-grid">
+          <label className="field">
+            开始日期
+            <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+          </label>
+          <label className="field">
+            结束日期
+            <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+          </label>
+          <div className="field"><span>策略版本</span><strong>四维盾剑 v2.12</strong></div>
+          <div className="field"><span>初始资金 / 分组</span><strong>¥1,000,000 · A/B/C/D</strong></div>
+        </div>
+      </div>
+      {error ? <div className="alert" role="alert">{error}</div> : null}
+      {waiting ? <div className="empty-state">任务已提交，正在等待持久回测结果...</div> : null}
+      {result ? (
+        <>
+          <div className="heading-actions">{GROUPS.filter((item) => (
+            result.groups.some((summary) => summary.group === item)
+          )).map((item) => (
+            <button
+              className={item === group ? "btn" : "btn btn-secondary"}
+              key={item}
+              onClick={() => setGroup(item)}
+            >
+              分组 {item}
+            </button>
+          ))}</div>
+          <BacktestSummary result={result} />
+        </>
+      ) : null}
+    </section>
+  );
 }
 
-export const backtestsFeature = { id: "backtests", path: "/backtests", label: "历史回测", element: <BacktestsPage /> } as const;
+export const backtestsFeature = {
+  id: "backtests",
+  path: "/backtests",
+  label: "历史回测",
+  element: <BacktestsPage />,
+} as const;
