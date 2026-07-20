@@ -130,12 +130,57 @@ def _event_has_only_allowlisted_fields(module: ast.Module) -> bool:
     ]
     if len(event_dicts) != 1:
         return False
-    keys = {
-        key.value
-        for key in event_dicts[0].keys
-        if isinstance(key, ast.Constant) and isinstance(key.value, str)
-    }
-    return keys == _REQUEST_EVENT_FIELDS
+    entries = [
+        (key.value, value)
+        for key, value in zip(event_dicts[0].keys, event_dicts[0].values, strict=True)
+        if isinstance(key, ast.Constant) and isinstance(key.value, str) and value is not None
+    ]
+    return (
+        len(entries) == len(_REQUEST_EVENT_FIELDS)
+        and {key for key, _ in entries} == _REQUEST_EVENT_FIELDS
+        and all(_is_approved_event_value(key, value) for key, value in entries)
+    )
+
+
+def _is_approved_event_value(key: str, value: ast.expr) -> bool:
+    if key == "timestamp":
+        return _is_utc_timestamp(value)
+    if key == "level":
+        return _constant_string(value) == "INFO"
+    if key == "request_id":
+        return _name_is(value, "request_id")
+    if key == "method":
+        return _name_is(value, "method")
+    if key == "path_template":
+        return _name_is(value, "path_template")
+    if key == "status_code":
+        return _name_is(value, "status_code")
+    if key == "run_id":
+        return _is_safe_request_run_id(value)
+    return key == "event_code" and _name_is(value, "_REQUEST_EVENT_CODE")
+
+
+def _is_utc_timestamp(value: ast.expr) -> bool:
+    if not isinstance(value, ast.Call) or value.args or value.keywords:
+        return False
+    if not isinstance(value.func, ast.Attribute) or value.func.attr != "isoformat":
+        return False
+    now = value.func.value
+    return (
+        isinstance(now, ast.Call)
+        and isinstance(now.func, ast.Attribute)
+        and _name_is(now.func.value, "datetime")
+        and now.func.attr == "now"
+        and len(now.args) == 1
+        and _name_is(now.args[0], "UTC")
+        and not now.keywords
+    )
+
+
+def _is_safe_request_run_id(value: ast.expr) -> bool:
+    if not isinstance(value, ast.Call) or not _name_is(value.func, "safe_run_id"):
+        return False
+    return len(value.args) == 1 and _name_is(value.args[0], "run_id") and not value.keywords
 
 
 def _is_approved_logging_call(node: ast.Call) -> bool:
@@ -205,16 +250,37 @@ def _is_legacy_import_summary(node: ast.Call) -> bool:
         or not isinstance(dumped.args[0], ast.Dict)
     ):
         return False
-    keys = {
-        key.value
-        for key in dumped.args[0].keys
-        if isinstance(key, ast.Constant) and isinstance(key.value, str)
-    }
-    return keys == {"batch_id", "effective_at", "manifest_sha256", "idempotent"} and any(
-        keyword.arg == "ensure_ascii"
-        and isinstance(keyword.value, ast.Constant)
-        and keyword.value.value is False
-        for keyword in dumped.keywords
+    entries = [
+        (key.value, value)
+        for key, value in zip(dumped.args[0].keys, dumped.args[0].values, strict=True)
+        if isinstance(key, ast.Constant) and isinstance(key.value, str) and value is not None
+    ]
+    return (
+        len(entries) == 4
+        and {key for key, _ in entries}
+        == {"batch_id", "effective_at", "manifest_sha256", "idempotent"}
+        and all(_is_approved_legacy_import_value(key, value) for key, value in entries)
+        and len(dumped.keywords) == 1
+        and dumped.keywords[0].arg == "ensure_ascii"
+        and isinstance(dumped.keywords[0].value, ast.Constant)
+        and dumped.keywords[0].value.value is False
+    )
+
+
+def _is_approved_legacy_import_value(key: str, value: ast.expr) -> bool:
+    if key == "effective_at":
+        return _is_batch_effective_at(value)
+    return _attribute_is(value, "batch", key)
+
+
+def _is_batch_effective_at(value: ast.expr) -> bool:
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and _attribute_is(value.func.value, "batch", "effective_at")
+        and value.func.attr == "isoformat"
+        and not value.args
+        and not value.keywords
     )
 
 
@@ -236,10 +302,7 @@ def _is_artifact_verification_output(node: ast.Call) -> bool:
 
 def _is_generic_error_output(node: ast.Call) -> bool:
     return (
-        isinstance(node.args[0], ast.Call)
-        and _name_is(node.args[0].func, "str")
-        and len(node.args[0].args) == 1
-        and _name_is(node.args[0].args[0], "exc")
+        _constant_string(node.args[0]) == "artifact hash verification failed"
         and len(node.keywords) == 1
         and node.keywords[0].arg == "file"
         and _attribute_is(node.keywords[0].value, "sys", "stderr")

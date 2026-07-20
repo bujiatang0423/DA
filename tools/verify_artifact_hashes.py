@@ -103,8 +103,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         result = verify_manifest(args.artifact_root, args.manifest)
-    except ArtifactVerificationError as exc:
-        print(str(exc), file=sys.stderr)
+    except ArtifactVerificationError:
+        print("artifact hash verification failed", file=sys.stderr)
         return 1
     print(f"verified artifact hashes: {result.verified_count}/{result.expected_count}")
     return 0
