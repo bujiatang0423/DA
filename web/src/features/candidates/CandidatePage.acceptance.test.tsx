@@ -1,9 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { CandidatePage } from "./CandidatePage";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
 });
 
 test("groups executable watchlist and excluded items with grades and safe evidence", async () => {
@@ -52,4 +57,23 @@ test("groups executable watchlist and excluded items with grades and safe eviden
   expect(screen.getByText("pit:bar:abc")).toBeTruthy();
   expect(screen.getByText("仅供人工确认，不自动下单")).toBeTruthy();
   expect(screen.queryByText("自动下单")).toBeNull();
+});
+
+test("uses Asia Shanghai wall-clock time for default and submitted analysis time", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-20T01:30:00Z"));
+  vi.mocked(fetch)
+    .mockResolvedValueOnce(new Response(JSON.stringify({ run_id: "run-2" }), { status: 202 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" }), { status: 200 }));
+
+  const view = render(<CandidatePage />);
+
+  const analysisTime = view.getByLabelText("分析时点") as HTMLInputElement;
+  expect(analysisTime.value).toBe("2026-07-20T09:30");
+  fireEvent.click(view.getByRole("button", { name: "生成候选" }));
+
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body))).toEqual({
+    as_of_time: "2026-07-20T01:30:00.000Z",
+  });
 });

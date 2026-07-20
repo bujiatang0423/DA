@@ -12,6 +12,34 @@ const factorNames: Record<string, string> = {
 };
 
 type CandidateGroups = Record<"executable" | "watchlist" | "excluded", CandidateItem[]>;
+const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
+
+function shanghaiInputValue(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SHANGHAI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+function shanghaiInputToIso(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) {
+    throw new Error("分析时点格式无效");
+  }
+  const [, year, month, day, hour, minute] = match;
+  const shanghaiOffsetMilliseconds = 8 * 60 * 60 * 1000;
+  return new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
+      - shanghaiOffsetMilliseconds,
+  ).toISOString();
+}
 
 function factorValue(item: CandidateItem, key: string): string {
   const value = item.factors?.[key];
@@ -100,7 +128,7 @@ function ResultOverview({ result }: { result: CandidateResult }): JSX.Element {
 }
 
 export function CandidatePage(): JSX.Element {
-  const [asOfTime, setAsOfTime] = useState(() => new Date().toISOString().slice(0, 16));
+  const [asOfTime, setAsOfTime] = useState(() => shanghaiInputValue(new Date()));
   const [result, setResult] = useState<CandidateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,7 +139,7 @@ export function CandidatePage(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      setResult(await submitCandidate(new Date(asOfTime).toISOString()));
+      setResult(await submitCandidate(shanghaiInputToIso(asOfTime)));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "请求失败");
     } finally {
