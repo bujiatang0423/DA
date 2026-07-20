@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.features.holdings.repository import (
     HoldingAnalysisConflict,
+    HoldingAnalysisItemRow,
     HoldingResultRow,
     SqlHoldingAnalysisRepository,
 )
@@ -22,6 +23,7 @@ def memory_sessions() -> sessionmaker[Session]:
         poolclass=StaticPool,
     )
     HoldingResultRow.__table__.create(engine)
+    HoldingAnalysisItemRow.__table__.create(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
@@ -38,6 +40,27 @@ def test_repository_round_trips_and_replays_idempotently(
     assert stored is not None
     assert tuple(item.security_id for item in stored.items) == ("000001.SZ", "600000.SH")
     assert replace(stored, items=result.items) == result
+
+
+def test_repository_projects_each_item_once_in_security_id_order(
+    memory_sessions: sessionmaker[Session],
+) -> None:
+    repository = SqlHoldingAnalysisRepository(memory_sessions)
+    result = holding_analysis_result("holding-normalized-items")
+
+    repository.save(result)
+    repository.save(result)
+
+    with memory_sessions() as session:
+        rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=result.run_id).all()
+
+    assert [(row.item_index, row.security_id) for row in rows] == [
+        (0, "000001.SZ"),
+        (1, "600000.SH"),
+    ]
+    assert rows[0].average_cost == "10.20"
+    assert rows[0].reason_codes == ["ELIGIBLE"]
+    assert rows[1].evidence_refs == ["market-close:600000.SH:2026-07-17"]
 
 
 def test_repository_rejects_same_run_with_a_different_manifest(
@@ -86,6 +109,7 @@ def test_at_is_scoped_to_the_exact_portfolio_decision_time(
 @pytest.mark.postgres
 def test_repository_round_trips_on_postgresql(postgres_engine: Engine) -> None:
     HoldingResultRow.__table__.create(postgres_engine, checkfirst=True)
+    HoldingAnalysisItemRow.__table__.create(postgres_engine, checkfirst=True)
     sessions = sessionmaker(bind=postgres_engine, expire_on_commit=False)
     repository = SqlHoldingAnalysisRepository(sessions)
     result = holding_analysis_result(
@@ -103,3 +127,10 @@ def test_repository_round_trips_on_postgresql(postgres_engine: Engine) -> None:
     assert latest.run_id == result.run_id
     assert stored.manifest_hash == result.manifest_hash
     assert stored.items[0].evidence_refs == ("market-close:000001.SZ:2026-07-17",)
+
+    with sessions() as session:
+        item_rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=result.run_id).all()
+    assert [(row.item_index, row.security_id) for row in item_rows] == [
+        (0, "000001.SZ"),
+        (1, "600000.SH"),
+    ]
