@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, delete
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.bootstrap.application import create_app
@@ -212,23 +212,30 @@ def test_restarted_handler_and_api_read_normalized_audit_items_from_postgresql(
         heartbeat=lambda _stage, _progress: None,
     )
 
-    HoldingAnalysisJobHandler(analysis_service)(context)
-    HoldingAnalysisJobHandler(analysis_service)(context)
+    try:
+        HoldingAnalysisJobHandler(analysis_service)(context)
+        HoldingAnalysisJobHandler(analysis_service)(context)
 
-    restarted_repository = SqlHoldingAnalysisRepository(sessions)
-    client = holding_client(RecordingSubmitter(), restarted_repository)
-    response = client.get(f"/api/v1/holding-analyses/{run_id}")
+        restarted_repository = SqlHoldingAnalysisRepository(sessions)
+        client = holding_client(RecordingSubmitter(), restarted_repository)
+        response = client.get(f"/api/v1/holding-analyses/{run_id}")
 
-    assert response.status_code == 200
-    items = response.json()["items"]
-    assert len(items) == 1
-    assert items[0]["security_id"] == "000001.SZ"
-    assert items[0]["reason_codes"] == ["ELIGIBLE"]
-    assert items[0]["quality_codes"] == []
-    assert items[0]["evidence_refs"] == [f"pit:daily_bar_raw:{artifact_hash}"]
-    with sessions() as session:
-        child_rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=str(run_id)).all()
-    assert [(row.item_index, row.security_id) for row in child_rows] == [(0, "000001.SZ")]
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["security_id"] == "000001.SZ"
+        assert items[0]["reason_codes"] == ["ELIGIBLE"]
+        assert items[0]["quality_codes"] == []
+        assert items[0]["evidence_refs"] == [f"pit:daily_bar_raw:{artifact_hash}"]
+        with sessions() as session:
+            child_rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=str(run_id)).all()
+        assert [(row.item_index, row.security_id) for row in child_rows] == [(0, "000001.SZ")]
+    finally:
+        with sessions.begin() as session:
+            session.execute(
+                delete(HoldingAnalysisItemRow).where(HoldingAnalysisItemRow.run_id == str(run_id))
+            )
+            session.execute(delete(HoldingResultRow).where(HoldingResultRow.run_id == str(run_id)))
 
 
 def test_latest_at_returns_only_an_analysis_for_the_requested_decision_time() -> None:
