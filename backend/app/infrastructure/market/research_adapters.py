@@ -1,6 +1,8 @@
 from dataclasses import asdict
 from datetime import datetime, date, time
+
 from backend.app.core.market.pit_models import DataKind, LineageRef, SnapshotScope, TemporalRecord
+from backend.app.infrastructure.llm.deepseek_factor import validate_factor
 from backend.app.infrastructure.market.research_source import ResearchBatch
 
 
@@ -12,28 +14,70 @@ class MarketEvidenceSource:
 
     def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
         if hasattr(self.market, "research_records"):
-            result = tuple(self.market.research_records(as_of_time=as_of_time, scope=scope))
+            result = tuple(
+                record
+                for record in self.market.research_records(as_of_time=as_of_time, scope=scope)
+                if record.event_time <= as_of_time and record.available_at <= as_of_time
+            )
             return ResearchBatch(result, _lineage(self.provider, result))
         result: list[TemporalRecord] = []
         ids = scope.security_ids or tuple(x.security_id for x in self.market.universe(as_of_time))
+        required = set(scope.required_kinds)
+        include_bars = not required or DataKind.DAILY_BAR_RAW in required
+        include_financials = not required or bool(
+            {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & required
+        )
         for sid in ids:
-            for bar in self.market.daily_bars(sid, as_of_time):
-                event = (
-                    datetime.combine(bar.trade_date, time(15, 0), as_of_time.tzinfo)
-                    if isinstance(bar.trade_date, date)
-                    else bar.trade_date
-                )
-                result.append(
-                    _record(
-                        DataKind.DAILY_BAR_RAW,
-                        sid,
-                        str(bar.trade_date),
-                        event,
-                        getattr(bar, "available_at", as_of_time),
-                        bar.source_hash,
-                        asdict(bar),
+            if include_bars:
+                for bar in self.market.daily_bars(sid, as_of_time):
+                    available_at = getattr(bar, "available_at", as_of_time)
+                    if available_at > as_of_time:
+                        continue
+                    event = (
+                        datetime.combine(bar.trade_date, time(15, 0), as_of_time.tzinfo)
+                        if isinstance(bar.trade_date, date)
+                        else bar.trade_date
                     )
-                )
+                    result.append(
+                        _record(
+                            DataKind.DAILY_BAR_RAW,
+                            sid,
+                            str(bar.trade_date),
+                            event,
+                            available_at,
+                            bar.source_hash,
+                            asdict(bar),
+                        )
+                    )
+            if include_financials:
+                for financial in self.market.financials(sid, as_of_time):
+                    if financial.published_at > as_of_time:
+                        continue
+                    if not required or DataKind.FINANCIAL_DISCLOSURE in required:
+                        result.append(
+                            _record(
+                                DataKind.FINANCIAL_DISCLOSURE,
+                                sid,
+                                financial.report_period.isoformat(),
+                                financial.published_at,
+                                financial.published_at,
+                                financial.source_hash,
+                                asdict(financial),
+                            )
+                        )
+                    if not required or DataKind.FINANCIAL_FACT in required:
+                        for metric, value in financial.facts.items():
+                            result.append(
+                                _record(
+                                    DataKind.FINANCIAL_FACT,
+                                    sid,
+                                    f"{financial.report_period.isoformat()}:{metric}",
+                                    financial.published_at,
+                                    financial.published_at,
+                                    financial.source_hash,
+                                    {"metric": metric, "value": value},
+                                )
+                            )
         return ResearchBatch(tuple(result), _lineage(self.provider, tuple(result)))
 
 
@@ -112,6 +156,12 @@ class LlmEvidenceSource:
             )
             if factor.as_of_time != as_of_time or factor.security_id != sid:
                 raise ValueError("LLM factor identity mismatch")
+            validate_factor(
+                factor.payload,
+                as_of_time=as_of_time,
+                allowed_evidence={item.source_id for item in policies}
+                | {item.source_hash for item in financials},
+            )
             rows.append(
                 _record(
                     DataKind.LLM_FACTOR,
@@ -141,10 +191,29 @@ class ResearchEvidenceSource:
 
     def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
         batches = tuple(s.fetch(as_of_time=as_of_time, scope=scope) for s in self.sources)
-        records = tuple(r for b in batches for r in b.records)
+        records_by_id: dict[str, TemporalRecord] = {}
+        for batch in batches:
+            for record in batch.records:
+                previous = records_by_id.get(record.record_id)
+                if previous is not None and previous != record:
+                    raise ValueError(
+                        f"conflicting record from research providers: {record.record_id}"
+                    )
+                records_by_id[record.record_id] = record
+        records = tuple(records_by_id[record_id] for record_id in sorted(records_by_id))
         missing = set(scope.required_kinds) - {r.kind for r in records}
         if missing:
             raise ValueError(
                 "research evidence source missing: " + ",".join(sorted(x.value for x in missing))
             )
-        return ResearchBatch(records, tuple(l for b in batches for l in b.lineage))
+        lineage = tuple(
+            sorted(
+                {item for batch in batches for item in batch.lineage},
+                key=lambda item: (
+                    item.source_artifact_hash,
+                    item.provider,
+                    item.batch_id,
+                ),
+            )
+        )
+        return ResearchBatch(records, lineage)
