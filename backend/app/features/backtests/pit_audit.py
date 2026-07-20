@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from hashlib import sha256
 import json
+from string import hexdigits
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -41,6 +42,14 @@ REQUIRED_MARKET_KINDS = frozenset(
     }
 )
 
+COVERAGE_EVIDENCE_KINDS = frozenset(
+    {
+        DataKind.ADJUSTMENT_FACTOR,
+        DataKind.INDUSTRY_MEMBERSHIP,
+        DataKind.THEME_MEMBERSHIP,
+    }
+)
+
 
 class AuditablePointInTimeWarehouse(Protocol):
     """Read an unauthorised candidate snapshot for PIT audit only."""
@@ -54,11 +63,30 @@ class AuditablePointInTimeWarehouse(Protocol):
 
     def bundle_set_hash(self, coverage_start: date, coverage_end: date) -> str: ...
 
+    def coverage_evidence(
+        self,
+        *,
+        as_of_time: datetime,
+        scope: SnapshotScope,
+    ) -> tuple[DatasetCoverageEvidence, ...]: ...
+
 
 class AuditUniverseResolver(Protocol):
     """Resolve the auditable security universe visible at one exact point in time."""
 
     def security_ids_for(self, as_of_time: datetime) -> tuple[str, ...]: ...
+
+
+@dataclass(frozen=True)
+class DatasetCoverageEvidence:
+    """Evidence that a sparse PIT dataset was checked for a dated universe."""
+
+    kind: DataKind
+    as_of_time: datetime
+    security_ids: tuple[str, ...]
+    covered_security_ids: tuple[str, ...]
+    known_empty_security_ids: tuple[str, ...]
+    source_hash: str
 
 
 @dataclass(frozen=True)
@@ -165,6 +193,14 @@ class PitAuditRunner:
         if snapshot.quality.has_errors:
             failures.append(f"snapshot:{failure_date}:QUALITY_ERROR")
             return
+        try:
+            coverage_evidence = self._warehouse.coverage_evidence(
+                as_of_time=as_of_time,
+                scope=expected_scope,
+            )
+        except Exception:
+            failures.append(f"snapshot:{failure_date}:COVERAGE_EVIDENCE_UNAVAILABLE")
+            return
         records = snapshot.market_inputs + tuple(
             record
             for observation in snapshot.security_observations
@@ -187,6 +223,9 @@ class PitAuditRunner:
                 failures.append(f"{kind.value}:{failure_date}:RECORDS_MISSING")
                 coverage_failed = True
         if coverage_failed:
+            return
+        if not _has_complete_sparse_coverage(coverage_evidence, as_of_time, security_ids):
+            failures.append(f"snapshot:{failure_date}:COVERAGE_EVIDENCE_MISSING")
             return
         manifests.append(snapshot.manifest_hash)
 
@@ -220,3 +259,36 @@ def _scope_covers(actual: SnapshotScope, expected: SnapshotScope) -> bool:
         and actual.history_start == expected.history_start
         and set(actual.required_kinds).issuperset(expected.required_kinds)
     )
+
+
+def _has_complete_sparse_coverage(
+    evidence: tuple[DatasetCoverageEvidence, ...],
+    as_of_time: datetime,
+    security_ids: tuple[str, ...],
+) -> bool:
+    expected_ids = set(security_ids)
+    by_kind: dict[DataKind, DatasetCoverageEvidence] = {}
+    for item in evidence:
+        if item.kind not in COVERAGE_EVIDENCE_KINDS or item.kind in by_kind:
+            return False
+        by_kind[item.kind] = item
+    for kind in COVERAGE_EVIDENCE_KINDS:
+        item = by_kind.get(kind)
+        if item is None or item.as_of_time != as_of_time:
+            return False
+        if set(item.security_ids) != expected_ids or not _is_sha256(item.source_hash):
+            return False
+        covered = set(item.covered_security_ids)
+        known_empty = set(item.known_empty_security_ids)
+        if (
+            not covered.issubset(expected_ids)
+            or not known_empty.issubset(expected_ids)
+            or covered.intersection(known_empty)
+            or covered.union(known_empty) != expected_ids
+        ):
+            return False
+    return True
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(char in hexdigits for char in value)

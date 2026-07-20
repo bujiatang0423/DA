@@ -14,7 +14,12 @@ from backend.app.core.market.pit_models import (
     TemporalRecord,
 )
 from backend.app.core.market.snapshot import assemble_snapshot
-from backend.app.features.backtests.pit_audit import DAILY_REQUIRED_KINDS, PitAuditRunner
+from backend.app.features.backtests.pit_audit import (
+    COVERAGE_EVIDENCE_KINDS,
+    DAILY_REQUIRED_KINDS,
+    DatasetCoverageEvidence,
+    PitAuditRunner,
+)
 
 
 FIRST_DATE = date(2020, 6, 1)
@@ -32,8 +37,14 @@ class DateUniverse:
 
 
 class CandidateWarehouse:
-    def __init__(self, records: tuple[TemporalRecord, ...] = ()) -> None:
+    def __init__(
+        self,
+        records: tuple[TemporalRecord, ...] = (),
+        *,
+        zero_membership_kinds: frozenset[DataKind] = frozenset(),
+    ) -> None:
         self._records = records
+        self._zero_membership_kinds = zero_membership_kinds
 
     def candidate_snapshot(
         self,
@@ -58,6 +69,28 @@ class CandidateWarehouse:
 
     def bundle_set_hash(self, coverage_start: date, coverage_end: date) -> str:
         return f"{coverage_start.isoformat()}:{coverage_end.isoformat()}".ljust(64, "a")
+
+    def coverage_evidence(
+        self,
+        *,
+        as_of_time: datetime,
+        scope: SnapshotScope,
+    ) -> tuple[DatasetCoverageEvidence, ...]:
+        return tuple(
+            DatasetCoverageEvidence(
+                kind=kind,
+                as_of_time=as_of_time,
+                security_ids=scope.security_ids,
+                covered_security_ids=(
+                    () if kind in self._zero_membership_kinds else scope.security_ids
+                ),
+                known_empty_security_ids=(
+                    scope.security_ids if kind in self._zero_membership_kinds else ()
+                ),
+                source_hash="a" * 64,
+            )
+            for kind in COVERAGE_EVIDENCE_KINDS
+        )
 
 
 def test_audit_binds_each_date_to_its_own_ipo_and_delisting_universe() -> None:
@@ -111,22 +144,61 @@ def test_required_kinds_are_a_minimum_and_valid_auxiliary_records_are_allowed() 
     assert report.passed is True
 
 
-def test_optional_memberships_and_adjustments_can_have_zero_members() -> None:
+def test_optional_memberships_can_have_zero_members_with_explicit_coverage_evidence() -> None:
     universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
     optional_kinds = {
-        DataKind.ADJUSTMENT_FACTOR,
         DataKind.INDUSTRY_MEMBERSHIP,
         DataKind.THEME_MEMBERSHIP,
     }
     records = tuple(
         item for item in complete_records(universe._values) if item.kind not in optional_kinds
     )
-    report = PitAuditRunner(CandidateWarehouse(records), (FIRST_DATE,), universe).run(
+    report = PitAuditRunner(
+        CandidateWarehouse(records, zero_membership_kinds=frozenset(optional_kinds)),
+        (FIRST_DATE,),
+        universe,
+    ).run(
         coverage_start=FIRST_DATE,
         coverage_end=FIRST_DATE,
     )
 
     assert report.passed is True
+
+
+@pytest.mark.parametrize(
+    "missing_kind",
+    (DataKind.ADJUSTMENT_FACTOR, DataKind.INDUSTRY_MEMBERSHIP, DataKind.THEME_MEMBERSHIP),
+)
+def test_clean_quality_without_required_sparse_coverage_evidence_fails(
+    missing_kind: DataKind,
+) -> None:
+    universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
+
+    class MissingEvidenceWarehouse(CandidateWarehouse):
+        def coverage_evidence(
+            self,
+            *,
+            as_of_time: datetime,
+            scope: SnapshotScope,
+        ) -> tuple[DatasetCoverageEvidence, ...]:
+            return tuple(
+                item
+                for item in super().coverage_evidence(as_of_time=as_of_time, scope=scope)
+                if item.kind is not missing_kind
+            )
+
+    report = PitAuditRunner(
+        MissingEvidenceWarehouse(
+            tuple(
+                item for item in complete_records(universe._values) if item.kind is not missing_kind
+            )
+        ),
+        (FIRST_DATE,),
+        universe,
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is False
+    assert report.failures == ("snapshot:2020-06-01:COVERAGE_EVIDENCE_MISSING",)
 
 
 def test_missing_bar_or_status_for_one_visible_security_fails_closed() -> None:
