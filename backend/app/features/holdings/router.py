@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import AwareDatetime
 
+from backend.app.contracts.common import ErrorResponse
 from backend.app.contracts.holdings import (
     HoldingAnalysisRequest as LegacyHoldingAnalysisRequest,
 )
@@ -49,6 +50,18 @@ class LegacyImportProvenance:
 
 LegacyImportProvenanceReader = Callable[[str], LegacyImportProvenance | None]
 
+ASYNC_SUBMISSION_RESPONSES = {
+    202: {
+        "headers": {
+            "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {"type": "string"},
+            }
+        }
+    },
+    422: {"model": ErrorResponse},
+}
+
 
 def build_router(
     service: LegacyHoldingService,
@@ -86,7 +99,12 @@ def build_router(
         response.headers["Location"] = ref.links.self
         return ref
 
-    @legacy.post("/analysis/submit", response_model=RunRef, status_code=202)
+    @legacy.post(
+        "/analysis/submit",
+        response_model=RunRef,
+        status_code=202,
+        responses=ASYNC_SUBMISSION_RESPONSES,
+    )
     def submit_legacy_analysis(
         request: HoldingAnalysisRequest,
         response: Response,
@@ -94,7 +112,12 @@ def build_router(
     ) -> RunRef:
         return submit_request(request, response, idempotency_key)
 
-    @analyses.post("", response_model=RunRef, status_code=202)
+    @analyses.post(
+        "",
+        response_model=RunRef,
+        status_code=202,
+        responses=ASYNC_SUBMISSION_RESPONSES,
+    )
     def submit_analysis(
         request: HoldingAnalysisRequest,
         response: Response,

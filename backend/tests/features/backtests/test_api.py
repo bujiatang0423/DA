@@ -28,7 +28,7 @@ def test_submit_is_async_research_only_and_idempotent() -> None:
     second = client.post("/api/v1/backtests", json=REQUEST_BODY, headers=headers)
 
     assert first.status_code == 202
-    assert first.headers["Location"] == f"/api/v1/backtests/{first.json()['run_id']}"
+    assert first.headers["Location"] == first.json()["links"]["self"]
     assert first.json()["run_id"] == second.json()["run_id"]
     assert first.json()["status"] == "queued"
     assert first.json()["auto_trade_enabled"] is False

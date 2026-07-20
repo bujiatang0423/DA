@@ -7,6 +7,32 @@ from backend.app.contracts.runs import Page, RunDetail, RunKind, RunRef
 from backend.app.features.runs.service import RunsService
 
 
+RETRY_RESPONSES = {
+    202: {
+        "headers": {
+            "Location": {
+                "description": "URL of the requeued run resource.",
+                "schema": {"type": "string"},
+            }
+        }
+    },
+    409: {"model": ErrorResponse},
+    422: {"model": ErrorResponse},
+}
+
+SUBMIT_RUN_RESPONSES = {
+    202: {
+        "headers": {
+            "Location": {
+                "description": "URL of the submitted run resource.",
+                "schema": {"type": "string"},
+            }
+        }
+    },
+    422: {"model": ErrorResponse},
+}
+
+
 def build_router(service: RunsService) -> APIRouter:
     router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -26,14 +52,19 @@ def build_router(service: RunsService) -> APIRouter:
         "/{run_id}/retry",
         response_model=RunRef,
         status_code=202,
-        responses={409: {"model": ErrorResponse}},
+        responses=RETRY_RESPONSES,
     )
     def retry_run(run_id: UUID, response: Response) -> RunRef:
         result = service.retry(run_id, datetime.now(UTC))
         response.headers["Location"] = result.links.self
         return result
 
-    @router.post("", response_model=RunRef, status_code=202)
+    @router.post(
+        "",
+        response_model=RunRef,
+        status_code=202,
+        responses=SUBMIT_RUN_RESPONSES,
+    )
     def submit_run(
         kind: RunKind,
         payload: dict[str, object],

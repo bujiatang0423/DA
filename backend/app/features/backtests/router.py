@@ -4,12 +4,26 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Header, Query, Response
 from uuid import UUID
 
+from backend.app.contracts.common import ErrorResponse
 from backend.app.contracts.runs import RunKind, RunRef
 from .models import BacktestRequest
 from .models import StrategyGroup
 from .repository import BacktestResultRepository
 from .schemas import BacktestResultResponse
 from .walk_forward import WalkForwardPlan
+
+
+ASYNC_SUBMISSION_RESPONSES = {
+    202: {
+        "headers": {
+            "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {"type": "string"},
+            }
+        }
+    },
+    422: {"model": ErrorResponse},
+}
 
 
 def build_router(
@@ -28,7 +42,12 @@ def build_router(
             "groups": list(request.groups),
         }
 
-    @router.post("", response_model=RunRef, status_code=202)
+    @router.post(
+        "",
+        response_model=RunRef,
+        status_code=202,
+        responses=ASYNC_SUBMISSION_RESPONSES,
+    )
     def submit_backtest(
         request: BacktestRequest,
         response: Response,
@@ -42,7 +61,7 @@ def build_router(
             idempotency_key,
             datetime.now(UTC),
         )
-        response.headers["Location"] = f"/api/v1/backtests/{run_ref.run_id}"
+        response.headers["Location"] = run_ref.links.self
         return run_ref
 
     @router.get("/{run_id}", response_model=BacktestResultResponse)

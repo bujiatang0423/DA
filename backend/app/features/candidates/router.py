@@ -3,9 +3,23 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Header, Response
 
+from backend.app.contracts.common import ErrorResponse
 from backend.app.contracts.runs import RunKind, RunRef
 from .contracts import CandidateRecommendationResponse, CandidateSubmitRequest
 from .repository import CandidateRepository
+
+
+ASYNC_SUBMISSION_RESPONSES = {
+    202: {
+        "headers": {
+            "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {"type": "string"},
+            }
+        }
+    },
+    422: {"model": ErrorResponse},
+}
 
 
 def build_router(
@@ -18,7 +32,12 @@ def build_router(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @router.post("", response_model=RunRef, status_code=202)
+    @router.post(
+        "",
+        response_model=RunRef,
+        status_code=202,
+        responses=ASYNC_SUBMISSION_RESPONSES,
+    )
     def submit_candidate(
         request: CandidateSubmitRequest,
         response: Response,
@@ -32,7 +51,7 @@ def build_router(
             idempotency_key,
             datetime.now(UTC),
         )
-        response.headers["Location"] = f"/api/v1/candidates/{run.run_id}"
+        response.headers["Location"] = run.links.self
         return run
 
     @router.get("/latest", response_model=CandidateRecommendationResponse)
