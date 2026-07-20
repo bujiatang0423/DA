@@ -184,3 +184,23 @@ def test_index_only_scope_does_not_require_an_unrelated_universe_call() -> None:
     )
 
     assert {record.kind for record in batch.records} == {DataKind.INDEX_DAILY_BAR}
+
+
+def test_scoped_warehouse_keeps_required_extended_market_inputs() -> None:
+    source = ExtendedMarketProviderSource(Provider(), benchmark_ids=("000300.SH",))
+    scope = SnapshotScope(
+        security_ids=("000001.SZ",),
+        required_kinds=(DataKind.INDEX_DAILY_BAR, DataKind.MARKET_BREADTH),
+    )
+
+    snapshot = ResearchPointInTimeWarehouse((source,)).snapshot(
+        as_of_time=AS_OF,
+        scope=scope,
+    )
+
+    assert snapshot.quality.has_errors is False
+    assert {record.kind for record in snapshot.market_inputs} == set(scope.required_kinds)
+    assert {record.entity_id for record in snapshot.market_inputs} == {
+        "MARKET:000300.SH",
+        "MARKET:CN-A:BREADTH",
+    }
