@@ -15,6 +15,7 @@ class DataKind(StrEnum):
     REALTIME_QUOTE = "realtime_quote"
     DAILY_BAR_RAW = "daily_bar_raw"
     INDEX_DAILY_BAR = "index_daily_bar"
+    MARKET_BREADTH = "market_breadth"
     CORPORATE_ACTION = "corporate_action"
     ADJUSTMENT_FACTOR = "adjustment_factor"
     INDUSTRY_MEMBERSHIP = "industry_membership"
