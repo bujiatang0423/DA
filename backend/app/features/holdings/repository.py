@@ -26,6 +26,8 @@ class HoldingAnalysisRepository(Protocol):
 
     def latest(self, portfolio_id: str) -> HoldingAnalysisResult | None: ...
 
+    def at(self, portfolio_id: str, as_of_time: datetime) -> HoldingAnalysisResult | None: ...
+
 
 HoldingResultRepository = HoldingAnalysisRepository
 
@@ -68,6 +70,19 @@ class SqlHoldingAnalysisRepository:
                 select(HoldingResultRow)
                 .where(HoldingResultRow.payload["portfolio_id"].as_string() == portfolio_id)
                 .order_by(HoldingResultRow.as_of_time.desc(), HoldingResultRow.run_id.desc())
+                .limit(1)
+            )
+            return _decode(row.payload) if row else None
+
+    def at(self, portfolio_id: str, as_of_time: datetime) -> HoldingAnalysisResult | None:
+        with self._sessions() as session:
+            row = session.scalar(
+                select(HoldingResultRow)
+                .where(
+                    HoldingResultRow.payload["portfolio_id"].as_string() == portfolio_id,
+                    HoldingResultRow.as_of_time == as_of_time,
+                )
+                .order_by(HoldingResultRow.run_id.desc())
                 .limit(1)
             )
             return _decode(row.payload) if row else None

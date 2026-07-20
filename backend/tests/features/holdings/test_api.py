@@ -148,6 +148,26 @@ def test_latest_and_result_return_persisted_advice() -> None:
     assert latest.json()["items"][0]["evidence_refs"] == ["market-close:600000.SH:2026-07-17"]
 
 
+def test_latest_at_returns_only_an_analysis_for_the_requested_decision_time() -> None:
+    submitter = RecordingSubmitter()
+    result = holding_analysis_result("holding-api-exact")
+    repository = FakeHoldingAnalysisRepository([result])
+    client = holding_client(submitter, repository)
+
+    exact = client.get(
+        "/api/v1/holding-analyses/latest",
+        params={"portfolio_id": "default", "as_of_time": result.as_of_time.isoformat()},
+    )
+    other_time = client.get(
+        "/api/v1/holding-analyses/latest",
+        params={"portfolio_id": "default", "as_of_time": "2026-07-19T09:00:00Z"},
+    )
+
+    assert exact.status_code == 200
+    assert exact.json()["run_id"] == result.run_id
+    assert other_time.status_code == 404
+
+
 def test_positions_preserve_legacy_origin_and_unknown_book() -> None:
     snapshot = portfolio_snapshot()
     legacy_lot = replace(

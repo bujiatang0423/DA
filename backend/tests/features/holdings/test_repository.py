@@ -66,6 +66,23 @@ def test_latest_is_scoped_to_portfolio_with_a_stable_tie_breaker(
     assert latest.run_id == "run-b"
 
 
+def test_at_is_scoped_to_the_exact_portfolio_decision_time(
+    memory_sessions: sessionmaker[Session],
+) -> None:
+    repository = SqlHoldingAnalysisRepository(memory_sessions)
+    first_time = datetime(2026, 7, 17, 7, 0, tzinfo=UTC)
+    later_time = datetime(2026, 7, 19, 7, 0, tzinfo=UTC)
+    repository.save(holding_analysis_result("run-first", as_of_time=first_time))
+    repository.save(holding_analysis_result("run-later", as_of_time=later_time))
+
+    exact = repository.at("default", first_time)
+    missing = repository.at("default", datetime(2026, 7, 18, 7, 0, tzinfo=UTC))
+
+    assert exact is not None
+    assert exact.run_id == "run-first"
+    assert missing is None
+
+
 @pytest.mark.postgres
 def test_repository_round_trips_on_postgresql(postgres_engine: Engine) -> None:
     HoldingResultRow.__table__.create(postgres_engine, checkfirst=True)

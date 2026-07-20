@@ -40,6 +40,14 @@ function importedPortfolioContext(): ImportedPortfolioContext | null {
   return { portfolioId, asOfTime, batchId, manifestSha256 };
 }
 
+function matchesPositionPage(result: HoldingResult | null, page: PositionPage): boolean {
+  return Boolean(
+    result
+      && result.portfolio_id === page.portfolio_id
+      && Date.parse(result.as_of_time) === Date.parse(page.as_of_time),
+  );
+}
+
 export function HoldingAnalysisPage(): JSX.Element {
   const importedContext = importedPortfolioContext();
   const portfolioId = importedContext?.portfolioId ?? DEFAULT_PORTFOLIO_ID;
@@ -66,10 +74,10 @@ export function HoldingAnalysisPage(): JSX.Element {
     try {
       const [positions, latest] = await Promise.all([
         holdingApi.positions(portfolioId, requestedAsOfTime, requestedImportProvenance),
-        holdingApi.latest(portfolioId),
+        holdingApi.latest(portfolioId, requestedAsOfTime),
       ]);
       setPositionPage(positions);
-      setResult(latest);
+      setResult(matchesPositionPage(latest, positions) ? latest : null);
     } catch {
       setLoadError(true);
     } finally {

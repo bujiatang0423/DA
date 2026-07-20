@@ -190,6 +190,9 @@ test("uses explicit imported portfolio context only after manual analysis submis
     batchId: "batch-1",
     manifestSha256: "a".repeat(64),
   });
+  expect(holdingApi.latest).toHaveBeenCalledWith("main", "2026-07-19T09:00:00Z");
+  expect(screen.getByText("尚未运行持仓分析。")).toBeTruthy();
+  expect(screen.queryByText("全部退出")).toBeNull();
   expect(holdingApi.submit).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "分析当前持仓" }));
 

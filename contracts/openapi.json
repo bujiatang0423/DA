@@ -2457,6 +2457,23 @@
               "title": "Portfolio Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
+            }
           }
         ],
         "responses": {
@@ -2582,6 +2599,23 @@
               "default": "default",
               "title": "Portfolio Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
             }
           }
         ],

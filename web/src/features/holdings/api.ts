@@ -178,10 +178,10 @@ export const holdingApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     }),
-  latest: async (portfolioId: string): Promise<HoldingResult | null> => {
+  latest: async (portfolioId: string, asOfTime?: string): Promise<HoldingResult | null> => {
     try {
       return await request<HoldingResult>(
-        `/api/v1/holding-analyses/latest${queryForPortfolio(portfolioId)}`,
+        `/api/v1/holding-analyses/latest${queryForPortfolio(portfolioId, asOfTime)}`,
       );
     } catch (error) {
       if (error instanceof HoldingApiError && error.status === 404) {

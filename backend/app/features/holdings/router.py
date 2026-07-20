@@ -110,25 +110,38 @@ def build_router(
             raise HoldingAnalysisNotFound(run_id)
         return HoldingAnalysisResponse.from_domain(value)
 
-    def load_latest(portfolio_id: str) -> HoldingAnalysisResponse:
+    def load_latest(
+        portfolio_id: str,
+        as_of_time: AwareDatetime | None = None,
+    ) -> HoldingAnalysisResponse:
         if repository is None:
             raise HoldingAnalysisNotFound(portfolio_id)
-        value = repository.latest(portfolio_id)
+        value = (
+            repository.at(portfolio_id, as_of_time)
+            if as_of_time is not None
+            else repository.latest(portfolio_id)
+        )
         if value is None:
             raise HoldingAnalysisNotFound(portfolio_id)
         return HoldingAnalysisResponse.from_domain(value)
 
     @legacy.get("/analysis/latest", response_model=HoldingAnalysisResponse)
-    def latest_legacy_result(portfolio_id: str = "default") -> HoldingAnalysisResponse:
-        return load_latest(portfolio_id)
+    def latest_legacy_result(
+        portfolio_id: str = "default",
+        as_of_time: AwareDatetime | None = None,
+    ) -> HoldingAnalysisResponse:
+        return load_latest(portfolio_id, as_of_time)
 
     @legacy.get("/analysis/{run_id}", response_model=HoldingAnalysisResponse)
     def legacy_result(run_id: str) -> HoldingAnalysisResponse:
         return load_result(run_id)
 
     @analyses.get("/latest", response_model=HoldingAnalysisResponse)
-    def latest_result(portfolio_id: str = "default") -> HoldingAnalysisResponse:
-        return load_latest(portfolio_id)
+    def latest_result(
+        portfolio_id: str = "default",
+        as_of_time: AwareDatetime | None = None,
+    ) -> HoldingAnalysisResponse:
+        return load_latest(portfolio_id, as_of_time)
 
     @analyses.get("/{run_id}", response_model=HoldingAnalysisResponse)
     def result(run_id: str) -> HoldingAnalysisResponse:
