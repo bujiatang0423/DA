@@ -132,6 +132,10 @@ class CompleteLlm:
         raise RuntimeError("not used by composition test")
 
 
+class BrokenMarket(CompleteMarket):
+    trade_calendar = 0
+
+
 def complete_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
     del settings
     return ProductionResearchProviders(
@@ -142,6 +146,23 @@ def complete_research_provider_factory(settings: Settings) -> ProductionResearch
 def object_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
     del settings
     return ProductionResearchProviders(market=object(), policy=object(), llm=object())
+
+
+def broken_market_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
+    del settings
+    return ProductionResearchProviders(
+        market=BrokenMarket(), policy=CompletePolicy(), llm=CompleteLlm()
+    )
+
+
+def missing_research_provider_factory(settings: Settings) -> object:
+    del settings
+    return object()
+
+
+def failing_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
+    del settings
+    raise RuntimeError("upstream secret")
 
 
 def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
@@ -215,6 +236,36 @@ def test_factory_with_non_port_members_fails_closed_before_warehouse_constructio
     warehouse = build_warehouse(settings)
 
     assert isinstance(warehouse, UnavailableResearchWarehouse)
+
+
+def test_factory_with_non_callable_port_member_fails_closed_before_warehouse_construction() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory=(
+            "backend.tests.test_composition:broken_market_research_provider_factory"
+        ),
+    )
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("missing_research_provider_factory", "failing_research_provider_factory"),
+)
+def test_missing_or_failing_factory_fails_closed(factory_name: str) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory=f"backend.tests.test_composition:{factory_name}",
+    )
+
+    assert isinstance(build_warehouse(settings), UnavailableResearchWarehouse)
 
 
 def test_invalid_production_evidence_factory_fails_closed_without_import_details() -> None:

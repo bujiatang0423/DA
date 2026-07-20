@@ -48,6 +48,17 @@ class ProductionResearchProviders:
 
 ResearchProviderFactory = Callable[[Settings], ProductionResearchProviders]
 
+_MARKET_PORT_METHODS = (
+    "trade_calendar",
+    "universe",
+    "quotes",
+    "daily_bars",
+    "financials",
+    "fee_schedules",
+)
+_POLICY_PORT_METHODS = ("materials",)
+_LLM_PORT_METHODS = ("extract",)
+
 
 @dataclass(frozen=True)
 class ApplicationComponents:
@@ -83,13 +94,19 @@ def _configured_research_providers(settings: Settings) -> ProductionResearchProv
         return None
     if not isinstance(providers, ProductionResearchProviders):
         return None
-    if not isinstance(providers.market, ResearchMarketDataPort):
+    if not _supports_port(providers.market, ResearchMarketDataPort, _MARKET_PORT_METHODS):
         return None
-    if not isinstance(providers.policy, PolicyPort):
+    if not _supports_port(providers.policy, PolicyPort, _POLICY_PORT_METHODS):
         return None
-    if not isinstance(providers.llm, LlmFactorPort):
+    if not _supports_port(providers.llm, LlmFactorPort, _LLM_PORT_METHODS):
         return None
     return providers
+
+
+def _supports_port(value: object, protocol: type[object], methods: tuple[str, ...]) -> bool:
+    return isinstance(value, protocol) and all(
+        callable(getattr(value, method, None)) for method in methods
+    )
 
 
 def build_warehouse(
