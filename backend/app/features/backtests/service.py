@@ -25,7 +25,20 @@ class BacktestService:
         self._repository = repository
         self._artifacts = artifacts
 
-    def run(self, run_id: UUID, request: BacktestRequest) -> BacktestExperimentResult:
+    def run(
+        self,
+        run_id: UUID,
+        request: BacktestRequest,
+        *,
+        claim_owner: str | None = None,
+        claim_token: str | None = None,
+    ) -> BacktestExperimentResult:
         result = self._runner.run(request)
-        self._repository.publish_result(run_id, result, self._artifacts)
+        self._repository.publish_result(
+            run_id,
+            result,
+            self._artifacts,
+            claim_owner=claim_owner,
+            claim_token=claim_token,
+        )
         return result

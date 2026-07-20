@@ -14,7 +14,19 @@ from backend.app.features.backtests.execution import (
 )
 from backend.app.features.backtests.fees import FeeSchedule
 from backend.app.features.backtests.models import OrderIntent, OrderSide
-from backend.app.features.backtests.strict_execution import StrictExecutionSimulator
+from backend.app.features.backtests.strict_execution import (
+    CertifiedExecutionInputs,
+    StrictExecutionSimulator,
+)
+from backend.app.core.market.pit_models import (
+    DataKind,
+    PointInTimeSnapshot,
+    SecurityObservation,
+    SnapshotQuality,
+    SnapshotScope,
+    TemporalRecord,
+)
+from backend.app.contracts.grades import DataGrade
 from backend.app.infrastructure.market.strict_queries import (
     FeeSchedule as HistoricalFeeSchedule,
     SecurityStatus,
@@ -114,15 +126,44 @@ class MissingHashExecutionQueries(PresentExecutionQueries):
         )
 
 
+class QueryExecutionInputs:
+    def __init__(self, status: object, fees: object) -> None:
+        self._status = status
+        self._fees = fees
+
+    def for_attempt(
+        self,
+        *,
+        security_id: str,
+        trade_date: date,
+        exchange: str,
+        asset_type: str,
+        as_of_time: datetime,
+    ) -> object:
+        return type(
+            "Inputs",
+            (),
+            {
+                "bar": bar(),
+                "status": self._status.status(security_id, as_of_time),
+                "fee": self._fees.fee_schedule(
+                    trade_date=trade_date,
+                    exchange=exchange,
+                    asset_type=asset_type,
+                    as_of_time=as_of_time,
+                ),
+            },
+        )()
+
+
 def test_strict_attempt_injects_dated_fee_and_board_rule() -> None:
     recorder = RecordingSimulator()
     simulator = StrictExecutionSimulator(
-        recorder, PresentSecurityQueries(), PresentExecutionQueries()
+        recorder, QueryExecutionInputs(PresentSecurityQueries(), PresentExecutionQueries())
     )
 
     result = simulator.attempt(
         order(),
-        bar(),
         security_id="PAST_DELISTED.SZ",
         trade_date=date(2020, 6, 1),
         exchange="SSE",
@@ -140,13 +181,12 @@ def test_strict_attempt_injects_dated_fee_and_board_rule() -> None:
 def test_strict_attempt_fails_before_execution_without_dated_fee() -> None:
     recorder = RecordingSimulator()
     simulator = StrictExecutionSimulator(
-        recorder, PresentSecurityQueries(), MissingExecutionQueries()
+        recorder, QueryExecutionInputs(PresentSecurityQueries(), MissingExecutionQueries())
     )
 
     with pytest.raises(StrictDataMissingError, match="fee schedule missing"):
         simulator.attempt(
             order(),
-            bar(),
             security_id="PAST_DELISTED.SZ",
             trade_date=date(2020, 6, 1),
             exchange="SSE",
@@ -160,13 +200,12 @@ def test_strict_attempt_fails_before_execution_without_dated_fee() -> None:
 def test_strict_attempt_fails_before_execution_without_fee_artifact_hash() -> None:
     recorder = RecordingSimulator()
     simulator = StrictExecutionSimulator(
-        recorder, PresentSecurityQueries(), MissingHashExecutionQueries()
+        recorder, QueryExecutionInputs(PresentSecurityQueries(), MissingHashExecutionQueries())
     )
 
     with pytest.raises(StrictDataMissingError, match="source artifact hash missing"):
         simulator.attempt(
             order(),
-            bar(),
             security_id="PAST_DELISTED.SZ",
             trade_date=date(2020, 6, 1),
             exchange="SSE",
@@ -179,7 +218,8 @@ def test_strict_attempt_fails_before_execution_without_fee_artifact_hash() -> No
 
 def test_strict_attempt_uses_dated_fee_for_real_execution() -> None:
     simulator = StrictExecutionSimulator(
-        ExecutionSimulator(), PresentSecurityQueries(), PresentExecutionQueries()
+        ExecutionSimulator(),
+        QueryExecutionInputs(PresentSecurityQueries(), PresentExecutionQueries()),
     )
     intent = OrderIntent(
         order_id="order-1",
@@ -193,19 +233,8 @@ def test_strict_attempt_uses_dated_fee_for_real_execution() -> None:
         signal_close=Decimal("10"),
         max_participation_rate=Decimal("1"),
     )
-    bar = DailyBar(
-        trade_date=date(2020, 6, 1),
-        open=Decimal("10"),
-        high=Decimal("10"),
-        low=Decimal("10"),
-        close=Decimal("10"),
-        volume=1_000,
-        previous_close=Decimal("10"),
-    )
-
     result = simulator.attempt(
         intent,
-        bar,
         security_id="PAST_DELISTED.SZ",
         trade_date=date(2020, 6, 1),
         exchange="SSE",
@@ -216,6 +245,111 @@ def test_strict_attempt_uses_dated_fee_for_real_execution() -> None:
     assert isinstance(result, FilledAttempt)
     assert result.fee == Decimal("5.01")
     assert result.fee_schedule_id == "fee-2020"
+
+
+def test_certified_execution_inputs_use_one_attested_snapshot_for_bar_status_and_fee() -> None:
+    snapshot = PointInTimeSnapshot(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(
+            ("PAST_DELISTED.SZ",),
+            (DataKind.DAILY_BAR_RAW, DataKind.SECURITY_STATUS, DataKind.FEE_SCHEDULE),
+        ),
+        data_grade=DataGrade.PIT_VERIFIED,
+        market_inputs=(
+            record(
+                "fee-2020",
+                DataKind.FEE_SCHEDULE,
+                "SSE:stock",
+                {
+                    "exchange": "SSE",
+                    "asset_type": "stock",
+                    "effective_from": "2020-01-01",
+                    "commission_rate": "0.0003",
+                    "minimum_commission": "5",
+                    "stamp_tax_sell_rate": "0.001",
+                    "transfer_rate": "0.00001",
+                },
+            ),
+        ),
+        security_observations=(
+            SecurityObservation(
+                "PAST_DELISTED.SZ",
+                (
+                    record(
+                        "status-2020",
+                        DataKind.SECURITY_STATUS,
+                        "PAST_DELISTED.SZ",
+                        {
+                            "trade_date": "2020-06-01",
+                            "is_st": False,
+                            "is_suspended": False,
+                            "board": "main",
+                            "price_limit_pct": "0.10",
+                        },
+                    ),
+                    record(
+                        "bar-prev",
+                        DataKind.DAILY_BAR_RAW,
+                        "PAST_DELISTED.SZ",
+                        {
+                            "trade_date": "2020-05-29",
+                            "open": "9",
+                            "high": "9",
+                            "low": "9",
+                            "close": "9",
+                            "volume": "1000",
+                        },
+                    ),
+                    record(
+                        "bar-current",
+                        DataKind.DAILY_BAR_RAW,
+                        "PAST_DELISTED.SZ",
+                        {
+                            "trade_date": "2020-06-01",
+                            "open": "10",
+                            "high": "10",
+                            "low": "10",
+                            "close": "10",
+                            "volume": "1000",
+                        },
+                    ),
+                ),
+            ),
+        ),
+        quality=SnapshotQuality(()),
+        lineage=(),
+        manifest_hash="manifest",
+    )
+
+    class CertifiedWarehouse:
+        calls: list[tuple[datetime, object]] = []
+
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            self.calls.append((as_of_time, scope))
+            return snapshot
+
+    warehouse = CertifiedWarehouse()
+    inputs = CertifiedExecutionInputs(warehouse).for_attempt(
+        security_id="PAST_DELISTED.SZ",
+        trade_date=date(2020, 6, 1),
+        exchange="SSE",
+        asset_type="stock",
+        as_of_time=AS_OF,
+    )
+
+    assert len(warehouse.calls) == 1
+    assert inputs.bar.close == Decimal("10")
+    assert inputs.status.price_limit_pct == Decimal("0.10")
+    assert inputs.fee.record_id == "fee-2020"
+
+
+def record(
+    record_id: str,
+    kind: DataKind,
+    entity_id: str,
+    payload: dict[str, object],
+) -> TemporalRecord:
+    return TemporalRecord(record_id, kind, entity_id, AS_OF, AS_OF, AS_OF, "a" * 64, payload)
 
 
 def order() -> OrderIntent:

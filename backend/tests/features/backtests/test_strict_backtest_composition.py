@@ -19,7 +19,6 @@ from backend.app.core.market.pit_models import (
     TemporalRecord,
 )
 from backend.app.bootstrap.backtest_composition import build_strict_backtest_engine
-from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.models import (
     BacktestRequest,
     OrderIntent,
@@ -63,9 +62,7 @@ def strict_execution_session(postgres_engine: Engine) -> Iterator[Session]:
 def test_strict_engine_uses_pit_fee_status_and_limit_for_real_trade(
     strict_execution_session: Session,
 ) -> None:
-    engine = build_strict_backtest_engine(
-        Days(), Warehouse(), Decisions(), Bars(), strict_execution_session
-    )
+    engine = build_strict_backtest_engine(Days(), Warehouse(), Decisions())
 
     result = engine.run(request(), StrategyGroup.A)
 
@@ -79,12 +76,8 @@ def test_strict_engine_uses_pit_fee_status_and_limit_for_real_trade(
 def test_strict_engine_rejects_the_same_open_under_a_ten_percent_board(
     strict_execution_session: Session,
 ) -> None:
-    status = strict_execution_session.get(SecurityStatusDailyRow, "status-2020")
-    assert status is not None
-    status.price_limit_pct = Decimal("0.10")
-    strict_execution_session.commit()
     engine = build_strict_backtest_engine(
-        Days(), Warehouse(), Decisions(), Bars(), strict_execution_session
+        Days(), Warehouse(price_limit_pct=Decimal("0.10")), Decisions()
     )
 
     result = engine.run(request(), StrategyGroup.A)
@@ -96,9 +89,7 @@ def test_strict_engine_rejects_the_same_open_under_a_ten_percent_board(
 def test_strict_engine_rejects_provider_fallback_before_pit_result(
     strict_execution_session: Session,
 ) -> None:
-    engine = build_strict_backtest_engine(
-        Days(), ResearchWarehouse(), Decisions(), Bars(), strict_execution_session
-    )
+    engine = build_strict_backtest_engine(Days(), ResearchWarehouse(), Decisions())
 
     with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
         engine.run(request(), StrategyGroup.A)
@@ -139,9 +130,7 @@ def test_strict_engine_rejects_future_snapshot_record_before_decision_or_result(
             decisions.append(context)
             return BacktestDecision((), {})
 
-    engine = build_strict_backtest_engine(
-        Days(), FutureWarehouse(), RecordingDecisions(), Bars(), strict_execution_session
-    )
+    engine = build_strict_backtest_engine(Days(), FutureWarehouse(), RecordingDecisions())
 
     with pytest.raises(BacktestSnapshotQualityError, match="BACKTEST_SNAPSHOT_QUALITY_ERROR"):
         engine.run(request(), StrategyGroup.A)
@@ -155,13 +144,23 @@ class Days:
 
 
 class Warehouse:
+    def __init__(self, price_limit_pct: Decimal = Decimal("0.20")) -> None:
+        self._price_limit_pct = price_limit_pct
+
     def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
         assert isinstance(scope, SnapshotScope)
+        records = required_records(as_of_time)
+        if set(scope.required_kinds) == {
+            DataKind.DAILY_BAR_RAW,
+            DataKind.SECURITY_STATUS,
+            DataKind.FEE_SCHEDULE,
+        }:
+            records = execution_records(as_of_time, self._price_limit_pct)
         return PointInTimeSnapshot(
             as_of_time,
             scope,
             DataGrade.PIT_VERIFIED,
-            required_records(as_of_time),
+            records,
             (),
             SnapshotQuality(()),
             (),
@@ -200,30 +199,76 @@ def required_records(as_of_time: datetime) -> tuple[TemporalRecord, ...]:
     )
 
 
+def execution_records(
+    as_of_time: datetime,
+    price_limit_pct: Decimal,
+) -> tuple[TemporalRecord, ...]:
+    def item(
+        record_id: str, kind: DataKind, entity: str, payload: dict[str, object]
+    ) -> TemporalRecord:
+        return TemporalRecord(
+            record_id, kind, entity, as_of_time, as_of_time, as_of_time, HASH, payload
+        )
+
+    return (
+        item(
+            "bar-previous",
+            DataKind.DAILY_BAR_RAW,
+            "PAST_DELISTED.SZ",
+            {
+                "trade_date": "2020-06-01",
+                "open": "10",
+                "high": "10",
+                "low": "10",
+                "close": "10",
+                "volume": "100000",
+            },
+        ),
+        item(
+            "bar-current",
+            DataKind.DAILY_BAR_RAW,
+            "PAST_DELISTED.SZ",
+            {
+                "trade_date": "2020-06-02",
+                "open": "11",
+                "high": "11",
+                "low": "10.5",
+                "close": "10.8",
+                "volume": "100000",
+            },
+        ),
+        item(
+            "status-2020",
+            DataKind.SECURITY_STATUS,
+            "PAST_DELISTED.SZ",
+            {
+                "trade_date": "2020-06-02",
+                "is_st": False,
+                "is_suspended": False,
+                "board": "growth",
+                "price_limit_pct": str(price_limit_pct),
+            },
+        ),
+        item(
+            "fee-2020",
+            DataKind.FEE_SCHEDULE,
+            "SZSE:stock",
+            {
+                "exchange": "SZSE",
+                "asset_type": "stock",
+                "effective_from": "2020-01-01",
+                "commission_rate": "0.0003",
+                "minimum_commission": "5",
+                "stamp_tax_sell_rate": "0.001",
+                "transfer_rate": "0.00001",
+            },
+        ),
+    )
+
+
 class Decisions:
     def decide(self, context: BacktestDecisionContext) -> BacktestDecision:
         return BacktestDecision((order(),), {})
-
-
-class Bars:
-    def bar_for(
-        self,
-        security_id: str,
-        trade_date: date,
-        *,
-        as_of_time: datetime,
-    ) -> DailyBar:
-        assert (security_id, trade_date) == ("PAST_DELISTED.SZ", date(2020, 6, 2))
-        assert as_of_time == datetime(2020, 6, 2, 15, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-        return DailyBar(
-            trade_date=trade_date,
-            open=Decimal("11"),
-            high=Decimal("11"),
-            low=Decimal("10.5"),
-            close=Decimal("10.8"),
-            volume=100_000,
-            previous_close=Decimal("10"),
-        )
 
 
 def request() -> BacktestRequest:

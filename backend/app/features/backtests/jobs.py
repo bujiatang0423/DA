@@ -12,5 +12,10 @@ class BacktestJobHandler:
     def __call__(self, context: JobContext) -> None:
         request = BacktestRequest.model_validate(context.payload)
         context.heartbeat("running_backtest", 20)
-        self._service.run(context.run_id, request)
+        self._service.run(
+            context.run_id,
+            request,
+            claim_owner=context.claim_owner,
+            claim_token=context.claim_token,
+        )
         context.heartbeat("persisted", 100)

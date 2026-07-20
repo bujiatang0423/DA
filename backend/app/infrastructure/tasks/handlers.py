@@ -9,6 +9,8 @@ class JobContext:
     run_id: UUID
     payload: dict[str, object]
     heartbeat: Callable[[str, int], None]
+    claim_owner: str | None = None
+    claim_token: str | None = None
 
 
 JobHandler = Callable[[JobContext], object]
