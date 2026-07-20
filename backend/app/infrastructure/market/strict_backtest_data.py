@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import date, datetime, time
+from decimal import Decimal, InvalidOperation
 from typing import TypeVar
 
 from sqlalchemy import select
@@ -9,7 +10,12 @@ from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
 from backend.app.contracts.grades import DataGrade
-from backend.app.core.market.pit_models import PointInTimeSnapshot, TemporalRecord
+from backend.app.core.market.pit_models import (
+    DataKind,
+    PointInTimeSnapshot,
+    SnapshotScope,
+    TemporalRecord,
+)
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.ports import (
     BacktestSnapshotPort,
@@ -114,6 +120,43 @@ class SqlAlchemyHistoricalDailyBars(HistoricalDailyBarReader):
         return max(candidates, key=_row_order)
 
 
+class CertifiedHistoricalDailyBars(HistoricalDailyBarReader):
+    """Read execution bars exclusively from the certificate-attested PIT snapshot."""
+
+    def __init__(self, warehouse: BacktestSnapshotPort) -> None:
+        self._warehouse = warehouse
+
+    def bar_for(
+        self,
+        security_id: str,
+        trade_date: date,
+        *,
+        as_of_time: datetime,
+    ) -> DailyBar:
+        scope = SnapshotScope((security_id,), (DataKind.DAILY_BAR_RAW,))
+        snapshot = self._warehouse.snapshot(as_of_time=as_of_time, scope=scope)
+        bars = tuple(
+            record
+            for record in _snapshot_records(snapshot)
+            if record.kind is DataKind.DAILY_BAR_RAW and record.entity_id == security_id
+        )
+        current = next((bar for bar in bars if bar.event_time.date() == trade_date), None)
+        if current is None:
+            raise StrictDataMissingError(f"certified daily bar missing: {security_id}")
+        previous = _previous_certified_bar(bars, trade_date)
+        if previous is None:
+            raise StrictDataMissingError(f"certified previous close missing: {security_id}")
+        return DailyBar(
+            trade_date=trade_date,
+            open=_bar_decimal(current, "open"),
+            high=_bar_decimal(current, "high"),
+            low=_bar_decimal(current, "low"),
+            close=_bar_decimal(current, "close"),
+            volume=_bar_volume(current),
+            previous_close=_bar_decimal(previous, "close"),
+        )
+
+
 class StrictBacktestSnapshotAdapter(BacktestSnapshotPort):
     """Reject quality-degraded snapshots before strict backtest decisions can use them."""
 
@@ -164,3 +207,25 @@ def _snapshot_records(snapshot: PointInTimeSnapshot) -> Iterator[TemporalRecord]
     yield from snapshot.market_inputs
     for observation in snapshot.security_observations:
         yield from observation.records
+
+
+def _previous_certified_bar(
+    bars: tuple[TemporalRecord, ...],
+    trade_date: date,
+) -> TemporalRecord | None:
+    previous = [bar for bar in bars if bar.event_time.date() < trade_date]
+    return max(previous, key=lambda bar: (bar.event_time, bar.record_id), default=None)
+
+
+def _bar_decimal(record: TemporalRecord, field: str) -> Decimal:
+    try:
+        return Decimal(str(record.payload[field]))
+    except (InvalidOperation, KeyError) as error:
+        raise StrictDataMissingError(f"certified daily bar field missing: {field}") from error
+
+
+def _bar_volume(record: TemporalRecord) -> int:
+    try:
+        return int(str(record.payload["volume"]))
+    except (TypeError, ValueError, KeyError) as error:
+        raise StrictDataMissingError("certified daily bar field missing: volume") from error

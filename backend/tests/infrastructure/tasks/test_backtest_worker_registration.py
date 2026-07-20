@@ -12,12 +12,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.bootstrap.backtest_worker import (
     BacktestWorkerConfigurationError,
+    SqlStrictBacktestRunner,
     build_backtest_job_handler,
 )
 from backend.app.bootstrap.settings import Settings
 from backend.app.contracts.runs import RunKind, RunStatus
 from backend.app.features.runs.service import RunsService
+from backend.app.features.backtests.models import BacktestRequest
+from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitDataError
 from backend.app.infrastructure.persistence.models import Base, RunRow
+from backend.app.infrastructure.persistence.strict_pit_rows import TradingCalendarRow
 from backend.app.infrastructure.tasks.handlers import HandlerRegistry
 from backend.app.infrastructure.tasks.health import WorkerLeaseStore
 from backend.app.infrastructure.tasks.worker import build_worker
@@ -35,7 +39,7 @@ def worker_sessions(postgres_engine: Engine) -> sessionmaker[Session]:
             text(
                 "TRUNCATE TABLE backtest_rejected_attempts, backtest_trades, "
                 "backtest_curve_points, backtest_group_results, backtest_results, "
-                "run_artifacts, run_events, runs, worker_leases CASCADE"
+                "run_artifacts, run_events, runs, worker_leases, trading_calendar CASCADE"
             )
         )
     return sessionmaker(bind=postgres_engine, expire_on_commit=False)
@@ -93,6 +97,54 @@ def test_worker_registry_omits_backtest_when_the_pit_secret_is_missing(
 
     with pytest.raises(LookupError, match="backtest"):
         handlers.resolve(RunKind.BACKTEST)
+
+
+@pytest.mark.postgres
+def test_worker_checks_for_a_certificate_after_finding_a_complete_calendar(
+    worker_sessions: sessionmaker[Session],
+) -> None:
+    request = BacktestRequest(
+        strategy_version="v2.12",
+        start_date=datetime(2020, 6, 1, tzinfo=UTC).date(),
+        end_date=datetime(2020, 6, 2, tzinfo=UTC).date(),
+        initial_cash=Decimal("10000"),
+        groups=("A",),
+    )
+    with worker_sessions() as session:
+        session.add_all(
+            [
+                TradingCalendarRow(
+                    id="calendar-1",
+                    source_record_id="calendar-1",
+                    exchange="SSE",
+                    trade_date=request.start_date,
+                    is_open=True,
+                    available_at=datetime(2020, 5, 30, tzinfo=UTC),
+                    source_artifact_hash="a" * 64,
+                ),
+                TradingCalendarRow(
+                    id="calendar-2",
+                    source_record_id="calendar-2",
+                    exchange="SSE",
+                    trade_date=request.end_date,
+                    is_open=True,
+                    available_at=datetime(2020, 5, 30, tzinfo=UTC),
+                    source_artifact_hash="a" * 64,
+                ),
+            ]
+        )
+        session.commit()
+
+        class MissingCertificateWarehouse:
+            def snapshot(self, *, as_of_time: datetime, scope: object) -> object:
+                raise UnverifiedPitDataError("approved certificate required")
+
+        with pytest.raises(UnverifiedPitDataError, match="approved certificate required"):
+            SqlStrictBacktestRunner._verify_first_decision_snapshot(
+                session,
+                MissingCertificateWarehouse(),
+                request,
+            )
 
 
 @pytest.mark.postgres

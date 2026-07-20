@@ -22,6 +22,7 @@ from backend.app.core.market.pit_models import (
 from backend.app.features.backtests.execution import DailyBar
 from backend.app.features.backtests.ports import BacktestSnapshotQualityError
 from backend.app.infrastructure.market.strict_backtest_data import (
+    CertifiedHistoricalDailyBars,
     SqlAlchemyHistoricalDailyBars,
     SqlAlchemyTradingCalendar,
     StrictBacktestSnapshotAdapter,
@@ -174,6 +175,42 @@ def test_daily_bar_reader_only_exposes_completed_bar_after_completion_time(
         trade_date,
         as_of_time=datetime.combine(trade_date, time(15), UTC),
     ).close == Decimal("12")
+
+
+def test_certified_daily_bar_reader_does_not_fall_back_to_an_uncertified_sql_bar() -> None:
+    """Execution must use the exact bar selected by an approved PIT snapshot."""
+    trade_date = date(2024, 1, 4)
+    previous_date = date(2024, 1, 3)
+    requested_scope = SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,))
+    previous = TemporalRecord(
+        "prior",
+        DataKind.DAILY_BAR_RAW,
+        "000001.SZ",
+        datetime.combine(previous_date, time(15), UTC),
+        AS_OF,
+        AS_OF,
+        HASH,
+        {"open": "10", "high": "11", "low": "9", "close": "10", "volume": "100000"},
+    )
+
+    class CertifiedWarehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            assert scope == requested_scope
+            return PointInTimeSnapshot(
+                as_of_time,
+                requested_scope,
+                DataGrade.PIT_VERIFIED,
+                (previous,),
+                (),
+                SnapshotQuality(()),
+                (),
+                "approved-snapshot",
+            )
+
+    with pytest.raises(StrictDataMissingError, match="certified daily bar missing: 000001.SZ"):
+        CertifiedHistoricalDailyBars(CertifiedWarehouse()).bar_for(
+            "000001.SZ", trade_date, as_of_time=AS_OF
+        )
 
 
 def test_snapshot_adapter_rejects_quality_errors_without_leaking_detail() -> None:

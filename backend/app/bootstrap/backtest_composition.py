@@ -20,7 +20,7 @@ from backend.app.infrastructure.market.strict_queries import (
     TemporalSecurityQueries,
 )
 from backend.app.infrastructure.market.strict_backtest_data import (
-    SqlAlchemyHistoricalDailyBars,
+    CertifiedHistoricalDailyBars,
     SqlAlchemyTradingCalendar,
     StrictBacktestSnapshotAdapter,
 )
@@ -64,6 +64,6 @@ def build_sqlalchemy_strict_backtest_engine(
         ),
         warehouse,
         decision_port,
-        SqlAlchemyHistoricalDailyBars(session),
+        CertifiedHistoricalDailyBars(warehouse),
         session,
     )

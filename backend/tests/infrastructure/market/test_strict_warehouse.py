@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.app.contracts.grades import DataGrade
 from backend.app.core.market.pit_models import DataKind, SnapshotScope
 from backend.app.infrastructure.market.build import build_strict_pit_warehouse
+from backend.app.infrastructure.market.strict_backtest_data import CertifiedHistoricalDailyBars
 from backend.app.infrastructure.market.strict_bundle import PitBundleManifest
 from backend.app.infrastructure.market.strict_certificates import (
     SqlPitCertificateAuthority,
@@ -176,6 +177,30 @@ def test_later_strict_row_invalidates_certified_snapshot_identity(
 
     with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
         warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+def test_certified_execution_reader_rejects_a_bar_changed_after_its_snapshot_approval(
+    strict_session: Session,
+) -> None:
+    execution_scope = SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,))
+    persist_audit_report(strict_session)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+    authority.approve("audit-1", as_of_time=AS_OF, scope=execution_scope)
+    strict_session.execute(
+        update(DailyBarRawRow)
+        .where(DailyBarRawRow.source_record_id == "dbr-1")
+        .values(source_artifact_hash="b" * 64)
+    )
+    strict_session.commit()
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        CertifiedHistoricalDailyBars(warehouse).bar_for(
+            "000001.SZ",
+            AS_OF.date(),
+            as_of_time=AS_OF,
+        )
 
 
 @pytest.mark.postgres
