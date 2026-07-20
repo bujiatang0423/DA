@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.contracts.common import ErrorResponse
+from backend.app.contracts.health import ReadinessComponents, ReadinessResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
 from backend.app.features.runs.module import build_runs_feature
@@ -24,6 +25,7 @@ from backend.app.features.backtests.repository import SqlBacktestRepository
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
+from backend.app.infrastructure.tasks.health import ReadinessStatus
 
 
 class _MemoryRuns:
@@ -257,11 +259,40 @@ def create_app(
     def live() -> dict[str, str]:
         return {"status": "ok"}
 
-    @api.get("/health/ready")
-    def ready() -> dict[str, str]:
-        if ready_probe is not None:
-            ready_probe()
-        return {"status": "ok"}
+    @api.get(
+        "/health/ready",
+        response_model=ReadinessResponse,
+        responses={503: {"model": ReadinessResponse}},
+    )
+    def ready() -> JSONResponse:
+        if ready_probe is None:
+            response = ReadinessResponse(
+                status="not_ready",
+                components=ReadinessComponents(database="unknown", worker="unknown"),
+            )
+            return JSONResponse(status_code=503, content=response.model_dump())
+        try:
+            status = ready_probe()
+        except Exception:
+            response = ReadinessResponse(
+                status="not_ready",
+                components=ReadinessComponents(database="unavailable", worker="unknown"),
+            )
+            return JSONResponse(status_code=503, content=response.model_dump())
+        if isinstance(status, ReadinessStatus):
+            response = ReadinessResponse(
+                status="ready" if status.ready else "not_ready",
+                components=ReadinessComponents(database=status.database, worker=status.worker),
+            )
+            return JSONResponse(
+                status_code=200 if status.ready else 503,
+                content=response.model_dump(),
+            )
+        response = ReadinessResponse(
+            status="ready",
+            components=ReadinessComponents(database="ready", worker="ready"),
+        )
+        return JSONResponse(status_code=200, content=response.model_dump())
 
     if not features:
 
@@ -291,6 +322,7 @@ def build_application() -> FastAPI:
         SqlPortfolioMaintenanceService,
     )
     from backend.app.bootstrap.composition import build_components
+    from backend.app.infrastructure.tasks.health import LocalReadinessProbe
 
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)
@@ -354,5 +386,9 @@ def build_application() -> FastAPI:
             ),
             build_backtests_feature(runs_service.submit, SqlBacktestRepository(sessions)),
             build_legacy_import_feature(legacy_imports),
-        )
+        ),
+        ready_probe=LocalReadinessProbe(
+            sessions,
+            settings.worker_stale_after_seconds,
+        ).check,
     )  # type: ignore[arg-type]

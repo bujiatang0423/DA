@@ -1810,6 +1810,58 @@
         "title": "PositionCorrectionRequest",
         "type": "object"
       },
+      "ReadinessComponents": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "worker": {
+            "enum": [
+              "ready",
+              "missing",
+              "stale",
+              "unknown"
+            ],
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "worker"
+        ],
+        "title": "ReadinessComponents",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/ReadinessComponents"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "components"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
       "RunDetail": {
         "additionalProperties": false,
         "properties": {
@@ -2731,15 +2783,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Ready Api V1 Health Ready Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReadinessResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Ready"

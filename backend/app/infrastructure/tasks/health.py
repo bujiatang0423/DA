@@ -1,12 +1,54 @@
-from datetime import datetime, timedelta
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select, text
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.infrastructure.tasks.db_models import WorkerLeaseRow
 
 WORKER_LEASE_STALE_AFTER = timedelta(seconds=60)
+
+
+@dataclass(frozen=True)
+class ReadinessStatus:
+    ready: bool
+    database: str
+    worker: str
+
+
+class LocalReadinessProbe:
+    """Fail closed unless local PostgreSQL and a recent durable worker lease are available."""
+
+    def __init__(
+        self,
+        factory: sessionmaker[Session],
+        worker_stale_after_seconds: int,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._factory = factory
+        self._worker_stale_after = timedelta(seconds=worker_stale_after_seconds)
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def check(self) -> ReadinessStatus:
+        try:
+            with self._factory() as session:
+                session.execute(text("SELECT 1"))
+                heartbeat_at = session.scalar(
+                    select(WorkerLeaseRow.heartbeat_at)
+                    .order_by(WorkerLeaseRow.heartbeat_at.desc())
+                    .limit(1)
+                )
+        except SQLAlchemyError:
+            return ReadinessStatus(False, "unavailable", "unknown")
+
+        if heartbeat_at is None:
+            return ReadinessStatus(False, "ready", "missing")
+        if heartbeat_at < self._clock() - self._worker_stale_after:
+            return ReadinessStatus(False, "ready", "stale")
+        return ReadinessStatus(True, "ready", "ready")
 
 
 class WorkerLeaseStore:
