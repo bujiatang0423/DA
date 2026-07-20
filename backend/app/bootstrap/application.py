@@ -25,6 +25,7 @@ from backend.app.features.backtests.repository import SqlBacktestRepository
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
+from backend.app.infrastructure.logging import log_request_completed, normalize_request_id
 from backend.app.infrastructure.tasks.health import ReadinessStatus
 
 
@@ -142,11 +143,31 @@ def create_app(
 
     @app.middleware("http")
     async def request_id(request: Request, call_next: object) -> object:
-        value = request.headers.get("x-request-id", str(uuid4()))
+        value = normalize_request_id(request.headers.get("x-request-id")) or str(uuid4())
         request.state.request_id = value
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            body = ErrorResponse(
+                code="INTERNAL_ERROR",
+                message="internal server error",
+                request_id=value,
+            )
+            response = JSONResponse(status_code=500, content=body.model_dump())
         response.headers["x-request-id"] = value
+        _log_request_completion(request, value, response.status_code)
         return response
+
+    def _log_request_completion(request: Request, request_id: str, status_code: int) -> None:
+        route = request.scope.get("route")
+        path_template = getattr(route, "path", "/unmatched")
+        log_request_completed(
+            request_id=request_id,
+            method=request.method,
+            path_template=path_template,
+            status_code=status_code,
+            run_id=request.path_params.get("run_id"),
+        )
 
     @app.exception_handler(KeyError)
     async def missing(request: Request, exc: KeyError) -> JSONResponse:
@@ -238,7 +259,7 @@ def create_app(
             status_code=exc.status_code,
             content={
                 "code": "HTTP_ERROR",
-                "message": str(exc.detail),
+                "message": "request failed",
                 "request_id": request.state.request_id,
                 "details": {},
             },
