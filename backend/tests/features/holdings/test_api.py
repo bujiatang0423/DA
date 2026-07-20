@@ -1,17 +1,33 @@
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
 
 from backend.app.bootstrap.application import create_app
 from backend.app.bootstrap.feature_registry import FeatureModule
 from backend.app.contracts.runs import RunKind, RunLinks, RunRef, RunStatus
+from backend.app.core.market.pit_models import (
+    DataKind,
+    LineageRef,
+    SecurityObservation,
+    TemporalRecord,
+)
 from backend.app.core.portfolio.analysis import HoldingAnalysisService as LegacyHoldingService
 from backend.app.core.portfolio.models import PositionOrigin
 from backend.app.features.holdings.jobs import HoldingAnalysisJobHandler
+from backend.app.features.holdings.repository import (
+    HoldingAnalysisItemRow,
+    HoldingAnalysisRepository,
+    HoldingResultRow,
+    SqlHoldingAnalysisRepository,
+)
 from backend.app.features.holdings.router import LegacyImportProvenance, build_router
+from backend.app.features.holdings.service import HoldingAnalysisService
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
 from backend.app.infrastructure.tasks.handlers import JobContext
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
@@ -22,6 +38,7 @@ from backend.tests.features.holdings.fakes import (
     FakePortfolioReader,
     FakePortfolioWriter,
 )
+from backend.tests.features.holdings.test_service import build_service
 
 
 @dataclass
@@ -62,7 +79,7 @@ class RecordingAnalysisService:
 
 def holding_client(
     submitter: RecordingSubmitter,
-    repository: FakeHoldingAnalysisRepository,
+    repository: HoldingAnalysisRepository,
 ) -> TestClient:
     reader = FakePortfolioReader(portfolio_snapshot())
     router = build_router(
@@ -146,6 +163,72 @@ def test_latest_and_result_return_persisted_advice() -> None:
     assert latest.json()["items"][0]["factors"]["percentile_rank"] == "0.80"
     assert latest.json()["items"][0]["r_multiple"] == "1.50"
     assert latest.json()["items"][0]["evidence_refs"] == ["market-close:600000.SH:2026-07-17"]
+
+
+@pytest.mark.postgres
+def test_restarted_handler_and_api_read_normalized_audit_items_from_postgresql(
+    postgres_engine: Engine,
+) -> None:
+    HoldingResultRow.__table__.create(postgres_engine, checkfirst=True)
+    HoldingAnalysisItemRow.__table__.create(postgres_engine, checkfirst=True)
+    sessions = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    service, command, warehouse, portfolios, builder, strategy, _ = build_service()
+    run_id = uuid4()
+    artifact_hash = "a" * 64
+    warehouse.snapshot_value = replace(
+        warehouse.snapshot_value,
+        security_observations=(
+            SecurityObservation(
+                "000001.SZ",
+                (
+                    TemporalRecord(
+                        record_id="holding-evidence",
+                        kind=DataKind.DAILY_BAR_RAW,
+                        entity_id="000001.SZ",
+                        event_time=command.as_of_time,
+                        observed_at=command.as_of_time,
+                        available_at=command.as_of_time,
+                        source_artifact_hash=artifact_hash,
+                        payload={},
+                    ),
+                ),
+            ),
+        ),
+        lineage=(LineageRef("holding-evidence-batch", "pit", artifact_hash),),
+    )
+    analysis_service = HoldingAnalysisService(
+        warehouse,
+        portfolios,
+        builder,
+        strategy,
+        SqlHoldingAnalysisRepository(sessions),
+    )
+    context = JobContext(
+        run_id=run_id,
+        payload={
+            "portfolio_id": command.portfolio_id,
+            "as_of_time": command.as_of_time.isoformat(),
+        },
+        heartbeat=lambda _stage, _progress: None,
+    )
+
+    HoldingAnalysisJobHandler(analysis_service)(context)
+    HoldingAnalysisJobHandler(analysis_service)(context)
+
+    restarted_repository = SqlHoldingAnalysisRepository(sessions)
+    client = holding_client(RecordingSubmitter(), restarted_repository)
+    response = client.get(f"/api/v1/holding-analyses/{run_id}")
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["security_id"] == "000001.SZ"
+    assert items[0]["reason_codes"] == ["ELIGIBLE"]
+    assert items[0]["quality_codes"] == []
+    assert items[0]["evidence_refs"] == [f"pit:daily_bar_raw:{artifact_hash}"]
+    with sessions() as session:
+        child_rows = session.query(HoldingAnalysisItemRow).filter_by(run_id=str(run_id)).all()
+    assert [(row.item_index, row.security_id) for row in child_rows] == [(0, "000001.SZ")]
 
 
 def test_latest_at_returns_only_an_analysis_for_the_requested_decision_time() -> None:
