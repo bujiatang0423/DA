@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -19,6 +20,7 @@ from backend.app.features.backtests.pit_audit import (
     DAILY_REQUIRED_KINDS,
     DatasetCoverageEvidence,
     PitAuditRunner,
+    coverage_evidence_digest,
 )
 
 
@@ -76,8 +78,9 @@ class CandidateWarehouse:
         as_of_time: datetime,
         scope: SnapshotScope,
     ) -> tuple[DatasetCoverageEvidence, ...]:
-        return tuple(
-            DatasetCoverageEvidence(
+        evidence: list[DatasetCoverageEvidence] = []
+        for kind in COVERAGE_EVIDENCE_KINDS:
+            item = DatasetCoverageEvidence(
                 kind=kind,
                 as_of_time=as_of_time,
                 security_ids=scope.security_ids,
@@ -88,9 +91,10 @@ class CandidateWarehouse:
                     scope.security_ids if kind in self._zero_membership_kinds else ()
                 ),
                 source_hash="a" * 64,
+                evidence_digest="",
             )
-            for kind in COVERAGE_EVIDENCE_KINDS
-        )
+            evidence.append(replace(item, evidence_digest=coverage_evidence_digest(item)))
+        return tuple(evidence)
 
 
 def test_audit_binds_each_date_to_its_own_ipo_and_delisting_universe() -> None:
@@ -108,6 +112,7 @@ def test_audit_binds_each_date_to_its_own_ipo_and_delisting_universe() -> None:
 
     assert report.passed is True
     assert [item.date() for item in universe.requested] == [FIRST_DATE, SECOND_DATE]
+    assert len(report.coverage_evidence_digests) == 2 * len(COVERAGE_EVIDENCE_KINDS)
 
 
 def test_required_kinds_are_a_minimum_and_valid_auxiliary_records_are_allowed() -> None:
@@ -192,6 +197,46 @@ def test_clean_quality_without_required_sparse_coverage_evidence_fails(
             tuple(
                 item for item in complete_records(universe._values) if item.kind is not missing_kind
             )
+        ),
+        (FIRST_DATE,),
+        universe,
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is False
+    assert report.failures == ("snapshot:2020-06-01:COVERAGE_EVIDENCE_MISSING",)
+
+
+def test_forged_coverage_content_cannot_reuse_the_original_digest() -> None:
+    universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
+
+    class ForgedEvidenceWarehouse(CandidateWarehouse):
+        def coverage_evidence(
+            self,
+            *,
+            as_of_time: datetime,
+            scope: SnapshotScope,
+        ) -> tuple[DatasetCoverageEvidence, ...]:
+            evidence = super().coverage_evidence(as_of_time=as_of_time, scope=scope)
+            adjustment = next(item for item in evidence if item.kind is DataKind.ADJUSTMENT_FACTOR)
+            forged = replace(adjustment, covered_security_ids=())
+            return tuple(forged if item is adjustment else item for item in evidence)
+
+    report = PitAuditRunner(
+        ForgedEvidenceWarehouse(complete_records(universe._values)),
+        (FIRST_DATE,),
+        universe,
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is False
+    assert report.failures == ("snapshot:2020-06-01:COVERAGE_EVIDENCE_MISSING",)
+
+
+def test_adjustment_factor_cannot_claim_the_entire_universe_is_known_empty() -> None:
+    universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
+    report = PitAuditRunner(
+        CandidateWarehouse(
+            complete_records(universe._values),
+            zero_membership_kinds=frozenset({DataKind.ADJUSTMENT_FACTOR}),
         ),
         (FIRST_DATE,),
         universe,

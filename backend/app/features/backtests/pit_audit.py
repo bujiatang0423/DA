@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from hashlib import sha256
+import hmac
 import json
 from string import hexdigits
 from typing import Protocol
@@ -50,6 +51,13 @@ COVERAGE_EVIDENCE_KINDS = frozenset(
     }
 )
 
+OPTIONAL_ZERO_MEMBERSHIP_KINDS = frozenset(
+    {
+        DataKind.INDUSTRY_MEMBERSHIP,
+        DataKind.THEME_MEMBERSHIP,
+    }
+)
+
 
 class AuditablePointInTimeWarehouse(Protocol):
     """Read an unauthorised candidate snapshot for PIT audit only."""
@@ -87,6 +95,7 @@ class DatasetCoverageEvidence:
     covered_security_ids: tuple[str, ...]
     known_empty_security_ids: tuple[str, ...]
     source_hash: str
+    evidence_digest: str
 
 
 @dataclass(frozen=True)
@@ -96,6 +105,7 @@ class PitAuditReport:
     coverage_end: date
     bundle_set_hash: str
     checked_manifests: tuple[str, ...]
+    coverage_evidence_digests: tuple[str, ...]
     failures: tuple[str, ...]
     audit_hash: str
 
@@ -123,6 +133,7 @@ class PitAuditRunner:
 
         failures: list[str] = []
         manifests: list[str] = []
+        coverage_evidence_digests: list[str] = []
         dates = tuple(
             item for item in self._trading_dates if coverage_start <= item <= coverage_end
         )
@@ -139,12 +150,14 @@ class PitAuditRunner:
                 as_of_time=as_of_time,
                 failures=failures,
                 manifests=manifests,
+                coverage_evidence_digests=coverage_evidence_digests,
             )
 
         bundle_set_hash = self._warehouse.bundle_set_hash(coverage_start, coverage_end)
         body = {
             "bundle_set_hash": bundle_set_hash,
             "coverage_end": coverage_end.isoformat(),
+            "coverage_evidence_digests": sorted(coverage_evidence_digests),
             "coverage_start": coverage_start.isoformat(),
             "failures": sorted(failures),
             "manifests": sorted(manifests),
@@ -158,6 +171,7 @@ class PitAuditRunner:
             coverage_end=coverage_end,
             bundle_set_hash=bundle_set_hash,
             checked_manifests=tuple(sorted(manifests)),
+            coverage_evidence_digests=tuple(sorted(coverage_evidence_digests)),
             failures=tuple(sorted(failures)),
             audit_hash=audit_hash,
         )
@@ -168,6 +182,7 @@ class PitAuditRunner:
         as_of_time: datetime,
         failures: list[str],
         manifests: list[str],
+        coverage_evidence_digests: list[str],
     ) -> None:
         failure_date = as_of_time.date().isoformat()
         try:
@@ -224,10 +239,16 @@ class PitAuditRunner:
                 coverage_failed = True
         if coverage_failed:
             return
-        if not _has_complete_sparse_coverage(coverage_evidence, as_of_time, security_ids):
+        evidence_digests = _verified_sparse_coverage_digests(
+            coverage_evidence,
+            as_of_time,
+            security_ids,
+        )
+        if evidence_digests is None:
             failures.append(f"snapshot:{failure_date}:COVERAGE_EVIDENCE_MISSING")
             return
         manifests.append(snapshot.manifest_hash)
+        coverage_evidence_digests.extend(evidence_digests)
 
     def _security_ids_for(self, as_of_time: datetime) -> tuple[str, ...]:
         security_ids = tuple(sorted(set(self._universe.security_ids_for(as_of_time))))
@@ -261,23 +282,28 @@ def _scope_covers(actual: SnapshotScope, expected: SnapshotScope) -> bool:
     )
 
 
-def _has_complete_sparse_coverage(
+def _verified_sparse_coverage_digests(
     evidence: tuple[DatasetCoverageEvidence, ...],
     as_of_time: datetime,
     security_ids: tuple[str, ...],
-) -> bool:
+) -> tuple[str, ...] | None:
     expected_ids = set(security_ids)
     by_kind: dict[DataKind, DatasetCoverageEvidence] = {}
     for item in evidence:
         if item.kind not in COVERAGE_EVIDENCE_KINDS or item.kind in by_kind:
-            return False
+            return None
         by_kind[item.kind] = item
     for kind in COVERAGE_EVIDENCE_KINDS:
         item = by_kind.get(kind)
         if item is None or item.as_of_time != as_of_time:
-            return False
-        if set(item.security_ids) != expected_ids or not _is_sha256(item.source_hash):
-            return False
+            return None
+        if (
+            set(item.security_ids) != expected_ids
+            or not _is_sha256(item.source_hash)
+            or not _is_sha256(item.evidence_digest)
+            or not hmac.compare_digest(item.evidence_digest, coverage_evidence_digest(item))
+        ):
+            return None
         covered = set(item.covered_security_ids)
         known_empty = set(item.known_empty_security_ids)
         if (
@@ -286,8 +312,24 @@ def _has_complete_sparse_coverage(
             or covered.intersection(known_empty)
             or covered.union(known_empty) != expected_ids
         ):
-            return False
-    return True
+            return None
+        if item.kind not in OPTIONAL_ZERO_MEMBERSHIP_KINDS and known_empty:
+            return None
+    return tuple(sorted(item.evidence_digest for item in by_kind.values()))
+
+
+def coverage_evidence_digest(evidence: DatasetCoverageEvidence) -> str:
+    payload = {
+        "as_of_time": evidence.as_of_time.isoformat(),
+        "covered_security_ids": sorted(evidence.covered_security_ids),
+        "kind": evidence.kind.value,
+        "known_empty_security_ids": sorted(evidence.known_empty_security_ids),
+        "security_ids": sorted(evidence.security_ids),
+        "source_hash": evidence.source_hash,
+        "version": 1,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _is_sha256(value: str) -> bool:
