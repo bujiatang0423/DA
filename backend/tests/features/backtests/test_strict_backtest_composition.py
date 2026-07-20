@@ -25,12 +25,19 @@ from backend.app.features.backtests.models import (
     OrderSide,
     StrategyGroup,
 )
+from backend.app.features.backtests.execution import ExecutionSimulator, FilledAttempt
 from backend.app.features.backtests.ports import (
     BacktestDecision,
     BacktestDecisionContext,
     BacktestSnapshotQualityError,
 )
+from backend.app.features.backtests.strict_execution import (
+    CertifiedExecutionInputs,
+    StrictExecutionSimulator,
+)
+from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
 from backend.app.infrastructure.persistence.strict_pit_rows import (
+    DailyBarRawRow,
     FeeScheduleRow,
     SecurityStatusDailyRow,
 )
@@ -42,10 +49,16 @@ HASH = "a" * 64
 
 @pytest.fixture
 def strict_execution_session(postgres_engine: Engine) -> Iterator[Session]:
-    for table in (SecurityStatusDailyRow.__table__, FeeScheduleRow.__table__):
+    for table in (
+        DailyBarRawRow.__table__,
+        SecurityStatusDailyRow.__table__,
+        FeeScheduleRow.__table__,
+    ):
         table.create(postgres_engine, checkfirst=True)
     with postgres_engine.begin() as connection:
-        connection.execute(text("TRUNCATE TABLE security_status_daily, fee_schedules CASCADE"))
+        connection.execute(
+            text("TRUNCATE TABLE daily_bars_raw, security_status_daily, fee_schedules CASCADE")
+        )
     session = sessionmaker(bind=postgres_engine, expire_on_commit=False)()
     try:
         session.add_all([status_row(), fee_row()])
@@ -55,7 +68,9 @@ def strict_execution_session(postgres_engine: Engine) -> Iterator[Session]:
         session.rollback()
         session.close()
         with postgres_engine.begin() as connection:
-            connection.execute(text("TRUNCATE TABLE security_status_daily, fee_schedules CASCADE"))
+            connection.execute(
+                text("TRUNCATE TABLE daily_bars_raw, security_status_daily, fee_schedules CASCADE")
+            )
 
 
 @pytest.mark.postgres
@@ -136,6 +151,74 @@ def test_strict_engine_rejects_future_snapshot_record_before_decision_or_result(
         engine.run(request(), StrategyGroup.A)
 
     assert decisions == []
+
+
+@pytest.mark.postgres
+def test_sql_reader_keeps_false_status_flags_false_for_a_fill(
+    strict_execution_session: Session,
+) -> None:
+    close_time = OPEN.replace(hour=15)
+    strict_execution_session.add_all(
+        [
+            daily_bar_row("bar-prior", date(2020, 6, 1), Decimal("10"), OPEN),
+            daily_bar_row("bar-current", date(2020, 6, 2), Decimal("11"), close_time),
+        ]
+    )
+    strict_execution_session.commit()
+
+    class SqlReaderWarehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            assert isinstance(scope, SnapshotScope)
+            records, lineage, issues = SqlStrictRecordReader(strict_execution_session).read(
+                as_of_time=as_of_time,
+                scope=scope,
+            )
+            return PointInTimeSnapshot(
+                as_of_time,
+                scope,
+                DataGrade.PIT_VERIFIED,
+                records,
+                (),
+                SnapshotQuality(issues),
+                lineage,
+                "sql-reader",
+            )
+
+    result = StrictExecutionSimulator(
+        ExecutionSimulator(),
+        CertifiedExecutionInputs(SqlReaderWarehouse()),
+    ).attempt(
+        order(),
+        security_id="PAST_DELISTED.SZ",
+        trade_date=date(2020, 6, 2),
+        exchange="SZSE",
+        asset_type="stock",
+        as_of_time=close_time,
+    )
+
+    assert isinstance(result, FilledAttempt)
+
+
+def daily_bar_row(
+    row_id: str,
+    trade_date: date,
+    close: Decimal,
+    available_at: datetime,
+) -> DailyBarRawRow:
+    return DailyBarRawRow(
+        id=row_id,
+        source_record_id=row_id,
+        security_id="PAST_DELISTED.SZ",
+        trade_date=trade_date,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume=100_000,
+        amount=Decimal("1000000"),
+        available_at=available_at,
+        source_artifact_hash=HASH,
+    )
 
 
 class Days:

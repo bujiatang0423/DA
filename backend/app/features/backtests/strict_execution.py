@@ -203,6 +203,7 @@ def _validate_snapshot(
         or snapshot.as_of_time != as_of_time
         or snapshot.scope != scope
         or snapshot.quality.has_errors
+        or any(record.available_at > as_of_time for record in _snapshot_records(snapshot))
     ):
         raise StrictDataMissingError("certified execution snapshot missing")
 

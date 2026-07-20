@@ -343,6 +343,53 @@ def test_certified_execution_inputs_use_one_attested_snapshot_for_bar_status_and
     assert inputs.fee.record_id == "fee-2020"
 
 
+def test_certified_execution_inputs_reject_future_visible_record_from_warehouse() -> None:
+    future_record = record(
+        "future-status",
+        DataKind.SECURITY_STATUS,
+        "PAST_DELISTED.SZ",
+        {
+            "trade_date": "2020-06-01",
+            "is_st": False,
+            "is_suspended": False,
+            "board": "main",
+            "price_limit_pct": "0.10",
+        },
+    )
+    future_record = TemporalRecord(
+        future_record.record_id,
+        future_record.kind,
+        future_record.entity_id,
+        future_record.event_time,
+        future_record.observed_at,
+        AS_OF.replace(hour=10),
+        future_record.source_artifact_hash,
+        future_record.payload,
+    )
+
+    class FutureRecordWarehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            return PointInTimeSnapshot(
+                as_of_time,
+                scope,
+                DataGrade.PIT_VERIFIED,
+                (future_record,),
+                (),
+                SnapshotQuality(()),
+                (),
+                "manifest",
+            )
+
+    with pytest.raises(StrictDataMissingError, match="certified execution snapshot missing"):
+        CertifiedExecutionInputs(FutureRecordWarehouse()).for_attempt(
+            security_id="PAST_DELISTED.SZ",
+            trade_date=date(2020, 6, 1),
+            exchange="SSE",
+            asset_type="stock",
+            as_of_time=AS_OF,
+        )
+
+
 def record(
     record_id: str,
     kind: DataKind,
