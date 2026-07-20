@@ -206,8 +206,14 @@ class ResearchEvidenceSource:
             raise ValueError(
                 "research evidence source missing: " + ",".join(sorted(x.value for x in missing))
             )
-        lineage_by_hash = {
-            item.source_artifact_hash: item for batch in batches for item in batch.lineage
-        }
-        lineage = tuple(lineage_by_hash[key] for key in sorted(lineage_by_hash))
+        lineage = tuple(
+            sorted(
+                {item for batch in batches for item in batch.lineage},
+                key=lambda item: (
+                    item.source_artifact_hash,
+                    item.provider,
+                    item.batch_id,
+                ),
+            )
+        )
         return ResearchBatch(records, lineage)

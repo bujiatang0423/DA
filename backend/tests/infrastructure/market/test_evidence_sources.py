@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from backend.app.core.market.pit_models import DataKind, SnapshotScope, TemporalRecord
+from backend.app.core.market.pit_models import DataKind, LineageRef, SnapshotScope, TemporalRecord
 from backend.app.infrastructure.market.research_adapters import (
     LlmEvidenceSource,
     MarketEvidenceSource,
@@ -353,3 +353,24 @@ def test_research_evidence_rejects_conflicting_provider_records() -> None:
         ResearchEvidenceSource((Source("one"), Source("two"))).fetch(
             as_of_time=as_of, scope=SnapshotScope()
         )
+
+
+def test_research_evidence_keeps_distinct_provider_lineage_for_same_artifact() -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class Source:
+        def __init__(self, batch_id: str, provider: str) -> None:
+            self.provider = provider
+            self._lineage = LineageRef(batch_id, provider, "shared-artifact")
+
+        def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
+            return ResearchBatch((), (self._lineage,))
+
+    batch = ResearchEvidenceSource(
+        (Source("batch-b", "provider-b"), Source("batch-a", "provider-a"))
+    ).fetch(as_of_time=as_of, scope=SnapshotScope())
+
+    assert batch.lineage == (
+        LineageRef("batch-a", "provider-a", "shared-artifact"),
+        LineageRef("batch-b", "provider-b", "shared-artifact"),
+    )
