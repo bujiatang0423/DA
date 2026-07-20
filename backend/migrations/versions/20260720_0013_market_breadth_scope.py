@@ -17,11 +17,11 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "market_breadth",
-        sa.Column("market_id", sa.String(32), nullable=False, server_default="CN_A"),
+        sa.Column("market_id", sa.String(32), nullable=True),
     )
     op.add_column(
         "market_breadth",
-        sa.Column("universe_id", sa.String(64), nullable=False, server_default="ALL_A"),
+        sa.Column("universe_id", sa.String(64), nullable=True),
     )
     op.create_index("ix_market_breadth_market_id", "market_breadth", ["market_id"])
     op.create_index("ix_market_breadth_universe_id", "market_breadth", ["universe_id"])

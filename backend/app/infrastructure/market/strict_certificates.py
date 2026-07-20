@@ -43,6 +43,10 @@ class SqlPitCertificateAuthority:
             raise ValueError("a passed audit report is required")
         if report.coverage_start > report.coverage_end:
             raise ValueError("audit report coverage is invalid")
+        if report.market_id is None or report.universe_id is None:
+            raise ValueError("audit report scope identity is required")
+        if report.market_id != scope.market_id or report.universe_id != scope.universe_id:
+            raise ValueError("audit report scope identity does not match certificate scope")
         if not _is_sha256(report.bundle_set_hash) or not _is_sha256(report.audit_hash):
             raise ValueError("audit report integrity hashes are invalid")
         start_hash = bundle_set_hash_for(self._session, report.coverage_start)

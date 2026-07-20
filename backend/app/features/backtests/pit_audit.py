@@ -105,6 +105,8 @@ class PitAuditReport:
     report_id: str
     coverage_start: date
     coverage_end: date
+    market_id: str
+    universe_id: str
     bundle_set_hash: str
     checked_manifests: tuple[str, ...]
     coverage_evidence_digests: tuple[str, ...]
@@ -163,6 +165,8 @@ class PitAuditRunner:
             "coverage_start": coverage_start.isoformat(),
             "failures": sorted(failures),
             "manifests": sorted(manifests),
+            "market_id": "CN_A",
+            "universe_id": "ALL_A",
         }
         audit_hash = sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -171,6 +175,8 @@ class PitAuditRunner:
             report_id=audit_hash[:24],
             coverage_start=coverage_start,
             coverage_end=coverage_end,
+            market_id="CN_A",
+            universe_id="ALL_A",
             bundle_set_hash=bundle_set_hash,
             checked_manifests=tuple(sorted(manifests)),
             coverage_evidence_digests=tuple(sorted(coverage_evidence_digests)),

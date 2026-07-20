@@ -89,6 +89,8 @@ def persist_audit_report(
             passed=passed,
             coverage_start=AS_OF.date(),
             coverage_end=AS_OF.date(),
+            market_id="CN_A",
+            universe_id="ALL_A",
             bundle_set_hash=bundle_hash or bundle_set_hash_for(session, AS_OF.date()),
             audit_hash=audit_hash,
             verified_at=AS_OF,
@@ -188,6 +190,37 @@ def test_strict_reader_requires_fresh_market_breadth_for_the_selected_scope(
 
 
 @pytest.mark.postgres
+def test_strict_reader_rejects_legacy_market_breadth_without_scope_identity(
+    strict_session: Session,
+) -> None:
+    strict_session.execute(delete(MarketBreadthRow))
+    strict_session.add(
+        MarketBreadthRow(
+            id="legacy-breadth",
+            source_record_id="legacy-breadth",
+            market_id=None,
+            universe_id=None,
+            trade_date=AS_OF.date(),
+            breadth="0.60",
+            security_count=3500,
+            available_at=AS_OF,
+            source_artifact_hash="d" * 64,
+        )
+    )
+    strict_session.commit()
+
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.MARKET_BREADTH,)),
+    )
+
+    assert records == ()
+    assert [(issue.code, issue.dataset) for issue in issues] == [
+        ("REQUIRED_DATASET_MISSING", DataKind.MARKET_BREADTH.value)
+    ]
+
+
+@pytest.mark.postgres
 def test_certificate_is_bound_to_the_approved_query_scope(
     strict_session: Session,
 ) -> None:
@@ -207,6 +240,20 @@ def test_certificate_is_bound_to_the_approved_query_scope(
         warehouse.snapshot(
             as_of_time=AS_OF,
             scope=SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,)),
+        )
+
+
+@pytest.mark.postgres
+def test_certificate_rejects_a_report_approved_for_a_different_market_scope(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+
+    with pytest.raises(ValueError, match="scope identity"):
+        SqlPitCertificateAuthority(strict_session, SECRET).approve(
+            "audit-1",
+            as_of_time=AS_OF,
+            scope=SnapshotScope(market_id="US", universe_id="SP500"),
         )
 
 
