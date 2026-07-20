@@ -2,6 +2,8 @@ import type { BacktestResult } from "./api";
 
 interface BacktestSummaryProps {
   result: BacktestResult;
+  onLoadMoreTrades: () => void;
+  onLoadMoreRejected: () => void;
 }
 
 interface AcceptanceGate {
@@ -89,10 +91,16 @@ function AuditTable({
   title,
   rows,
   empty,
+  nextCursor,
+  loadMoreLabel,
+  onLoadMore,
 }: {
   title: string;
   rows: Array<Record<string, string>>;
   empty: string;
+  nextCursor: string | null;
+  loadMoreLabel: string;
+  onLoadMore: () => void;
 }): JSX.Element {
   const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
   return (
@@ -115,11 +123,20 @@ function AuditTable({
           </table>
         </div>
       )}
+      {nextCursor ? (
+        <div className="inline-actions">
+          <button className="btn btn-secondary" onClick={onLoadMore}>{loadMoreLabel}</button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function BacktestSummary({ result }: BacktestSummaryProps): JSX.Element {
+export function BacktestSummary({
+  result,
+  onLoadMoreTrades,
+  onLoadMoreRejected,
+}: BacktestSummaryProps): JSX.Element {
   const selected = result.groups.find((item) => item.group === result.group);
   const acceptanceGates = gates(result.metric_details);
   const details = metricDetails(result.metric_details);
@@ -200,9 +217,35 @@ export function BacktestSummary({ result }: BacktestSummaryProps): JSX.Element {
             </div>
           ))}
         </div>
+        <div className="timeline" data-testid="drawdown-series">
+          {result.equity_curve.items.map((point, index) => (
+            <div
+              className="timeline-row"
+              key={`${point.trade_date ?? point.date ?? index}-drawdown`}
+            >
+              <strong>{point.trade_date ?? point.date ?? "-"}</strong>
+              <div className="timeline-bar"><span style={{ width: "100%" }} /></div>
+              <strong>{point.drawdown ?? "-"}</strong>
+            </div>
+          ))}
+        </div>
       </div>
-      <AuditTable title="成交审计" rows={result.trades.items} empty="没有成交记录。" />
-      <AuditTable title="拒单审计" rows={result.rejected_attempts.items} empty="没有拒单记录。" />
+      <AuditTable
+        empty="没有成交记录。"
+        loadMoreLabel="加载更多成交"
+        nextCursor={result.trades.next_cursor}
+        onLoadMore={onLoadMoreTrades}
+        rows={result.trades.items}
+        title="成交审计"
+      />
+      <AuditTable
+        empty="没有拒单记录。"
+        loadMoreLabel="加载更多拒单"
+        nextCursor={result.rejected_attempts.next_cursor}
+        onLoadMore={onLoadMoreRejected}
+        rows={result.rejected_attempts.items}
+        title="拒单审计"
+      />
       {result.warnings.length > 0 ? (
         <div className="alert" role="alert">{result.warnings.join("；")}</div>
       ) : null}

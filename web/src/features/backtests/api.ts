@@ -5,6 +5,12 @@ export interface BacktestRunRef {
   human_confirm_required: true;
 }
 
+export interface BacktestRunStatus {
+  run_id: string;
+  status: string;
+  error_code?: string | null;
+}
+
 export interface BacktestGroup {
   group: string;
   data_grade: string;
@@ -48,6 +54,11 @@ export interface BacktestRequest {
   groups: string[];
 }
 
+export interface BacktestPageOptions {
+  tradeCursor?: string;
+  rejectedCursor?: string;
+}
+
 async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new BacktestApiError(response.status);
@@ -72,7 +83,23 @@ export async function submitBacktest(request: BacktestRequest): Promise<Backtest
   return parse<BacktestRunRef>(response);
 }
 
-export async function getBacktest(runId: string, group: string): Promise<BacktestResult> {
-  const response = await fetch(`/api/v1/backtests/${encodeURIComponent(runId)}?group=${group}`);
+export async function getBacktest(
+  runId: string,
+  group: string,
+  options: BacktestPageOptions = {},
+): Promise<BacktestResult> {
+  const query = new URLSearchParams({ group });
+  if (options.tradeCursor) {
+    query.set("trade_cursor", options.tradeCursor);
+  }
+  if (options.rejectedCursor) {
+    query.set("rejected_cursor", options.rejectedCursor);
+  }
+  const response = await fetch(`/api/v1/backtests/${encodeURIComponent(runId)}?${query}`);
   return parse<BacktestResult>(response);
+}
+
+export async function getRun(runId: string): Promise<BacktestRunStatus> {
+  const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}`);
+  return parse<BacktestRunStatus>(response);
 }

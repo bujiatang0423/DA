@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BacktestApiError,
   getBacktest,
+  getRun,
   submitBacktest,
   type BacktestResult,
 } from "./api";
@@ -16,6 +17,7 @@ export function BacktestsPage(): JSX.Element {
   const [runId, setRunId] = useState<string>();
   const [group, setGroup] = useState("A");
   const [result, setResult] = useState<BacktestResult>();
+  const [runStatus, setRunStatus] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string>();
@@ -36,39 +38,76 @@ export function BacktestsPage(): JSX.Element {
     }
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const load = async (): Promise<void> => {
+    const checkStatus = async (): Promise<void> => {
       try {
-        const next = await getBacktest(runId, group);
-        if (!cancelled) {
-          setResult(next);
-          setWaiting(false);
-        }
-      } catch (loadError) {
+        const run = await getRun(runId);
         if (cancelled) {
           return;
         }
-        if (loadError instanceof BacktestApiError && loadError.status === 404) {
+        setRunStatus(run.status);
+        if (run.status === "queued" || run.status === "running") {
           setWaiting(true);
-          retry = setTimeout(() => void load(), 1500);
+          retry = setTimeout(() => void checkStatus(), 1500);
           return;
         }
         setWaiting(false);
-        setError("回测结果加载失败，请稍后重试。");
+        if (run.status === "failed") {
+          setError(`任务执行失败${run.error_code ? `（${run.error_code}）` : ""}。`);
+          return;
+        }
+        if (run.status !== "succeeded") {
+          setError("任务已结束，未生成可展示的回测结果。");
+        }
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setWaiting(false);
+        setError("运行状态加载失败，请稍后重试。");
       }
     };
-    void load();
+    void checkStatus();
     return () => {
       cancelled = true;
       if (retry) {
         clearTimeout(retry);
       }
     };
-  }, [group, runId]);
+  }, [runId]);
+
+  useEffect(() => {
+    if (!runId || runStatus !== "succeeded") {
+      return;
+    }
+    let cancelled = false;
+    const loadResult = async (): Promise<void> => {
+      try {
+        const next = await getBacktest(runId, group);
+        if (!cancelled && next.group === group) {
+          setResult(next);
+        }
+      } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+        if (loadError instanceof BacktestApiError && loadError.status === 404) {
+          setError("回测已完成，但结果暂不可用，请在运行中心复核。");
+          return;
+        }
+        setError("回测结果加载失败，请稍后重试。");
+      }
+    };
+    void loadResult();
+    return () => {
+      cancelled = true;
+    };
+  }, [group, runId, runStatus]);
 
   const submit = async (): Promise<void> => {
     setSubmitting(true);
     setError(undefined);
     setResult(undefined);
+    setRunStatus(undefined);
     try {
       const run = await submitBacktest(request);
       setRunId(run.run_id);
@@ -76,6 +115,49 @@ export function BacktestsPage(): JSX.Element {
       setError("回测任务提交失败，请检查研究参数后重试。");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const selectGroup = (nextGroup: string): void => {
+    if (nextGroup === group) {
+      return;
+    }
+    setResult(undefined);
+    setError(undefined);
+    setGroup(nextGroup);
+  };
+
+  const loadMore = async (kind: "trades" | "rejected_attempts"): Promise<void> => {
+    if (!runId || !result) {
+      return;
+    }
+    const cursor = result[kind].next_cursor;
+    if (!cursor) {
+      return;
+    }
+    try {
+      const next = await getBacktest(
+        runId,
+        group,
+        kind === "trades" ? { tradeCursor: cursor } : { rejectedCursor: cursor },
+      );
+      if (next.group !== group) {
+        return;
+      }
+      setResult((current) => {
+        if (!current || current.group !== group) {
+          return current;
+        }
+        return {
+          ...current,
+          [kind]: {
+            ...next[kind],
+            items: [...current[kind].items, ...next[kind].items],
+          },
+        };
+      });
+    } catch {
+      setError("审计记录加载失败，请稍后重试。");
     }
   };
 
@@ -115,12 +197,16 @@ export function BacktestsPage(): JSX.Element {
             <button
               className={item === group ? "btn" : "btn btn-secondary"}
               key={item}
-              onClick={() => setGroup(item)}
+              onClick={() => selectGroup(item)}
             >
               分组 {item}
             </button>
           ))}</div>
-          <BacktestSummary result={result} />
+          <BacktestSummary
+            onLoadMoreRejected={() => void loadMore("rejected_attempts")}
+            onLoadMoreTrades={() => void loadMore("trades")}
+            result={result}
+          />
         </>
       ) : null}
     </section>
