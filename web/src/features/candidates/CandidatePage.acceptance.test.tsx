@@ -16,9 +16,24 @@ test("groups executable watchlist and excluded items with grades and safe eviden
           data_grade: "research",
           llm_grade: "not_used",
           items: [
-            { security_id: "600000", security_name: "Exec", bucket: "executable", evidence_refs: ["pit:bar:abc"] },
-            { security_id: "600001", security_name: "Watch", bucket: "watchlist", evidence_refs: [] },
-            { security_id: "600002", security_name: "Excluded", bucket: "excluded", evidence_refs: ["pit:policy:def"] },
+            {
+              security_id: "600000",
+              security_name: "Exec",
+              bucket: "executable",
+              evidence_refs: ["pit:bar:abc"],
+            },
+            {
+              security_id: "600001",
+              security_name: "Watch",
+              bucket: "watchlist",
+              evidence_refs: [],
+            },
+            {
+              security_id: "600002",
+              security_name: "Excluded",
+              bucket: "excluded",
+              evidence_refs: ["pit:policy:def"],
+            },
           ],
         }),
         { status: 200 },
