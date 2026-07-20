@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
 from types import ModuleType
@@ -16,12 +17,14 @@ from backend.app.features.candidates.service import CandidateService
 from backend.app.features.holdings.repository import SqlHoldingResultRepository
 from backend.app.features.holdings.service import V212HoldingAnalysisService
 from backend.app.infrastructure.market.provider_source import ProviderResearchSource
+from backend.app.infrastructure.market.build import build_point_in_time_warehouse
 from backend.app.infrastructure.market.research_providers import (
     AkShareDailyBarProvider,
     BaoStockDailyBarProvider,
     FallbackDailyBarProvider,
 )
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
+from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
 from backend.app.ports.point_in_time import PointInTimeWarehouse
@@ -29,6 +32,18 @@ from backend.app.ports.point_in_time import PointInTimeWarehouse
 
 class ProviderConfigurationError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class ProductionResearchProviders:
+    """Complete ports required to build the production research evidence chain."""
+
+    market: object
+    policy: object
+    llm: object
+
+
+ResearchProviderFactory = Callable[[Settings], ProductionResearchProviders]
 
 
 @dataclass(frozen=True)
@@ -48,6 +63,24 @@ def _provider_module(name: str) -> ModuleType:
         raise ProviderConfigurationError(
             f"production provider dependency is missing: {name}"
         ) from exc
+
+
+def _configured_research_providers(settings: Settings) -> ProductionResearchProviders | None:
+    """Load deployment-owned providers without leaking configuration or client failures."""
+    reference = settings.research_provider_factory
+    if not reference:
+        return None
+    module_name, separator, attribute = reference.partition(":")
+    if not module_name or not separator or not attribute:
+        return None
+    try:
+        factory = getattr(import_module(module_name), attribute)
+        providers = factory(settings)
+    except Exception:
+        return None
+    if not isinstance(providers, ProductionResearchProviders):
+        return None
+    return providers
 
 
 def build_warehouse(
@@ -76,6 +109,17 @@ def build_warehouse(
 
     if fake_warehouse is not None:
         raise ProviderConfigurationError("production provider mode rejects a fake warehouse")
+
+    providers = _configured_research_providers(settings)
+    if providers is not None:
+        return build_point_in_time_warehouse(
+            market=providers.market,
+            policy=providers.policy,
+            llm=providers.llm,
+        )
+
+    if settings.environment != "test":
+        return UnavailableResearchWarehouse()
 
     akshare = akshare_module or _provider_module("akshare")
     baostock = baostock_module or _provider_module("baostock")

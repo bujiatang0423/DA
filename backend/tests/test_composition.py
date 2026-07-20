@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.bootstrap.composition import (
+    ProductionResearchProviders,
     ProviderConfigurationError,
     build_components,
     build_warehouse,
@@ -20,6 +21,7 @@ from backend.app.features.candidates.service import (
 )
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
+from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 
 
@@ -73,6 +75,11 @@ class RecordingCandidateRepository:
         return {}
 
 
+def complete_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
+    del settings
+    return ProductionResearchProviders(market=object(), policy=object(), llm=object())
+
+
 def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
     settings = Settings(_env_file=None, environment="test", provider_mode="fake")
 
@@ -100,6 +107,57 @@ def test_production_provider_mode_builds_the_real_fallback_chain() -> None:
     assert isinstance(source.provider, FallbackDailyBarProvider)
     assert source.provider.primary.module is akshare
     assert source.provider.fallback.module is baostock
+
+
+def test_unconfigured_production_evidence_factory_fails_closed() -> None:
+    settings = Settings(_env_file=None, environment="production", provider_mode="production")
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
+    snapshot = warehouse.snapshot(
+        as_of_time=datetime(2026, 7, 20, 16, tzinfo=UTC),
+        scope=SnapshotScope.candidate_recommendation(),
+    )
+    assert snapshot.quality.has_errors
+    assert {issue.code for issue in snapshot.quality.issues} == {"REQUIRED_DATASET_MISSING"}
+    assert {issue.dataset for issue in snapshot.quality.issues} == {kind.value for kind in DataKind}
+
+
+def test_configured_production_evidence_factory_builds_one_complete_warehouse() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="backend.tests.test_composition:complete_research_provider_factory",
+    )
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, ResearchPointInTimeWarehouse)
+    assert len(warehouse.sources) == 1
+    evidence = warehouse.sources[0]
+    assert len(evidence.sources) == 3
+
+
+def test_invalid_production_evidence_factory_fails_closed_without_import_details() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="missing.provider:factory",
+    )
+
+    warehouse = build_warehouse(settings)
+    snapshot = warehouse.snapshot(
+        as_of_time=datetime(2026, 7, 20, 16, tzinfo=UTC),
+        scope=SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,)),
+    )
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
+    assert [(issue.code, issue.dataset) for issue in snapshot.quality.issues] == [
+        ("REQUIRED_DATASET_MISSING", DataKind.DAILY_BAR_RAW.value)
+    ]
 
 
 def test_production_provider_mode_rejects_a_fake_override() -> None:
