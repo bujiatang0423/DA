@@ -38,3 +38,23 @@ def test_release_audit_rejects_symlinks_and_uncontrolled_runtime_logging(tmp_pat
         "uncontrolled-logging:backend/app/feature.py",
         "symlink:backend/app/linked.py",
     ]
+
+
+def test_release_audit_rejects_unsafe_sinks_inside_previously_allowed_modules(
+    tmp_path: Path,
+) -> None:
+    logging_source = tmp_path / "backend" / "app" / "infrastructure" / "logging.py"
+    logging_source.parent.mkdir(parents=True)
+    logging_source.write_text("import logging\nlogging.warning(secret)\n", encoding="utf-8")
+    legacy_cli = tmp_path / "backend" / "app" / "features" / "legacy_import" / "cli.py"
+    legacy_cli.parent.mkdir(parents=True)
+    legacy_cli.write_text("print(secret)\n", encoding="utf-8")
+    artifact_tool = tmp_path / "tools" / "verify_artifact_hashes.py"
+    artifact_tool.parent.mkdir(parents=True)
+    artifact_tool.write_text("print(secret)\n", encoding="utf-8")
+
+    assert audit_repository(tmp_path) == [
+        "uncontrolled-print:backend/app/features/legacy_import/cli.py",
+        "uncontrolled-logging:backend/app/infrastructure/logging.py",
+        "uncontrolled-print:tools/verify_artifact_hashes.py",
+    ]
