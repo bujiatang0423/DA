@@ -28,6 +28,37 @@ class PitBundleRow(Base):
     coverage_end: Mapped[date] = mapped_column(Date, nullable=False)
 
 
+class PitCertificateRow(Base):
+    __tablename__ = "pit_certificates"
+
+    audit_report_id: Mapped[str] = mapped_column(
+        ForeignKey("pit_audit_reports.id"),
+        primary_key=True,
+    )
+    coverage_start: Mapped[date] = mapped_column(Date, nullable=False)
+    coverage_end: Mapped[date] = mapped_column(Date, nullable=False)
+    bundle_set_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    audit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    approval_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    certified_as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    lineage_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    selected_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class PitAuditReportRow(Base):
+    __tablename__ = "pit_audit_reports"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    coverage_start: Mapped[date] = mapped_column(Date, nullable=False)
+    coverage_end: Mapped[date] = mapped_column(Date, nullable=False)
+    bundle_set_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    audit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class SecurityMasterHistoryRow(Base):
     __tablename__ = "security_master_history"
 
