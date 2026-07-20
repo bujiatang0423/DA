@@ -126,10 +126,17 @@ class PitAuditRunner:
         warehouse: AuditablePointInTimeWarehouse,
         trading_dates: tuple[date, ...],
         universe: AuditUniverseResolver,
+        *,
+        market_id: str,
+        universe_id: str,
     ) -> None:
         self._warehouse = warehouse
         self._trading_dates = tuple(sorted(set(trading_dates)))
         self._universe = universe
+        if not market_id or not universe_id:
+            raise ValueError("PIT audit market and universe identities are required")
+        self._market_id = market_id
+        self._universe_id = universe_id
 
     def run(self, *, coverage_start: date, coverage_end: date) -> PitAuditReport:
         if coverage_start > coverage_end:
@@ -165,8 +172,8 @@ class PitAuditRunner:
             "coverage_start": coverage_start.isoformat(),
             "failures": sorted(failures),
             "manifests": sorted(manifests),
-            "market_id": "CN_A",
-            "universe_id": "ALL_A",
+            "market_id": self._market_id,
+            "universe_id": self._universe_id,
         }
         audit_hash = sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -175,8 +182,8 @@ class PitAuditRunner:
             report_id=audit_hash[:24],
             coverage_start=coverage_start,
             coverage_end=coverage_end,
-            market_id="CN_A",
-            universe_id="ALL_A",
+            market_id=self._market_id,
+            universe_id=self._universe_id,
             bundle_set_hash=bundle_set_hash,
             checked_manifests=tuple(sorted(manifests)),
             coverage_evidence_digests=tuple(sorted(coverage_evidence_digests)),
@@ -198,7 +205,12 @@ class PitAuditRunner:
         except Exception as error:
             failures.append(f"security_master:{failure_date}:{type(error).__name__}")
             return
-        expected_scope = SnapshotScope(security_ids, DAILY_REQUIRED_KINDS)
+        expected_scope = SnapshotScope(
+            security_ids,
+            DAILY_REQUIRED_KINDS,
+            market_id=self._market_id,
+            universe_id=self._universe_id,
+        )
         try:
             snapshot = self._warehouse.candidate_snapshot(
                 as_of_time=as_of_time,

@@ -82,6 +82,8 @@ def persist_audit_report(
     passed: bool = True,
     bundle_hash: str | None = None,
     audit_hash: str = HASH,
+    market_id: str = "CN_A",
+    universe_id: str = "ALL_A",
 ) -> None:
     session.add(
         PitAuditReportRow(
@@ -89,8 +91,8 @@ def persist_audit_report(
             passed=passed,
             coverage_start=AS_OF.date(),
             coverage_end=AS_OF.date(),
-            market_id="CN_A",
-            universe_id="ALL_A",
+            market_id=market_id,
+            universe_id=universe_id,
             bundle_set_hash=bundle_hash or bundle_set_hash_for(session, AS_OF.date()),
             audit_hash=audit_hash,
             verified_at=AS_OF,
@@ -247,13 +249,13 @@ def test_certificate_is_bound_to_the_approved_query_scope(
 def test_certificate_rejects_a_report_approved_for_a_different_market_scope(
     strict_session: Session,
 ) -> None:
-    persist_audit_report(strict_session)
+    persist_audit_report(strict_session, market_id="US", universe_id="SP500")
 
     with pytest.raises(ValueError, match="scope identity"):
         SqlPitCertificateAuthority(strict_session, SECRET).approve(
             "audit-1",
             as_of_time=AS_OF,
-            scope=SnapshotScope(market_id="US", universe_id="SP500"),
+            scope=SnapshotScope(),
         )
 
 

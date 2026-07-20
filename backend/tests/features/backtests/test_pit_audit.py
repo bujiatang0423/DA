@@ -108,11 +108,27 @@ def test_audit_binds_each_date_to_its_own_ipo_and_delisting_universe() -> None:
         CandidateWarehouse(complete_records(universe._values)),
         (FIRST_DATE, SECOND_DATE),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=SECOND_DATE)
 
     assert report.passed is True
     assert [item.date() for item in universe.requested] == [FIRST_DATE, SECOND_DATE]
     assert len(report.coverage_evidence_digests) == 2 * len(COVERAGE_EVIDENCE_KINDS)
+
+
+def test_audit_binds_an_explicit_nondefault_market_and_universe() -> None:
+    universe = DateUniverse({FIRST_DATE: ("SPY",)})
+    report = PitAuditRunner(
+        CandidateWarehouse(complete_records(universe._values)),
+        (FIRST_DATE,),
+        universe,
+        market_id="US",
+        universe_id="SP500",
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is True
+    assert (report.market_id, report.universe_id) == ("US", "SP500")
 
 
 def test_required_kinds_are_a_minimum_and_valid_auxiliary_records_are_allowed() -> None:
@@ -144,6 +160,8 @@ def test_required_kinds_are_a_minimum_and_valid_auxiliary_records_are_allowed() 
         AuxiliaryWarehouse(complete_records(universe._values)),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
 
     assert report.passed is True
@@ -162,6 +180,8 @@ def test_optional_memberships_can_have_zero_members_with_explicit_coverage_evide
         CandidateWarehouse(records, zero_membership_kinds=frozenset(optional_kinds)),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(
         coverage_start=FIRST_DATE,
         coverage_end=FIRST_DATE,
@@ -200,6 +220,8 @@ def test_clean_quality_without_required_sparse_coverage_evidence_fails(
         ),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
 
     assert report.passed is False
@@ -225,6 +247,8 @@ def test_forged_coverage_content_cannot_reuse_the_original_digest() -> None:
         ForgedEvidenceWarehouse(complete_records(universe._values)),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
 
     assert report.passed is False
@@ -240,6 +264,8 @@ def test_adjustment_factor_cannot_claim_the_entire_universe_is_known_empty() -> 
         ),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
 
     assert report.passed is False
@@ -253,7 +279,13 @@ def test_missing_bar_or_status_for_one_visible_security_fails_closed() -> None:
         for item in complete_records(universe._values)
         if not (item.kind is DataKind.DAILY_BAR_RAW and item.entity_id == "000002.SZ")
     )
-    report = PitAuditRunner(CandidateWarehouse(records), (FIRST_DATE,), universe).run(
+    report = PitAuditRunner(
+        CandidateWarehouse(records),
+        (FIRST_DATE,),
+        universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
+    ).run(
         coverage_start=FIRST_DATE,
         coverage_end=FIRST_DATE,
     )
@@ -305,6 +337,8 @@ def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
         UnsafeWarehouse(complete_records(universe._values)),
         (FIRST_DATE,),
         universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
     ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
 
     assert report.passed is False
@@ -317,7 +351,13 @@ def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
 
 def test_empty_date_universe_fails_closed() -> None:
     universe = DateUniverse({FIRST_DATE: ()})
-    report = PitAuditRunner(CandidateWarehouse(), (FIRST_DATE,), universe).run(
+    report = PitAuditRunner(
+        CandidateWarehouse(),
+        (FIRST_DATE,),
+        universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
+    ).run(
         coverage_start=FIRST_DATE,
         coverage_end=FIRST_DATE,
     )

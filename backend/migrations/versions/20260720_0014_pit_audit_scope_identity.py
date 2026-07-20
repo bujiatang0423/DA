@@ -25,5 +25,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("pit_audit_reports", "universe_id")
     op.drop_column("pit_audit_reports", "market_id")
+    op.execute("DELETE FROM market_breadth WHERE market_id IS NULL OR universe_id IS NULL")
     op.alter_column("market_breadth", "universe_id", existing_type=sa.String(64), nullable=False)
     op.alter_column("market_breadth", "market_id", existing_type=sa.String(32), nullable=False)
