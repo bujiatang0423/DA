@@ -213,6 +213,51 @@ def test_certified_daily_bar_reader_does_not_fall_back_to_an_uncertified_sql_bar
         )
 
 
+def test_certified_daily_bar_reader_rejects_future_selected_snapshot_input() -> None:
+    trade_date = date(2024, 1, 4)
+    previous_date = date(2024, 1, 3)
+    requested_scope = SnapshotScope(("000001.SZ",), (DataKind.DAILY_BAR_RAW,))
+    previous = TemporalRecord(
+        "prior",
+        DataKind.DAILY_BAR_RAW,
+        "000001.SZ",
+        datetime.combine(previous_date, time(15), UTC),
+        AS_OF,
+        AS_OF,
+        HASH,
+        {"open": "10", "high": "11", "low": "9", "close": "10", "volume": "100000"},
+    )
+    future = TemporalRecord(
+        "current",
+        DataKind.DAILY_BAR_RAW,
+        "000001.SZ",
+        datetime.combine(trade_date, time(15), UTC),
+        AS_OF,
+        AS_OF.replace(hour=10),
+        HASH,
+        {"open": "11", "high": "12", "low": "10", "close": "11", "volume": "100000"},
+    )
+
+    class FutureInputWarehouse:
+        def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:
+            assert scope == requested_scope
+            return PointInTimeSnapshot(
+                as_of_time,
+                requested_scope,
+                DataGrade.PIT_VERIFIED,
+                (previous, future),
+                (),
+                SnapshotQuality(()),
+                (),
+                "future-input",
+            )
+
+    with pytest.raises(StrictDataMissingError, match="certified execution snapshot missing"):
+        CertifiedHistoricalDailyBars(FutureInputWarehouse()).bar_for(
+            "000001.SZ", trade_date, as_of_time=AS_OF
+        )
+
+
 def test_snapshot_adapter_rejects_quality_errors_without_leaking_detail() -> None:
     class Warehouse:
         def snapshot(self, *, as_of_time: datetime, scope: object) -> PointInTimeSnapshot:

@@ -22,7 +22,10 @@ from backend.app.features.backtests.ports import (
     BacktestSnapshotQualityError,
     BacktestTradingDayPort,
 )
-from backend.app.features.backtests.strict_execution import HistoricalDailyBarReader
+from backend.app.features.backtests.strict_execution import (
+    HistoricalDailyBarReader,
+    _validate_snapshot,
+)
 from backend.app.infrastructure.market.strict_queries import StrictDataMissingError
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
@@ -135,6 +138,7 @@ class CertifiedHistoricalDailyBars(HistoricalDailyBarReader):
     ) -> DailyBar:
         scope = SnapshotScope((security_id,), (DataKind.DAILY_BAR_RAW,))
         snapshot = self._warehouse.snapshot(as_of_time=as_of_time, scope=scope)
+        _validate_snapshot(snapshot, as_of_time, scope)
         bars = tuple(
             record
             for record in _snapshot_records(snapshot)
