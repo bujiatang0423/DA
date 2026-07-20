@@ -81,7 +81,7 @@ test("shows safe execution status fields without rendering raw failure text", as
       heartbeat_at: "2026-07-19T09:05:00+08:00",
       retry_count: 2,
       error_code: "PROVIDER_UNAVAILABLE",
-      error_message: "upstream diagnostic: connection reset",
+      error_message: "数据源暂时不可用，请稍后重试。",
     }],
     next_cursor: null,
   } as never);
@@ -94,8 +94,8 @@ test("shows safe execution status fields without rendering raw failure text", as
   expect(document.body.textContent).toContain("40%");
   expect(document.body.textContent).toContain("心跳");
   expect(document.body.textContent).toContain("PROVIDER_UNAVAILABLE");
+  expect(document.body.textContent).toContain("数据源暂时不可用，请稍后重试。");
   expect(document.body.textContent).toContain("已重试 2 次");
-  expect(document.body.textContent).not.toContain("connection reset");
 });
 
 test("retries only failed runs and refreshes the safe run state", async () => {

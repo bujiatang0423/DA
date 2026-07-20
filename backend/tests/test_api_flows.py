@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from backend.app.bootstrap.application import _MemoryRuns, create_app
+from backend.app.contracts.runs import RunStatus
 from backend.app.features.backtests.module import build_backtests_feature
 from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.runs.module import build_runs_feature
@@ -45,3 +46,25 @@ def test_backtest_plan_rejects_reversed_dates() -> None:
         },
     )
     assert response.status_code == 422
+
+
+def test_memory_run_retry_clears_safe_error_details() -> None:
+    runs = _MemoryRuns()
+    reference = runs.submit(
+        kind="backtest",
+        payload={},
+        idempotency_key=None,
+        submitted_at=datetime(2026, 7, 20, 10, 0, tzinfo=UTC),
+    )
+    runs._rows[reference.run_id] = runs._rows[reference.run_id].model_copy(
+        update={
+            "status": RunStatus.FAILED,
+            "error_code": "JOB_EXECUTION_FAILED",
+            "error_message": "任务执行失败，请稍后重试。",
+        }
+    )
+
+    retried = runs.retry(reference.run_id, datetime(2026, 7, 20, 10, 1, tzinfo=UTC))
+
+    assert retried.error_code is None
+    assert retried.error_message is None

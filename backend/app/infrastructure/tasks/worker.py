@@ -5,6 +5,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from backend.app.contracts.runs import RunKind, RunStatus
+from backend.app.contracts.run_errors import classify_run_failure
 from .handlers import HandlerRegistry, JobContext
 
 
@@ -27,6 +28,7 @@ class RunStore(Protocol):
         worker_id: str,
         lease_token: str,
         error_code: str | None = None,
+        error_message: str | None = None,
     ) -> object | None: ...
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[object, ...]: ...
 
@@ -77,16 +79,18 @@ class Worker:
                 self.lease_token,
             )
             handler(context)
-        except Exception:
+        except Exception as error:
             if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
                 return True
+            failure = classify_run_failure(error)
             self.runs.transition(
                 run.id,
                 RunStatus.FAILED,
                 self.clock(),
                 self.worker_id,
                 self.lease_token,
-                "JOB_EXECUTION_FAILED",
+                failure.code,
+                failure.message,
             )
             return True
         if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):

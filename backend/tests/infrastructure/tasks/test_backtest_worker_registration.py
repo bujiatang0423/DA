@@ -186,5 +186,6 @@ def test_real_backtest_worker_fails_closed_without_an_approved_pit_certificate(
         row = session.get(RunRow, run.run_id)
         assert row is not None
         assert row.status == RunStatus.FAILED.value
-        assert row.error_code == "JOB_EXECUTION_FAILED"
+        assert row.error_code == "BACKTEST_SNAPSHOT_QUALITY_ERROR"
+        assert row.error_message == "回测所需点时数据未通过验证。"
         assert session.execute(text("SELECT count(*) FROM backtest_results")).scalar_one() == 0

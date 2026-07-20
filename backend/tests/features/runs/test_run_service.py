@@ -79,7 +79,54 @@ def test_run_detail_projects_observable_status_without_raw_failure_text(
     assert detail.heartbeat_at == heartbeat_at
     assert detail.retry_count == 2
     assert detail.error_code == "PROVIDER_UNAVAILABLE"
+    assert detail.error_message == "数据源暂时不可用，请稍后重试。"
     assert "connection reset" not in detail.model_dump_json()
+
+    response = TestClient(create_app((build_runs_feature(RunsService(factory)),))).get(
+        f"/api/v1/runs/{run_id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error_message"] == "数据源暂时不可用，请稍后重试。"
+    assert "connection reset" not in response.text
+
+
+@pytest.mark.postgres
+def test_failed_run_normalizes_an_unsafe_error_code_before_database_and_api_projection(
+    postgres_engine: Engine,
+) -> None:
+    now = datetime(2026, 7, 20, 10, 0, tzinfo=UTC)
+    with postgres_engine.begin() as connection:
+        connection.execute(text("TRUNCATE TABLE run_events, runs CASCADE"))
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    service = RunsService(factory)
+    submitted = service.submit(RunKind.BACKTEST, {}, "unsafe-error-code", now)
+    claimed = service.claim_next(now, "worker-a", "token-a")
+    assert claimed is not None
+
+    service.transition(
+        claimed.id,
+        RunStatus.FAILED,
+        now,
+        "worker-a",
+        "token-a",
+        "DA_API_KEY=secret-value",
+        "DA_API_KEY=secret-value",
+    )
+
+    with factory() as session:
+        row = session.get(RunRow, UUID(submitted.run_id))
+        assert row is not None
+        assert row.error_code == "JOB_EXECUTION_FAILED"
+        assert row.error_message == "任务执行失败，请稍后重试。"
+    response = TestClient(create_app((build_runs_feature(service),))).get(
+        f"/api/v1/runs/{submitted.run_id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error_code"] == "JOB_EXECUTION_FAILED"
+    assert "secret-value" not in response.text
+    assert "DA_API_KEY" not in response.text
 
 
 @pytest.mark.postgres
