@@ -167,7 +167,7 @@ class ExtendedMarketProviderSource:
                 records.append(
                     _record(
                         DataKind.INDEX_DAILY_BAR,
-                        row.index_id,
+                        f"MARKET:{row.index_id}",
                         row.trade_date.isoformat(),
                         event_time,
                         row.available_at,
@@ -183,7 +183,7 @@ class ExtendedMarketProviderSource:
             raise ProviderDataUnavailableError("market_breadth is not available at as_of_time")
         return _record(
             DataKind.MARKET_BREADTH,
-            row.market_id,
+            f"MARKET:{row.market_id}:BREADTH",
             row.event_time.isoformat(),
             row.event_time,
             row.available_at,
