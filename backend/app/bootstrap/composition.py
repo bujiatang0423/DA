@@ -27,7 +27,10 @@ from backend.app.infrastructure.market.research_warehouse import ResearchPointIn
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
+from backend.app.ports.llm_factor import LlmFactorPort
 from backend.app.ports.point_in_time import PointInTimeWarehouse
+from backend.app.ports.policy import PolicyPort
+from backend.app.ports.research_data import ResearchMarketDataPort
 
 
 class ProviderConfigurationError(ValueError):
@@ -38,9 +41,9 @@ class ProviderConfigurationError(ValueError):
 class ProductionResearchProviders:
     """Complete ports required to build the production research evidence chain."""
 
-    market: object
-    policy: object
-    llm: object
+    market: ResearchMarketDataPort
+    policy: PolicyPort
+    llm: LlmFactorPort
 
 
 ResearchProviderFactory = Callable[[Settings], ProductionResearchProviders]
@@ -79,6 +82,12 @@ def _configured_research_providers(settings: Settings) -> ProductionResearchProv
     except Exception:
         return None
     if not isinstance(providers, ProductionResearchProviders):
+        return None
+    if not isinstance(providers.market, ResearchMarketDataPort):
+        return None
+    if not isinstance(providers.policy, PolicyPort):
+        return None
+    if not isinstance(providers.llm, LlmFactorPort):
         return None
     return providers
 

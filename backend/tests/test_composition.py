@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import ModuleType
 
@@ -22,7 +22,17 @@ from backend.app.features.candidates.service import (
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
+from backend.app.ports.llm_factor import StructuredLlmFactor
 from backend.app.ports.point_in_time import PointInTimeWarehouse
+from backend.app.ports.policy import PolicyMaterial
+from backend.app.ports.research_data import (
+    CalendarDay,
+    FinancialMaterial,
+    ResearchBar,
+    ResearchFeeSchedule,
+    ResearchQuote,
+    UniverseSecurity,
+)
 
 
 class FrozenWarehouse:
@@ -75,7 +85,61 @@ class RecordingCandidateRepository:
         return {}
 
 
+class CompleteMarket:
+    def trade_calendar(self, start: date, end: date) -> tuple[CalendarDay, ...]:
+        del start, end
+        return ()
+
+    def universe(self, as_of_time: datetime) -> tuple[UniverseSecurity, ...]:
+        del as_of_time
+        return ()
+
+    def quotes(
+        self, security_ids: tuple[str, ...], as_of_time: datetime
+    ) -> tuple[ResearchQuote, ...]:
+        del security_ids, as_of_time
+        return ()
+
+    def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[ResearchBar, ...]:
+        del security_id, as_of_time
+        return ()
+
+    def financials(self, security_id: str, as_of_time: datetime) -> tuple[FinancialMaterial, ...]:
+        del security_id, as_of_time
+        return ()
+
+    def fee_schedules(self, as_of_time: datetime) -> tuple[ResearchFeeSchedule, ...]:
+        del as_of_time
+        return ()
+
+
+class CompletePolicy:
+    def materials(self, *, as_of_time: datetime) -> tuple[PolicyMaterial, ...]:
+        del as_of_time
+        return ()
+
+
+class CompleteLlm:
+    def extract(
+        self,
+        *,
+        as_of_time: datetime,
+        security_id: str,
+        policy_materials: tuple[PolicyMaterial, ...],
+        financial_materials: tuple[FinancialMaterial, ...],
+    ) -> StructuredLlmFactor:
+        del as_of_time, security_id, policy_materials, financial_materials
+        raise RuntimeError("not used by composition test")
+
+
 def complete_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
+    del settings
+    return ProductionResearchProviders(
+        market=CompleteMarket(), policy=CompletePolicy(), llm=CompleteLlm()
+    )
+
+
+def object_research_provider_factory(settings: Settings) -> ProductionResearchProviders:
     del settings
     return ProductionResearchProviders(market=object(), policy=object(), llm=object())
 
@@ -138,6 +202,19 @@ def test_configured_production_evidence_factory_builds_one_complete_warehouse() 
     assert len(warehouse.sources) == 1
     evidence = warehouse.sources[0]
     assert len(evidence.sources) == 3
+
+
+def test_factory_with_non_port_members_fails_closed_before_warehouse_construction() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="backend.tests.test_composition:object_research_provider_factory",
+    )
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
 
 
 def test_invalid_production_evidence_factory_fails_closed_without_import_details() -> None:
