@@ -13,7 +13,7 @@ from backend.app.infrastructure.market.research_adapters import (
     ResearchEvidenceSource,
 )
 from backend.app.infrastructure.market.research_source import ResearchBatch
-from backend.app.infrastructure.llm.deepseek_factor import LlmFactorValidationError
+from backend.app.infrastructure.llm.deepseek_factor import LlmFactorValidationError, validate_factor
 from backend.app.ports.research_data import FinancialMaterial
 
 
@@ -254,6 +254,35 @@ def test_llm_source_rejects_unvalidated_factor_before_snapshot_assembly() -> Non
         LlmEvidenceSource(InvalidLlm(), Policy(), Market()).fetch(
             as_of_time=as_of, scope=SnapshotScope(("AAA",))
         )
+
+
+@pytest.mark.parametrize(
+    "bypass",
+    (
+        {"order": {"side": "buy", "size": 100}},
+        {"target_weight": 0.5},
+        {"recommendation": "buy"},
+        {
+            "evidence": [
+                {
+                    "source_id": "p1",
+                    "published_at": "2026-01-01T00:00:00+00:00",
+                    "quote": "official evidence",
+                    "allocation": {"size": 100},
+                }
+            ]
+        },
+    ),
+)
+def test_llm_factor_rejects_order_and_allocation_schema_bypasses(
+    bypass: dict[str, object],
+) -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+    payload = valid_factor_payload(as_of)
+    payload.update(bypass)
+
+    with pytest.raises(LlmFactorValidationError, match="forbidden|schema"):
+        validate_factor(payload, as_of_time=as_of, allowed_evidence={"p1"})
 
 
 def test_llm_source_accepts_evidence_from_a_public_financial_source() -> None:
