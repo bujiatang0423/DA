@@ -115,10 +115,11 @@ class FixedStrictBacktestRunner:
 
 
 class ObservingRuns:
-    def __init__(self, delegate: RunsService, live_run_id: UUID, refreshed: Event) -> None:
+    def __init__(self, delegate: RunsService, expected_time: datetime, refreshed: Event) -> None:
         self._delegate = delegate
-        self._live_run_id = live_run_id
+        self._expected_time = expected_time
         self._refreshed = refreshed
+        self.updates: list[bool] = []
 
     def claim_next(self, now: datetime, worker_id: str, lease_token: str) -> object | None:
         return self._delegate.claim_next(now, worker_id, lease_token)
@@ -135,7 +136,8 @@ class ObservingRuns:
         updated = self._delegate.heartbeat(
             UUID(str(run_id)), stage, progress, now, worker_id, lease_token
         )
-        if updated and UUID(str(run_id)) == self._live_run_id:
+        if now == self._expected_time:
+            self.updates.append(updated)
             self._refreshed.set()
         return updated
 
@@ -164,8 +166,11 @@ class ObservingRuns:
 
 
 class ObservingLeaseStore:
-    def __init__(self, delegate: WorkerLeaseStore, refreshed: Event) -> None:
+    def __init__(
+        self, delegate: WorkerLeaseStore, expected_time: datetime, refreshed: Event
+    ) -> None:
         self._delegate = delegate
+        self._expected_time = expected_time
         self._refreshed = refreshed
 
     def acquire(self, worker_id: str, lease_token: str, now: datetime) -> bool:
@@ -173,7 +178,7 @@ class ObservingLeaseStore:
 
     def heartbeat(self, worker_id: str, lease_token: str, now: datetime) -> bool:
         refreshed = self._delegate.heartbeat(worker_id, lease_token, now)
-        if refreshed:
+        if refreshed and now == self._expected_time:
             self._refreshed.set()
         return refreshed
 
@@ -186,7 +191,12 @@ def test_live_handler_heartbeats_while_only_a_stopped_run_is_requeued(
     advanced = now + timedelta(seconds=2)
     current_time = [now]
     runs = RunsService(recovery_sessions)
-    live = runs.submit(RunKind.CANDIDATE_RECOMMENDATION, {}, "live", now)
+    live = runs.submit(
+        RunKind.CANDIDATE_RECOMMENDATION,
+        {},
+        "live",
+        now - timedelta(microseconds=1),
+    )
     stopped = runs.submit(RunKind.CANDIDATE_RECOMMENDATION, {}, "stopped", now)
     started = Event()
     release = Event()
@@ -200,11 +210,12 @@ def test_live_handler_heartbeats_while_only_a_stopped_run_is_requeued(
         assert release.wait(timeout=2)
 
     handlers.register(RunKind.CANDIDATE_RECOMMENDATION, block)
+    observed_runs = ObservingRuns(runs, advanced, refreshed)
     live_worker = build_worker(
-        ObservingRuns(runs, UUID(live.run_id), refreshed),
+        observed_runs,
         handlers,
         lambda: current_time[0],
-        ObservingLeaseStore(WorkerLeaseStore(recovery_sessions), lease_refreshed),
+        ObservingLeaseStore(WorkerLeaseStore(recovery_sessions), advanced, lease_refreshed),
         "live-worker",
         stale_after_seconds=1,
         heartbeat_interval_seconds=0.01,
@@ -218,6 +229,7 @@ def test_live_handler_heartbeats_while_only_a_stopped_run_is_requeued(
         current_time[0] = advanced
         assert lease_refreshed.wait(timeout=1)
         assert refreshed.wait(timeout=1)
+        assert observed_runs.updates == [True]
 
         recovered: list[UUID] = []
         recovery_handlers = HandlerRegistry()
