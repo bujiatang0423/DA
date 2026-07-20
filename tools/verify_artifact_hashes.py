@@ -28,20 +28,24 @@ class ArtifactVerificationResult:
 def verify_manifest(artifact_root: Path, manifest_path: Path) -> ArtifactVerificationResult:
     """Fail closed unless every manifest entry names a matching regular file."""
     entries = _read_manifest(manifest_path)
-    seen_paths: set[str] = set()
+    seen_paths: set[Path] = set()
     verified_count = 0
     verification_failed = False
 
     for relative_path, expected_hash in entries:
-        if relative_path in seen_paths:
-            raise ArtifactVerificationError("invalid artifact manifest")
-        seen_paths.add(relative_path)
         try:
             artifact_path = resolve_artifact(artifact_root, relative_path)
-        except UnsafeArtifactPath as exc:
+        except (OSError, UnsafeArtifactPath) as exc:
             raise ArtifactVerificationError("invalid artifact manifest") from exc
 
-        if not artifact_path.is_file() or _sha256_file(artifact_path) != expected_hash:
+        if artifact_path in seen_paths:
+            raise ArtifactVerificationError("invalid artifact manifest")
+        seen_paths.add(artifact_path)
+        try:
+            hash_matches = artifact_path.is_file() and _sha256_file(artifact_path) == expected_hash
+        except OSError:
+            hash_matches = False
+        if not hash_matches:
             verification_failed = True
             continue
         verified_count += 1
