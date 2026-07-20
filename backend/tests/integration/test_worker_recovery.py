@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from threading import Event, Thread
 from uuid import UUID
 
 import pytest
@@ -111,6 +112,137 @@ class FixedStrictBacktestRunner:
             input_manifest_hash="certified-experiment",
             groups=(group,),
         )
+
+
+class ObservingRuns:
+    def __init__(self, delegate: RunsService, live_run_id: UUID, refreshed: Event) -> None:
+        self._delegate = delegate
+        self._live_run_id = live_run_id
+        self._refreshed = refreshed
+
+    def claim_next(self, now: datetime, worker_id: str, lease_token: str) -> object | None:
+        return self._delegate.claim_next(now, worker_id, lease_token)
+
+    def heartbeat(
+        self,
+        run_id: object,
+        stage: str,
+        progress: int,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+    ) -> bool:
+        updated = self._delegate.heartbeat(
+            UUID(str(run_id)), stage, progress, now, worker_id, lease_token
+        )
+        if updated and UUID(str(run_id)) == self._live_run_id:
+            self._refreshed.set()
+        return updated
+
+    def transition(
+        self,
+        run_id: object,
+        target: RunStatus,
+        now: datetime,
+        worker_id: str,
+        lease_token: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> object | None:
+        return self._delegate.transition(
+            UUID(str(run_id)),
+            target,
+            now,
+            worker_id,
+            lease_token,
+            error_code,
+            error_message,
+        )
+
+    def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[object, ...]:
+        return self._delegate.requeue_stale(cutoff, now)
+
+
+class ObservingLeaseStore:
+    def __init__(self, delegate: WorkerLeaseStore, refreshed: Event) -> None:
+        self._delegate = delegate
+        self._refreshed = refreshed
+
+    def acquire(self, worker_id: str, lease_token: str, now: datetime) -> bool:
+        return self._delegate.acquire(worker_id, lease_token, now)
+
+    def heartbeat(self, worker_id: str, lease_token: str, now: datetime) -> bool:
+        refreshed = self._delegate.heartbeat(worker_id, lease_token, now)
+        if refreshed:
+            self._refreshed.set()
+        return refreshed
+
+
+@pytest.mark.postgres
+def test_live_handler_heartbeats_while_only_a_stopped_run_is_requeued(
+    recovery_sessions: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 7, 20, 9, 30, tzinfo=UTC)
+    advanced = now + timedelta(seconds=2)
+    current_time = [now]
+    runs = RunsService(recovery_sessions)
+    live = runs.submit(RunKind.CANDIDATE_RECOMMENDATION, {}, "live", now)
+    stopped = runs.submit(RunKind.CANDIDATE_RECOMMENDATION, {}, "stopped", now)
+    started = Event()
+    release = Event()
+    refreshed = Event()
+    lease_refreshed = Event()
+    handlers = HandlerRegistry()
+
+    def block(context: object) -> None:
+        del context
+        started.set()
+        assert release.wait(timeout=2)
+
+    handlers.register(RunKind.CANDIDATE_RECOMMENDATION, block)
+    live_worker = build_worker(
+        ObservingRuns(runs, UUID(live.run_id), refreshed),
+        handlers,
+        lambda: current_time[0],
+        ObservingLeaseStore(WorkerLeaseStore(recovery_sessions), lease_refreshed),
+        "live-worker",
+        stale_after_seconds=1,
+        heartbeat_interval_seconds=0.01,
+    )
+    running = Thread(target=live_worker.run_once)
+    running.start()
+    try:
+        assert started.wait(timeout=1)
+        stopped_claim = runs.claim_next(now, "stopped-worker", "stopped-token")
+        assert stopped_claim is not None
+        current_time[0] = advanced
+        assert lease_refreshed.wait(timeout=1)
+        assert refreshed.wait(timeout=1)
+
+        recovered: list[UUID] = []
+        recovery_handlers = HandlerRegistry()
+        recovery_handlers.register(
+            RunKind.CANDIDATE_RECOMMENDATION,
+            lambda context: recovered.append(context.run_id),
+        )
+        recovery_worker = build_worker(
+            runs,
+            recovery_handlers,
+            lambda: advanced,
+            WorkerLeaseStore(recovery_sessions),
+            "recovery-worker",
+            stale_after_seconds=1,
+            heartbeat_interval_seconds=0.01,
+        )
+        assert recovery_worker.run_once() is True
+        assert recovered == [UUID(stopped.run_id)]
+        assert RunsService(recovery_sessions).get(live.run_id).status is RunStatus.RUNNING
+        assert RunsService(recovery_sessions).get(live.run_id).retry_count == 0
+    finally:
+        release.set()
+        running.join(timeout=2)
+    assert not running.is_alive()
+    assert RunsService(recovery_sessions).get(live.run_id).status is RunStatus.SUCCEEDED
 
 
 @pytest.mark.postgres

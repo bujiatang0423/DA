@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from time import sleep
 from datetime import datetime
+from threading import Event, Lock, Thread
+from time import sleep
 from typing import Protocol
 from uuid import uuid4
 
@@ -49,6 +50,7 @@ class Worker:
         worker_id: str,
         lease_token: str | None = None,
         stale_after_seconds: int | None = None,
+        heartbeat_interval_seconds: float = 10.0,
     ) -> None:
         self.runs = runs
         self.handlers = handlers
@@ -57,6 +59,7 @@ class Worker:
         self.worker_id = worker_id
         self.lease_token = lease_token or uuid4().hex
         self.stale_after_seconds = stale_after_seconds
+        self.heartbeat_interval_seconds = heartbeat_interval_seconds
 
     def run_once(self) -> bool:
         if not self.leases.acquire(self.worker_id, self.lease_token, self.clock()):
@@ -66,27 +69,60 @@ class Worker:
         run = self.runs.claim_next(self.clock(), self.worker_id, self.lease_token)
         if run is None:
             return False
-        try:
-            handler = self.handlers.resolve(RunKind(run.kind))
-            context = JobContext(
-                run.id,
-                run.request_payload,
-                lambda stage, progress: self.runs.heartbeat(
+        heartbeat_lock = Lock()
+        heartbeat_state = {"stage": "running", "progress": 0}
+        stop_heartbeat = Event()
+
+        def heartbeat(stage: str, progress: int) -> bool:
+            with heartbeat_lock:
+                heartbeat_state["stage"] = stage
+                heartbeat_state["progress"] = progress
+                return self.runs.heartbeat(
                     run.id,
                     stage,
                     progress,
                     self.clock(),
                     self.worker_id,
                     self.lease_token,
-                ),
+                )
+
+        def keep_alive() -> None:
+            while not stop_heartbeat.wait(self.heartbeat_interval_seconds):
+                with heartbeat_lock:
+                    if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
+                        return
+                    if not self.runs.heartbeat(
+                        run.id,
+                        heartbeat_state["stage"],
+                        heartbeat_state["progress"],
+                        self.clock(),
+                        self.worker_id,
+                        self.lease_token,
+                    ):
+                        return
+
+        heartbeat_thread = Thread(target=keep_alive, daemon=True)
+        heartbeat_thread.start()
+        handler_error: Exception | None = None
+        try:
+            handler = self.handlers.resolve(RunKind(run.kind))
+            context = JobContext(
+                run.id,
+                run.request_payload,
+                heartbeat,
                 self.worker_id,
                 self.lease_token,
             )
             handler(context)
         except Exception as error:
+            handler_error = error
+        finally:
+            stop_heartbeat.set()
+            heartbeat_thread.join()
+        if handler_error is not None:
             if not self.leases.heartbeat(self.worker_id, self.lease_token, self.clock()):
                 return True
-            failure = classify_run_failure(error)
+            failure = classify_run_failure(handler_error)
             self.runs.transition(
                 run.id,
                 RunStatus.FAILED,
@@ -118,8 +154,17 @@ def build_worker(
     leases: WorkerLease,
     worker_id: str,
     stale_after_seconds: int | None = None,
+    heartbeat_interval_seconds: float = 10.0,
 ) -> Worker:
-    return Worker(runs, handlers, clock, leases, worker_id, stale_after_seconds=stale_after_seconds)
+    return Worker(
+        runs,
+        handlers,
+        clock,
+        leases,
+        worker_id,
+        stale_after_seconds=stale_after_seconds,
+        heartbeat_interval_seconds=heartbeat_interval_seconds,
+    )
 
 
 def run(
