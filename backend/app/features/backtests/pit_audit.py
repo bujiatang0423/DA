@@ -7,7 +7,12 @@ import json
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from backend.app.core.market.pit_models import DataKind, PointInTimeSnapshot, SnapshotScope
+from backend.app.core.market.pit_models import (
+    DataKind,
+    PointInTimeSnapshot,
+    SnapshotScope,
+    TemporalRecord,
+)
 
 
 DAILY_REQUIRED_KINDS = (
@@ -19,6 +24,13 @@ DAILY_REQUIRED_KINDS = (
     DataKind.ADJUSTMENT_FACTOR,
     DataKind.INDUSTRY_MEMBERSHIP,
     DataKind.THEME_MEMBERSHIP,
+)
+
+MARKET_WIDE_KINDS = frozenset(
+    {
+        DataKind.TRADING_CALENDAR,
+        DataKind.INDEX_DAILY_BAR,
+    }
 )
 
 
@@ -57,9 +69,15 @@ class PitAuditRunner:
         self,
         warehouse: AuditablePointInTimeWarehouse,
         trading_dates: tuple[date, ...],
+        security_ids: tuple[str, ...],
     ) -> None:
         self._warehouse = warehouse
         self._trading_dates = tuple(sorted(set(trading_dates)))
+        if not security_ids:
+            raise ValueError("PIT audit requires an explicit expected security universe")
+        if len(security_ids) != len(set(security_ids)):
+            raise ValueError("PIT audit security IDs must be unique")
+        self._security_ids = tuple(sorted(security_ids))
 
     def run(self, *, coverage_start: date, coverage_end: date) -> PitAuditReport:
         if coverage_start > coverage_end:
@@ -120,13 +138,17 @@ class PitAuditRunner:
         try:
             snapshot = self._warehouse.candidate_snapshot(
                 as_of_time=as_of_time,
-                scope=SnapshotScope(required_kinds=(kind,)),
+                scope=SnapshotScope(self._security_ids, (kind,)),
             )
         except Exception as error:
             failures.append(f"{failure_prefix}:{type(error).__name__}")
             return
         if snapshot.as_of_time != as_of_time:
             failures.append(f"{failure_prefix}:AS_OF_MISMATCH")
+            return
+        expected_scope = SnapshotScope(self._security_ids, (kind,))
+        if snapshot.scope != expected_scope:
+            failures.append(f"{failure_prefix}:SCOPE_MISMATCH")
             return
         if snapshot.quality.has_errors:
             failures.append(failure_prefix)
@@ -136,9 +158,45 @@ class PitAuditRunner:
             for observation in snapshot.security_observations
             for record in observation.records
         )
-        if any(
-            record.available_at > as_of_time or record.event_time > as_of_time for record in records
-        ):
+        if any(record.kind is not kind for record in records):
+            failures.append(f"{failure_prefix}:UNEXPECTED_KIND")
+            return
+        matching_records = tuple(record for record in records if record.kind is kind)
+        if not matching_records:
+            failures.append(f"{failure_prefix}:RECORDS_MISSING")
+            return
+        if not _records_are_as_of_safe(matching_records, as_of_time):
             failures.append(f"{failure_prefix}:FUTURE_RECORD")
             return
+        if not _has_required_entities(kind, matching_records, self._security_ids):
+            failures.append(f"{failure_prefix}:ENTITY_COVERAGE_MISSING")
+            return
         manifests.append(snapshot.manifest_hash)
+
+
+def _records_are_as_of_safe(
+    records: tuple[TemporalRecord, ...],
+    as_of_time: datetime,
+) -> bool:
+    for record in records:
+        if (
+            record.available_at.tzinfo is None
+            or record.available_at.utcoffset() is None
+            or record.event_time.tzinfo is None
+            or record.event_time.utcoffset() is None
+            or record.available_at > as_of_time
+            or record.event_time > as_of_time
+        ):
+            return False
+    return True
+
+
+def _has_required_entities(
+    kind: DataKind,
+    records: tuple[TemporalRecord, ...],
+    security_ids: tuple[str, ...],
+) -> bool:
+    entity_ids = {record.entity_id for record in records}
+    if kind in MARKET_WIDE_KINDS:
+        return any(entity_id.startswith("MARKET:") for entity_id in entity_ids)
+    return set(security_ids).issubset(entity_ids)
