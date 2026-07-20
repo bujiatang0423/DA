@@ -44,6 +44,7 @@ class PitCertificateRow(Base):
     certified_as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     lineage_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    selected_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class PitAuditReportRow(Base):

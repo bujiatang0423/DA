@@ -13,7 +13,11 @@ from backend.app.core.market.pit_models import (
     TemporalRecord,
 )
 from backend.app.core.market.snapshot import assemble_snapshot
-from backend.app.features.backtests.pit_certificate import PitCertificate, lineage_set_hash
+from backend.app.features.backtests.pit_certificate import (
+    PitCertificate,
+    lineage_set_hash,
+    selected_snapshot_hash,
+)
 
 
 class StrictRecordReader(Protocol):
@@ -35,6 +39,7 @@ class PitCertificateAuthority(Protocol):
         scope: SnapshotScope,
         bundle_set_hash: str,
         lineage_hash: str,
+        selected_snapshot_hash: str,
     ) -> PitCertificate | None: ...
 
 
@@ -71,6 +76,7 @@ class StrictPointInTimeWarehouse:
             scope=scope,
             bundle_set_hash=bundle_set_hash,
             lineage_hash=lineage_set_hash(lineage),
+            selected_snapshot_hash=selected_snapshot_hash(records, lineage),
         )
         if certificate is None:
             raise UnverifiedPitDataError("approved certificate required")

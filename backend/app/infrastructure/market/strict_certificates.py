@@ -9,7 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.market.pit_models import SnapshotScope
-from backend.app.features.backtests.pit_certificate import PitCertificate, lineage_set_hash
+from backend.app.features.backtests.pit_certificate import (
+    PitCertificate,
+    lineage_set_hash,
+    selected_snapshot_hash,
+)
 from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     PitAuditReportRow,
@@ -51,6 +55,8 @@ class SqlPitCertificateAuthority:
         )
         if not records or issues:
             raise ValueError("audit approval requires complete strict snapshot data")
+        certified_lineage_hash = lineage_set_hash(lineage)
+        certified_snapshot_hash = selected_snapshot_hash(records, lineage)
         existing = self._session.get(PitCertificateRow, audit_report_id)
         if existing is not None:
             if not self._matches_approval(existing, report):
@@ -68,12 +74,14 @@ class SqlPitCertificateAuthority:
                     report,
                     as_of_time,
                     scope_hash(scope),
-                    lineage_set_hash(lineage),
+                    certified_lineage_hash,
+                    certified_snapshot_hash,
                 ),
                 approved_at=approved_at,
                 certified_as_of=as_of_time,
                 scope_hash=scope_hash(scope),
-                lineage_hash=lineage_set_hash(lineage),
+                lineage_hash=certified_lineage_hash,
+                selected_snapshot_hash=certified_snapshot_hash,
             )
         )
         self._session.flush()
@@ -85,6 +93,7 @@ class SqlPitCertificateAuthority:
         scope: SnapshotScope,
         bundle_set_hash: str,
         lineage_hash: str,
+        selected_snapshot_hash: str,
     ) -> PitCertificate | None:
         statement = (
             select(PitCertificateRow, PitAuditReportRow)
@@ -97,6 +106,7 @@ class SqlPitCertificateAuthority:
                 PitCertificateRow.certified_as_of == as_of_time,
                 PitCertificateRow.scope_hash == scope_hash(scope),
                 PitCertificateRow.lineage_hash == lineage_hash,
+                PitCertificateRow.selected_snapshot_hash == selected_snapshot_hash,
             )
             .order_by(PitAuditReportRow.verified_at.desc(), PitAuditReportRow.id.desc())
         )
@@ -122,6 +132,7 @@ class SqlPitCertificateAuthority:
                 certificate.certified_as_of,
                 certificate.scope_hash,
                 certificate.lineage_hash,
+                certificate.selected_snapshot_hash,
             ),
         )
 
@@ -131,10 +142,11 @@ class SqlPitCertificateAuthority:
         certified_as_of: datetime,
         certified_scope_hash: str,
         certified_lineage_hash: str,
+        certified_snapshot_hash: str,
     ) -> str:
         payload = "|".join(
             (
-                "pit-certificate-v1",
+                "pit-certificate-v2",
                 report.id,
                 report.coverage_start.isoformat(),
                 report.coverage_end.isoformat(),
@@ -143,6 +155,7 @@ class SqlPitCertificateAuthority:
                 str(int(certified_as_of.timestamp() * 1_000_000)),
                 certified_scope_hash,
                 certified_lineage_hash,
+                certified_snapshot_hash,
             )
         )
         return hmac.new(self._approval_secret, payload.encode("utf-8"), sha256).hexdigest()

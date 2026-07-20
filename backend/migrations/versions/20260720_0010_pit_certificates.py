@@ -45,6 +45,7 @@ def upgrade() -> None:
         sa.Column("certified_as_of", sa.DateTime(timezone=True), nullable=False),
         sa.Column("scope_hash", sa.String(64), nullable=False),
         sa.Column("lineage_hash", sa.String(64), nullable=False),
+        sa.Column("selected_snapshot_hash", sa.String(64), nullable=False),
     )
 
 

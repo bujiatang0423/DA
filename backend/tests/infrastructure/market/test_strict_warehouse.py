@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,6 +23,7 @@ from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
     PitAuditReportRow,
     PitCertificateRow,
+    PolicyDocumentRow,
 )
 
 
@@ -151,6 +152,7 @@ def test_certificate_cannot_be_replayed_outside_its_approved_date(
             scope=SnapshotScope(),
             bundle_set_hash=bundle_set_hash_for(strict_session, later),
             lineage_hash="a" * 64,
+            selected_snapshot_hash="a" * 64,
         )
         is None
     )
@@ -177,6 +179,61 @@ def test_later_strict_row_invalidates_certified_snapshot_identity(
 
 
 @pytest.mark.postgres
+def test_new_selected_record_with_existing_artifact_invalidates_certificate(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+    authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+    existing = strict_session.scalar(
+        select(PolicyDocumentRow).where(PolicyDocumentRow.source_record_id == "pd-1")
+    )
+    assert existing is not None
+    strict_session.add(
+        PolicyDocumentRow(
+            id="pd-forged-same-artifact",
+            source_record_id="pd-forged-same-artifact",
+            published_at=AS_OF,
+            first_observed_at=AS_OF,
+            available_at=AS_OF,
+            evidence_grade="A",
+            official_parent_id="csrs",
+            content_hash="f" * 64,
+            source_artifact_hash=existing.source_artifact_hash,
+        )
+    )
+    strict_session.commit()
+    warehouse = build_strict_pit_warehouse(session=strict_session, approval_secret=SECRET)
+
+    with pytest.raises(UnverifiedPitDataError, match="approved certificate"):
+        warehouse.snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+
+
+@pytest.mark.postgres
+def test_selected_snapshot_hash_is_hmac_bound_to_certificate(
+    strict_session: Session,
+) -> None:
+    persist_audit_report(strict_session)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+    authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+    certificate = strict_session.get(PitCertificateRow, "audit-1")
+    assert certificate is not None
+    certificate.selected_snapshot_hash = "0" * 64
+    strict_session.commit()
+
+    assert (
+        authority.certificate_for(
+            as_of_time=AS_OF,
+            scope=SnapshotScope(),
+            bundle_set_hash=bundle_set_hash_for(strict_session, AS_OF.date()),
+            lineage_hash=certificate.lineage_hash,
+            selected_snapshot_hash=certificate.selected_snapshot_hash,
+        )
+        is None
+    )
+
+
+@pytest.mark.postgres
 def test_rejects_forged_certificate_row_without_matching_verified_audit(
     strict_session: Session,
 ) -> None:
@@ -193,6 +250,7 @@ def test_rejects_forged_certificate_row_without_matching_verified_audit(
             certified_as_of=AS_OF,
             scope_hash="0" * 64,
             lineage_hash="0" * 64,
+            selected_snapshot_hash="0" * 64,
         )
     )
     strict_session.commit()
@@ -219,6 +277,7 @@ def test_rejects_matching_certificate_row_inserted_outside_approval_flow(
             certified_as_of=AS_OF,
             scope_hash="0" * 64,
             lineage_hash="0" * 64,
+            selected_snapshot_hash="0" * 64,
         )
     )
     strict_session.commit()

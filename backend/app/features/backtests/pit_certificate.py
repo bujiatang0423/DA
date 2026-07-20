@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 import json
+
 from backend.app.core.market.pit_models import LineageRef, TemporalRecord
 
 
@@ -41,19 +42,27 @@ def selected_snapshot_hash(
     payload = {
         "version": 1,
         "lineage": [
-            (item.batch_id, item.provider, item.source_artifact_hash)
-            for item in sorted(lineage, key=lambda item: item.batch_id)
+            {
+                "batch_id": item.batch_id,
+                "provider": item.provider,
+                "source_artifact_hash": item.source_artifact_hash,
+            }
+            for item in sorted(
+                lineage,
+                key=lambda item: (item.provider, item.batch_id, item.source_artifact_hash),
+            )
         ],
         "records": [
-            (
-                item.record_id,
-                item.kind.value,
-                item.entity_id,
-                item.event_time.isoformat(),
-                item.observed_at.isoformat(),
-                item.available_at.isoformat(),
-                item.source_artifact_hash,
-            )
+            {
+                "available_at": item.available_at.isoformat(),
+                "entity_id": item.entity_id,
+                "event_time": item.event_time.isoformat(),
+                "kind": item.kind.value,
+                "observed_at": item.observed_at.isoformat(),
+                "payload": item.payload,
+                "record_id": item.record_id,
+                "source_artifact_hash": item.source_artifact_hash,
+            }
             for item in sorted(records, key=lambda item: (item.kind.value, item.record_id))
         ],
     }
