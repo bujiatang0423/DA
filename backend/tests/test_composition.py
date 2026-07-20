@@ -116,6 +116,13 @@ def test_non_test_environment_rejects_injected_provider_modules() -> None:
         build_warehouse(settings, akshare_module=ModuleType("akshare"))
 
 
+def test_non_test_environment_rejects_fake_provider_mode() -> None:
+    settings = Settings(_env_file=None, environment="production", provider_mode="fake")
+
+    with pytest.raises(ProviderConfigurationError, match="test environment"):
+        build_warehouse(settings, fake_warehouse=FrozenWarehouse())
+
+
 def test_components_share_the_explicit_fake_warehouse() -> None:
     settings = Settings(_env_file=None, environment="test", provider_mode="fake")
     warehouse = FrozenWarehouse()
