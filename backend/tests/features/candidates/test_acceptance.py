@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -20,7 +20,10 @@ from backend.app.features.candidates.models import (
     CandidateState,
 )
 from backend.app.features.candidates.jobs import CandidateJobHandler
-from backend.app.features.candidates.repository import SqlCandidateRepository
+from backend.app.features.candidates.repository import (
+    CandidateResultConflict,
+    SqlCandidateRepository,
+)
 from backend.app.features.candidates.router import build_router
 from backend.app.features.candidates.service import CandidateRecommendationCommand
 from backend.app.infrastructure.tasks.handlers import JobContext
@@ -129,6 +132,64 @@ def test_worker_accepts_api_payload_and_reports_durable_progress() -> None:
     assert heartbeats == [("evaluating_candidates", 20), ("persisted", 100)]
 
 
+def test_result_api_reads_a_frozen_persisted_candidate_result() -> None:
+    result = _result("candidate-run", datetime(2026, 7, 20, 7, 0, tzinfo=UTC))
+
+    @dataclass
+    class FrozenRepository:
+        def get(self, run_id: str) -> CandidateRecommendationResult | None:
+            return result if run_id == result.run_id else None
+
+        def latest(self) -> CandidateRecommendationResult | None:
+            return result
+
+    client = TestClient(
+        create_app((FeatureModule("candidates", build_router(repository=FrozenRepository()), ()),))
+    )
+
+    response = client.get(f"/api/v1/candidates/{result.run_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": "candidate-run",
+        "as_of_time": "2026-07-20T07:00:00Z",
+        "strategy_version": "v2.12",
+        "manifest_hash": "manifest-candidate-run",
+        "data_grade": "research",
+        "llm_grade": "not_used",
+        "market_state": "neutral",
+        "market_confidence": "normal",
+        "quality_codes": ["LLM_EVIDENCE_MISSING"],
+        "items": [
+            {
+                "security_id": "000001.SZ",
+                "security_name": "Ping An",
+                "bucket": "watchlist",
+                "state": "selected",
+                "strategy_book": None,
+                "factors": {
+                    "p": "1",
+                    "f": "1",
+                    "r": "1",
+                    "t": "1",
+                    "v": "1",
+                    "s": "1",
+                    "percentile_rank": "1",
+                },
+                "planned_quantity": 0,
+                "initial_stop": None,
+                "trigger_condition": "trigger",
+                "invalidation_condition": "invalidation",
+                "reason_codes": [],
+                "quality_codes": [],
+                "evidence_refs": ["pit:daily_bar_raw:" + "a" * 64],
+            }
+        ],
+        "auto_trade_enabled": False,
+        "human_confirm_required": True,
+    }
+
+
 @pytest.mark.postgres
 def test_postgres_latest_breaks_same_time_ties_by_run_id(postgres_engine: Engine) -> None:
     with postgres_engine.begin() as connection:
@@ -142,3 +203,25 @@ def test_postgres_latest_breaks_same_time_ties_by_run_id(postgres_engine: Engine
 
     assert latest is not None
     assert latest.run_id == "run-b"
+
+
+@pytest.mark.postgres
+def test_postgres_save_is_idempotent_and_round_trips_candidate_result(
+    postgres_engine: Engine,
+) -> None:
+    with postgres_engine.begin() as connection:
+        connection.execute(text("TRUNCATE TABLE candidate_results"))
+    repository = SqlCandidateRepository(sessionmaker(bind=postgres_engine, expire_on_commit=False))
+    result = _result("candidate-idempotent", datetime(2026, 7, 20, 7, 0, tzinfo=UTC))
+
+    repository.save(result)
+    repository.save(result)
+
+    with postgres_engine.connect() as connection:
+        count = connection.scalar(text("SELECT count(*) FROM candidate_results"))
+    assert count == 1
+    assert repository.get(result.run_id) == result
+
+    conflicting = replace(result, manifest_hash="different-manifest")
+    with pytest.raises(CandidateResultConflict):
+        repository.save(conflicting)

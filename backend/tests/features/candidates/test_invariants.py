@@ -7,6 +7,7 @@ from backend.app.features.candidates.service import (
     CandidateRecommendationCommand,
     CandidateService,
 )
+from backend.app.core.market.pit_models import QualityIssue, QualitySeverity
 from backend.tests.features.holdings.factories import (
     point_in_time_snapshot,
     portfolio_snapshot,
@@ -93,3 +94,43 @@ def test_same_manifest_and_state_project_identical_items_for_different_run_ids()
 
     assert first.manifest_hash == second.manifest_hash
     assert first.items == second.items
+
+
+def test_quality_error_fails_closed_without_evaluating_candidate_strategy() -> None:
+    as_of_time = datetime(2026, 7, 20, 7, 0, tzinfo=UTC)
+    snapshot = point_in_time_snapshot(
+        as_of_time,
+        issues=(
+            QualityIssue(
+                code="FROZEN_DATA_MISSING",
+                severity=QualitySeverity.ERROR,
+                dataset="daily_bars",
+                entity_id=None,
+                detail="fixture only",
+            ),
+        ),
+    )
+
+    @dataclass
+    class InputBuilderThatMustNotRun:
+        def build(self, **_: object) -> object:
+            raise AssertionError("candidate strategy inputs must not be built for invalid PIT data")
+
+    @dataclass
+    class StrategyThatMustNotRun:
+        def evaluate(self, _: object) -> object:
+            raise AssertionError("candidate strategy must not run for invalid PIT data")
+
+    repository = RecordingRepository()
+    result = CandidateService(
+        FrozenWarehouse(snapshot),  # type: ignore[arg-type]
+        FrozenPortfolioReader(portfolio_snapshot(as_of_time)),  # type: ignore[arg-type]
+        InputBuilderThatMustNotRun(),  # type: ignore[arg-type]
+        StrategyThatMustNotRun(),  # type: ignore[arg-type]
+        repository,  # type: ignore[arg-type]
+    ).run(CandidateRecommendationCommand("quality-error", "default", as_of_time))
+
+    assert result.items == ()
+    assert result.market_state == "weak"
+    assert result.quality_codes == ("FROZEN_DATA_MISSING", "LLM_EVIDENCE_MISSING")
+    assert repository.saved == [result]
