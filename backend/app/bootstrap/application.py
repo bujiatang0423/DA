@@ -25,7 +25,11 @@ from backend.app.features.backtests.repository import SqlBacktestRepository
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 from backend.app.infrastructure.persistence.portfolio_repository import BackdatedPortfolioMutation
-from backend.app.infrastructure.logging import log_request_completed, normalize_request_id
+from backend.app.infrastructure.logging import (
+    configure_asgi_logging,
+    log_request_completed,
+    normalize_request_id,
+)
 from backend.app.infrastructure.tasks.health import ReadinessStatus
 
 
@@ -121,6 +125,7 @@ def create_app(
     if "*" in resolved.allowed_origins:
         raise ValueError("wildcard CORS origin is not allowed")
     app = FastAPI(title="DA Platform API", version="0.1.0")
+    app.router.add_event_handler("startup", configure_asgi_logging)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved.allowed_origins),

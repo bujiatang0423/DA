@@ -22,6 +22,11 @@ def configure_request_logging() -> None:
     _REQUEST_LOGGER.addHandler(handler)
 
 
+def configure_asgi_logging() -> None:
+    configure_request_logging()
+    logging.getLogger("uvicorn.access").disabled = True
+
+
 def normalize_request_id(value: str | None) -> str:
     if value is None:
         return ""

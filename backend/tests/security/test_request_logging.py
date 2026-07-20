@@ -85,4 +85,39 @@ def test_http_exception_detail_is_not_returned_or_logged(caplog: object) -> None
     assert response.status_code == 400
     assert response.json()["message"] == "request failed"
     assert "top-secret" not in response.text
-    assert "DEEPSEEK_API_KEY" not in "\n".join(record.getMessage() for record in caplog.records)
+    records = [record for record in caplog.records if record.name == "da.request"]
+    assert len(records) == 1
+    event = json.loads(records[0].getMessage())
+    assert set(event) == {
+        "timestamp",
+        "level",
+        "request_id",
+        "method",
+        "path_template",
+        "status_code",
+        "run_id",
+        "event_code",
+    }
+    assert event["method"] == "GET"
+    assert event["path_template"] == "/api/v1/rejected"
+    assert event["status_code"] == 400
+    assert event["run_id"] is None
+    assert event["event_code"] == "HTTP_REQUEST_COMPLETED"
+    serialized = json.dumps(event)
+    assert "DEEPSEEK_API_KEY" not in serialized
+    assert "top-secret" not in serialized
+
+
+def test_canonical_asgi_entrypoint_configures_only_controlled_request_logs(
+    monkeypatch: object,
+) -> None:
+    from backend.app.main import app
+
+    access_logger = logging.getLogger("uvicorn.access")
+    request_logger = logging.getLogger("da.request")
+    monkeypatch.setattr(access_logger, "disabled", False)
+
+    with TestClient(app):
+        assert access_logger.disabled is True
+        assert request_logger.propagate is False
+        assert any(handler.name == "da.request.json" for handler in request_logger.handlers)
