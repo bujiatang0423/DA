@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,6 +23,7 @@ from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitData
 from backend.app.infrastructure.persistence.models import Base
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
+    MarketBreadthRow,
     PitAuditReportRow,
     PitCertificateRow,
     PolicyDocumentRow,
@@ -128,7 +129,61 @@ def test_strict_reader_selects_only_market_breadth_visible_at_the_snapshot(
 
     assert issues == ()
     assert [(record.kind, record.payload["breadth"]) for record in records] == [
-        (DataKind.MARKET_BREADTH, "0.620000")
+        (DataKind.MARKET_BREADTH, "0.610000")
+    ]
+
+
+@pytest.mark.postgres
+def test_strict_reader_rejects_market_breadth_from_a_different_market_or_universe(
+    strict_session: Session,
+) -> None:
+    strict_session.add(
+        MarketBreadthRow(
+            id="competing-breadth",
+            source_record_id="competing-breadth",
+            market_id="US",
+            universe_id="SP500",
+            trade_date=AS_OF.date(),
+            breadth="0.70",
+            security_count=500,
+            available_at=AS_OF,
+            source_artifact_hash="c" * 64,
+        )
+    )
+    strict_session.commit()
+
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.MARKET_BREADTH,)),
+    )
+
+    assert issues == ()
+    assert [(record.entity_id, record.payload["universe_id"]) for record in records] == [
+        ("MARKET:CN_A", "ALL_A")
+    ]
+
+
+@pytest.mark.postgres
+def test_strict_reader_requires_fresh_market_breadth_for_the_selected_scope(
+    strict_session: Session,
+) -> None:
+    strict_session.execute(
+        delete(MarketBreadthRow).where(
+            MarketBreadthRow.market_id == "CN_A",
+            MarketBreadthRow.universe_id == "ALL_A",
+            MarketBreadthRow.trade_date == AS_OF.date(),
+        )
+    )
+    strict_session.commit()
+
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.MARKET_BREADTH,)),
+    )
+
+    assert records == ()
+    assert [(issue.code, issue.dataset) for issue in issues] == [
+        ("REQUIRED_DATASET_MISSING", DataKind.MARKET_BREADTH.value)
     ]
 
 

@@ -222,6 +222,8 @@ class StrictPitIngestor:
             MarketBreadthRow(
                 id=storage_id(bundle_manifest_hash, dataset, _required(row, "record_id", dataset)),
                 source_record_id=_required(row, "record_id", dataset),
+                market_id=_required(row, "market_id", dataset),
+                universe_id=_required(row, "universe_id", dataset),
                 trade_date=_date(row, "trade_date", dataset),
                 breadth=_decimal(row, "breadth", dataset),
                 security_count=_integer(row, "security_count", dataset),

@@ -332,7 +332,11 @@ def complete_records(
     records: list[TemporalRecord] = []
     for trading_date, security_ids in universes.items():
         for kind in DAILY_REQUIRED_KINDS:
-            if kind in {DataKind.TRADING_CALENDAR, DataKind.INDEX_DAILY_BAR}:
+            if kind in {
+                DataKind.TRADING_CALENDAR,
+                DataKind.INDEX_DAILY_BAR,
+                DataKind.MARKET_BREADTH,
+            }:
                 records.append(record(kind, f"MARKET:{kind.value}", trading_date))
             else:
                 records.extend(

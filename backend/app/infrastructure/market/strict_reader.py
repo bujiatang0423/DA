@@ -45,6 +45,8 @@ class StrictRow(Protocol):
     source_artifact_hash: str
     security_id: Any
     index_id: Any
+    market_id: Any
+    universe_id: Any
     trade_date: Any
     exchange: Any
     asset_type: Any
@@ -132,6 +134,11 @@ class SqlStrictRecordReader:
         statement = select(model).where(model.available_at <= as_of_time)
         if scope.security_ids and hasattr(model, "security_id"):
             statement = statement.where(model.security_id.in_(scope.security_ids))
+        if model is MarketBreadthRow:
+            statement = statement.where(
+                MarketBreadthRow.market_id == scope.market_id,
+                MarketBreadthRow.universe_id == scope.universe_id,
+            )
         return cast(list[StrictRow], list(self._session.scalars(statement)))
 
     def _financial_facts(
@@ -201,6 +208,8 @@ def _effective_at(kind: DataKind, row: StrictRow, as_of_time: datetime) -> bool:
         effective_from = cast(date, row.effective_from)
         effective_to = cast(date | None, row.effective_to)
         return effective_from <= as_of_date and (effective_to is None or effective_to > as_of_date)
+    if kind is DataKind.MARKET_BREADTH:
+        return cast(date, row.trade_date) == as_of_date
     return True
 
 
@@ -216,7 +225,7 @@ def _version_key(kind: DataKind, row: StrictRow) -> object:
     if kind is DataKind.INDEX_DAILY_BAR:
         return row.index_id, row.trade_date
     if kind is DataKind.MARKET_BREADTH:
-        return row.trade_date
+        return row.market_id, row.universe_id, row.trade_date
     if kind is DataKind.FINANCIAL_DISCLOSURE:
         return row.security_id, row.report_period
     if kind is DataKind.FEE_SCHEDULE:
@@ -248,6 +257,8 @@ def _to_record(
         entity_id = disclosure_security_ids.get(str(row.disclosure_id))
     if kind is DataKind.INDEX_DAILY_BAR:
         entity_id = f"MARKET:{row.index_id}"
+    if kind is DataKind.MARKET_BREADTH:
+        entity_id = f"MARKET:{row.market_id}"
     if entity_id is None:
         entity_id = getattr(row, "index_id", f"MARKET:{kind.value}")
     return TemporalRecord(

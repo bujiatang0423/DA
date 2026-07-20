@@ -23,6 +23,7 @@ DAILY_REQUIRED_KINDS = (
     DataKind.TRADING_CALENDAR,
     DataKind.DAILY_BAR_RAW,
     DataKind.INDEX_DAILY_BAR,
+    DataKind.MARKET_BREADTH,
     DataKind.ADJUSTMENT_FACTOR,
     DataKind.INDUSTRY_MEMBERSHIP,
     DataKind.THEME_MEMBERSHIP,
@@ -40,6 +41,7 @@ REQUIRED_MARKET_KINDS = frozenset(
     {
         DataKind.TRADING_CALENDAR,
         DataKind.INDEX_DAILY_BAR,
+        DataKind.MARKET_BREADTH,
     }
 )
 

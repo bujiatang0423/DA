@@ -59,6 +59,8 @@ class SnapshotScope:
     security_ids: tuple[str, ...] = ()
     required_kinds: tuple[DataKind, ...] = ()
     history_start: datetime | None = None
+    market_id: str = "CN_A"
+    universe_id: str = "ALL_A"
 
     @classmethod
     def candidate_recommendation(cls) -> SnapshotScope:

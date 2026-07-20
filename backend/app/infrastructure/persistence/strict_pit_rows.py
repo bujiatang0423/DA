@@ -145,6 +145,8 @@ class MarketBreadthRow(Base):
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     source_record_id: Mapped[str] = mapped_column(String(128), index=True)
+    market_id: Mapped[str] = mapped_column(String(32), index=True)
+    universe_id: Mapped[str] = mapped_column(String(64), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     breadth: Mapped[Decimal] = mapped_column(Numeric(8, 6))
     security_count: Mapped[int] = mapped_column(Integer)

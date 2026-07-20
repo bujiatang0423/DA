@@ -191,6 +191,8 @@ def scope_hash(scope: SnapshotScope) -> str:
             ",".join(sorted(scope.security_ids)),
             ",".join(sorted(kind.value for kind in scope.required_kinds)),
             scope.history_start.isoformat() if scope.history_start is not None else "",
+            scope.market_id,
+            scope.universe_id,
         )
     )
     return sha256(payload.encode("utf-8")).hexdigest()

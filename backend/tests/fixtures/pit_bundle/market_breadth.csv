@@ -1,3 +1,4 @@
-record_id,trade_date,breadth,security_count,available_at,source_artifact_hash
-mb-1,2020-01-02,0.62,3500,2020-01-02,source-mb-v1
-mb-2,2020-07-02,0.58,3500,2021-01-01,source-mb-v2
+record_id,market_id,universe_id,trade_date,breadth,security_count,available_at,source_artifact_hash
+mb-1,CN_A,ALL_A,2020-01-02,0.62,3500,2020-01-02,source-mb-v1
+mb-2,CN_A,ALL_A,2020-06-01,0.61,3500,2020-06-01,source-mb-v2
+mb-3,CN_A,ALL_A,2020-07-02,0.58,3500,2021-01-01,source-mb-v3
