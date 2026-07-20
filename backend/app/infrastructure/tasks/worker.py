@@ -48,6 +48,7 @@ class Worker:
         leases: WorkerLease,
         worker_id: str,
         lease_token: str | None = None,
+        stale_after_seconds: int | None = None,
     ) -> None:
         self.runs = runs
         self.handlers = handlers
@@ -55,10 +56,13 @@ class Worker:
         self.leases = leases
         self.worker_id = worker_id
         self.lease_token = lease_token or uuid4().hex
+        self.stale_after_seconds = stale_after_seconds
 
     def run_once(self) -> bool:
         if not self.leases.acquire(self.worker_id, self.lease_token, self.clock()):
             return False
+        if self.stale_after_seconds is not None:
+            self.recover_stale(self.stale_after_seconds)
         run = self.runs.claim_next(self.clock(), self.worker_id, self.lease_token)
         if run is None:
             return False
@@ -113,8 +117,9 @@ def build_worker(
     clock: Callable[[], datetime],
     leases: WorkerLease,
     worker_id: str,
+    stale_after_seconds: int | None = None,
 ) -> Worker:
-    return Worker(runs, handlers, clock, leases, worker_id)
+    return Worker(runs, handlers, clock, leases, worker_id, stale_after_seconds=stale_after_seconds)
 
 
 def run(

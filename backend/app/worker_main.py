@@ -57,6 +57,7 @@ def main() -> None:
         lambda: datetime.now(UTC),
         WorkerLeaseStore(sessions),
         environ.get("DA_WORKER_ID", gethostname()),
+        settings.worker_stale_after_seconds,
     )
     stopping = False
 
