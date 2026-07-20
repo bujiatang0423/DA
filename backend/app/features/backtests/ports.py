@@ -74,4 +74,7 @@ class BacktestRepository(Protocol):
         run_id: UUID,
         result: BacktestExperimentResult,
         artifacts: ArtifactRepository,
+        *,
+        claim_owner: str | None = None,
+        claim_token: str | None = None,
     ) -> None: ...

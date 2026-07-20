@@ -39,7 +39,11 @@ class MemoryBacktestRepository:
         run_id: UUID,
         result: BacktestExperimentResult,
         artifacts: ArtifactRepository,
+        *,
+        claim_owner: str | None = None,
+        claim_token: str | None = None,
     ) -> None:
+        del claim_owner, claim_token
         self.results[run_id] = result
         self.artifact_repositories[run_id] = artifacts
 

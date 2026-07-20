@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import Barrier, Thread
 from uuid import UUID
@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import text
 
 from backend.app.contracts.grades import DataGrade, LlmGrade
 from backend.app.features.backtests.models import (
@@ -17,6 +18,9 @@ from backend.app.features.backtests.models import (
     StrategyGroup,
 )
 from backend.app.features.backtests.repository import BacktestResultConflict, SqlBacktestRepository
+from backend.app.features.runs.repository import RunRepository
+from backend.app.contracts.runs import RunKind
+from backend.app.infrastructure.persistence.models import Base
 from backend.tests.features.backtests.fakes import MemoryArtifactRepository
 
 
@@ -171,6 +175,39 @@ def test_publish_result_commits_result_and_artifact_together(
 
     assert repository.fetch_result(run_id) == fixed_result
     assert len(artifacts.refs) == 1
+
+
+@pytest.mark.postgres
+def test_requeued_claim_cannot_publish_a_backtest_result_or_artifact(
+    repository: SqlBacktestRepository,
+    fixed_result: BacktestExperimentResult,
+    postgres_engine: Engine,
+) -> None:
+    Base.metadata.create_all(postgres_engine)
+    sessions = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    now = datetime(2026, 7, 20, tzinfo=UTC)
+    with sessions.begin() as session:
+        session.execute(text("TRUNCATE TABLE run_artifacts, run_events, runs CASCADE"))
+        run = RunRepository(session).submit(RunKind.BACKTEST, {}, None, now)
+        claimed = RunRepository(session).claim_next(now, "old-worker", "old-token")
+        assert claimed is not None
+        recovered_at = now + timedelta(minutes=1)
+        RunRepository(session).requeue_stale(recovered_at, recovered_at)
+        replacement = RunRepository(session).claim_next(recovered_at, "new-worker", "new-token")
+        assert replacement is not None
+
+    artifacts = MemoryArtifactRepository()
+    with pytest.raises(RuntimeError, match="BACKTEST_PUBLICATION_FENCED"):
+        repository.publish_result(
+            run.id,
+            fixed_result,
+            artifacts,
+            claim_owner="old-worker",
+            claim_token="old-token",
+        )
+
+    assert repository.fetch_result(run.id) is None
+    assert artifacts.refs == {}
 
 
 def test_concurrent_duplicate_result_publication_is_idempotent(

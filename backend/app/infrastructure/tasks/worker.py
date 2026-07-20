@@ -73,6 +73,8 @@ class Worker:
                     self.worker_id,
                     self.lease_token,
                 ),
+                self.worker_id,
+                self.lease_token,
             )
             handler(context)
         except Exception:

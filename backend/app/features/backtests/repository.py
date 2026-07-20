@@ -26,11 +26,20 @@ from backend.app.features.backtests.models import (
     BacktestRunSummary,
     StrategyGroup,
 )
+from backend.app.contracts.runs import RunStatus
+from backend.app.infrastructure.persistence.models import RunRow
 from backend.app.ports.artifacts import ArtifactRepository
 
 
 class BacktestResultConflict(RuntimeError):
     """A completed run cannot be overwritten with different research evidence."""
+
+
+class BacktestPublicationFenced(RuntimeError):
+    """A worker that no longer owns the run cannot publish research evidence."""
+
+    def __init__(self) -> None:
+        super().__init__("BACKTEST_PUBLICATION_FENCED")
 
 
 class BacktestResultRepository(Protocol):
@@ -81,9 +90,27 @@ class SqlBacktestRepository:
         run_id: UUID,
         result: BacktestExperimentResult,
         artifacts: ArtifactRepository,
+        *,
+        claim_owner: str | None = None,
+        claim_token: str | None = None,
     ) -> None:
+        if (claim_owner is None) != (claim_token is None):
+            raise ValueError("claim owner and token must be provided together")
         try:
             with self._session_factory.begin() as session:
+                if claim_owner is not None and claim_token is not None:
+                    owned = session.scalar(
+                        select(RunRow.id)
+                        .where(
+                            RunRow.id == run_id,
+                            RunRow.status == RunStatus.RUNNING.value,
+                            RunRow.claim_owner == claim_owner,
+                            RunRow.claim_token == claim_token,
+                        )
+                        .with_for_update()
+                    )
+                    if owned is None:
+                        raise BacktestPublicationFenced()
                 if not self._save_result(session, run_id, result, None):
                     return
                 artifacts.save_json(

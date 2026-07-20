@@ -229,7 +229,7 @@ def _to_record(
         payload = json.loads(row.payload_json)
     else:
         payload = {
-            column.name: str(getattr(row, column.name))
+            column.name: _payload_value(getattr(row, column.name))
             for column in row.__table__.columns
             if column.name not in {"id", "available_at", "source_artifact_hash"}
         }
@@ -256,3 +256,11 @@ def _to_record(
         row.source_artifact_hash,
         payload,
     )
+
+
+def _payload_value(value: object) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)

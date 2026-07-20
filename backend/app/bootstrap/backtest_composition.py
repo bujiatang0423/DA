@@ -11,16 +11,11 @@ from backend.app.features.backtests.ports import (
     BacktestTradingDayPort,
 )
 from backend.app.features.backtests.strict_execution import (
-    HistoricalDailyBarReader,
+    CertifiedExecutionInputs,
     StrictBacktestExecutionPort,
     StrictExecutionSimulator,
 )
-from backend.app.infrastructure.market.strict_queries import (
-    TemporalExecutionQueries,
-    TemporalSecurityQueries,
-)
 from backend.app.infrastructure.market.strict_backtest_data import (
-    SqlAlchemyHistoricalDailyBars,
     SqlAlchemyTradingCalendar,
     StrictBacktestSnapshotAdapter,
 )
@@ -30,16 +25,13 @@ def build_strict_backtest_engine(
     trading_days: BacktestTradingDayPort,
     warehouse: BacktestSnapshotPort,
     decision_port: BacktestDecisionPort,
-    bars: HistoricalDailyBarReader,
-    session: Session,
 ) -> BacktestEngine:
     """Build the strict engine for later Task 7 application and API composition."""
     simulator = StrictExecutionSimulator(
         ExecutionSimulator(),
-        TemporalSecurityQueries(session),
-        TemporalExecutionQueries(session),
+        CertifiedExecutionInputs(warehouse),
     )
-    execution_port = StrictBacktestExecutionPort(simulator, bars)
+    execution_port = StrictBacktestExecutionPort(simulator)
     return BacktestEngine(
         trading_days,
         StrictBacktestSnapshotAdapter(warehouse),
@@ -64,6 +56,4 @@ def build_sqlalchemy_strict_backtest_engine(
         ),
         warehouse,
         decision_port,
-        SqlAlchemyHistoricalDailyBars(session),
-        session,
     )

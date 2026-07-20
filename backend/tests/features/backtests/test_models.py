@@ -236,7 +236,14 @@ def test_experiment_result_preserves_group_result_details() -> None:
 def test_repository_publishes_a_result_with_run_and_artifact_context() -> None:
     parameters = tuple(inspect.signature(BacktestRepository.publish_result).parameters)
 
-    assert parameters == ("self", "run_id", "result", "artifacts")
+    assert parameters == (
+        "self",
+        "run_id",
+        "result",
+        "artifacts",
+        "claim_owner",
+        "claim_token",
+    )
 
 
 def test_backtest_fakes_follow_decision_repository_and_artifact_contracts() -> None:
