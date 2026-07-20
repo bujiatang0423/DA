@@ -85,6 +85,7 @@ class _MemoryRuns:
                 "heartbeat_at": None,
                 "retry_count": row.retry_count + 1,
                 "error_code": None,
+                "error_message": None,
             }
         )
         self._rows[str(run_id)] = retried

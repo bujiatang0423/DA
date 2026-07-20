@@ -21,10 +21,16 @@ _MESSAGES: dict[str, str] = {
 }
 
 
+def normalize_run_error_code(code: str | None) -> str:
+    if code in _MESSAGES:
+        return code
+    return "JOB_EXECUTION_FAILED"
+
+
 def safe_run_message(code: str | None) -> str | None:
     if code is None:
         return None
-    return _MESSAGES.get(code, _MESSAGES["JOB_EXECUTION_FAILED"])
+    return _MESSAGES[normalize_run_error_code(code)]
 
 
 def classify_run_failure(error: Exception) -> SafeRunFailure:
@@ -32,5 +38,5 @@ def classify_run_failure(error: Exception) -> SafeRunFailure:
         code = "INVALID_RUN_PAYLOAD"
     else:
         candidate_code = getattr(error, "code", None)
-        code = candidate_code if candidate_code in _MESSAGES else "JOB_EXECUTION_FAILED"
+        code = normalize_run_error_code(candidate_code)
     return SafeRunFailure(code=code, message=_MESSAGES[code])
