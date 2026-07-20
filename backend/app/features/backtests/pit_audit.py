@@ -26,7 +26,15 @@ DAILY_REQUIRED_KINDS = (
     DataKind.THEME_MEMBERSHIP,
 )
 
-MARKET_WIDE_KINDS = frozenset(
+REQUIRED_SECURITY_KINDS = frozenset(
+    {
+        DataKind.SECURITY_MASTER,
+        DataKind.SECURITY_STATUS,
+        DataKind.DAILY_BAR_RAW,
+    }
+)
+
+REQUIRED_MARKET_KINDS = frozenset(
     {
         DataKind.TRADING_CALENDAR,
         DataKind.INDEX_DAILY_BAR,
@@ -45,6 +53,12 @@ class AuditablePointInTimeWarehouse(Protocol):
     ) -> PointInTimeSnapshot: ...
 
     def bundle_set_hash(self, coverage_start: date, coverage_end: date) -> str: ...
+
+
+class AuditUniverseResolver(Protocol):
+    """Resolve the auditable security universe visible at one exact point in time."""
+
+    def security_ids_for(self, as_of_time: datetime) -> tuple[str, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -69,15 +83,11 @@ class PitAuditRunner:
         self,
         warehouse: AuditablePointInTimeWarehouse,
         trading_dates: tuple[date, ...],
-        security_ids: tuple[str, ...],
+        universe: AuditUniverseResolver,
     ) -> None:
         self._warehouse = warehouse
         self._trading_dates = tuple(sorted(set(trading_dates)))
-        if not security_ids:
-            raise ValueError("PIT audit requires an explicit expected security universe")
-        if len(security_ids) != len(set(security_ids)):
-            raise ValueError("PIT audit security IDs must be unique")
-        self._security_ids = tuple(sorted(security_ids))
+        self._universe = universe
 
     def run(self, *, coverage_start: date, coverage_end: date) -> PitAuditReport:
         if coverage_start > coverage_end:
@@ -97,13 +107,11 @@ class PitAuditRunner:
                 time(15, 30),
                 ZoneInfo("Asia/Shanghai"),
             )
-            for kind in DAILY_REQUIRED_KINDS:
-                self._audit_snapshot(
-                    as_of_time=as_of_time,
-                    kind=kind,
-                    failures=failures,
-                    manifests=manifests,
-                )
+            self._audit_snapshot(
+                as_of_time=as_of_time,
+                failures=failures,
+                manifests=manifests,
+            )
 
         bundle_set_hash = self._warehouse.bundle_set_hash(coverage_start, coverage_end)
         body = {
@@ -130,48 +138,63 @@ class PitAuditRunner:
         self,
         *,
         as_of_time: datetime,
-        kind: DataKind,
         failures: list[str],
         manifests: list[str],
     ) -> None:
-        failure_prefix = f"{kind.value}:{as_of_time.date().isoformat()}"
+        failure_date = as_of_time.date().isoformat()
+        try:
+            security_ids = self._security_ids_for(as_of_time)
+        except Exception as error:
+            failures.append(f"security_master:{failure_date}:{type(error).__name__}")
+            return
+        expected_scope = SnapshotScope(security_ids, DAILY_REQUIRED_KINDS)
         try:
             snapshot = self._warehouse.candidate_snapshot(
                 as_of_time=as_of_time,
-                scope=SnapshotScope(self._security_ids, (kind,)),
+                scope=expected_scope,
             )
         except Exception as error:
-            failures.append(f"{failure_prefix}:{type(error).__name__}")
+            failures.append(f"snapshot:{failure_date}:{type(error).__name__}")
             return
         if snapshot.as_of_time != as_of_time:
-            failures.append(f"{failure_prefix}:AS_OF_MISMATCH")
+            failures.append(f"snapshot:{failure_date}:AS_OF_MISMATCH")
             return
-        expected_scope = SnapshotScope(self._security_ids, (kind,))
-        if snapshot.scope != expected_scope:
-            failures.append(f"{failure_prefix}:SCOPE_MISMATCH")
+        if not _scope_covers(snapshot.scope, expected_scope):
+            failures.append(f"snapshot:{failure_date}:SCOPE_MISMATCH")
             return
         if snapshot.quality.has_errors:
-            failures.append(failure_prefix)
+            failures.append(f"snapshot:{failure_date}:QUALITY_ERROR")
             return
         records = snapshot.market_inputs + tuple(
             record
             for observation in snapshot.security_observations
             for record in observation.records
         )
-        if any(record.kind is not kind for record in records):
-            failures.append(f"{failure_prefix}:UNEXPECTED_KIND")
+        if not _records_are_as_of_safe(records, as_of_time):
+            failures.append(f"snapshot:{failure_date}:FUTURE_RECORD")
             return
-        matching_records = tuple(record for record in records if record.kind is kind)
-        if not matching_records:
-            failures.append(f"{failure_prefix}:RECORDS_MISSING")
-            return
-        if not _records_are_as_of_safe(matching_records, as_of_time):
-            failures.append(f"{failure_prefix}:FUTURE_RECORD")
-            return
-        if not _has_required_entities(kind, matching_records, self._security_ids):
-            failures.append(f"{failure_prefix}:ENTITY_COVERAGE_MISSING")
+        coverage_failed = False
+        for kind in DAILY_REQUIRED_KINDS:
+            matching_records = tuple(record for record in records if record.kind is kind)
+            if kind in REQUIRED_SECURITY_KINDS and not set(security_ids).issubset(
+                {record.entity_id for record in matching_records}
+            ):
+                failures.append(f"{kind.value}:{failure_date}:ENTITY_COVERAGE_MISSING")
+                coverage_failed = True
+            elif kind in REQUIRED_MARKET_KINDS and not any(
+                record.entity_id.startswith("MARKET:") for record in matching_records
+            ):
+                failures.append(f"{kind.value}:{failure_date}:RECORDS_MISSING")
+                coverage_failed = True
+        if coverage_failed:
             return
         manifests.append(snapshot.manifest_hash)
+
+    def _security_ids_for(self, as_of_time: datetime) -> tuple[str, ...]:
+        security_ids = tuple(sorted(set(self._universe.security_ids_for(as_of_time))))
+        if not security_ids:
+            raise ValueError("PIT audit security universe is empty")
+        return security_ids
 
 
 def _records_are_as_of_safe(
@@ -191,12 +214,9 @@ def _records_are_as_of_safe(
     return True
 
 
-def _has_required_entities(
-    kind: DataKind,
-    records: tuple[TemporalRecord, ...],
-    security_ids: tuple[str, ...],
-) -> bool:
-    entity_ids = {record.entity_id for record in records}
-    if kind in MARKET_WIDE_KINDS:
-        return any(entity_id.startswith("MARKET:") for entity_id in entity_ids)
-    return set(security_ids).issubset(entity_ids)
+def _scope_covers(actual: SnapshotScope, expected: SnapshotScope) -> bool:
+    return (
+        actual.security_ids == expected.security_ids
+        and actual.history_start == expected.history_start
+        and set(actual.required_kinds).issuperset(expected.required_kinds)
+    )
