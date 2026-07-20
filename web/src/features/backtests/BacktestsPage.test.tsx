@@ -59,7 +59,11 @@ test("submits a manual-only research backtest and renders persisted audit eviden
       },
       warnings: ["research_only"],
       equity_curve: {
-        items: [{ trade_date: "2023-01-02", equity: "150000" }], next_cursor: null,
+        items: [
+          { trade_date: "2023-01-02", equity: "150000" },
+          { trade_date: "2023-01-03", equity: "147000" },
+        ],
+        next_cursor: null,
       },
       trades: {
         items: [{ order_id: "A-trade-1", trade_date: "2023-01-03", side: "buy", quantity: "100" }],
@@ -82,6 +86,7 @@ test("submits a manual-only research backtest and renders persisted audit eviden
   expect(screen.getByText("1.23")).toBeTruthy();
   expect(screen.getByTestId("equity-series")).toBeTruthy();
   expect(screen.getByTestId("drawdown-series")).toBeTruthy();
+  expect(screen.getByText("-0.02")).toBeTruthy();
   expect(screen.getByText("A-trade-1")).toBeTruthy();
   expect(screen.getByText("LIMIT_UP_LOCKED")).toBeTruthy();
   expect(screen.getByText("仅供研究和人工执行，不自动交易")).toBeTruthy();
@@ -217,9 +222,95 @@ test("loads next cursor pages for trades and rejected attempts", async () => {
   expect(fetch).toHaveBeenCalledWith(expect.stringContaining("rejected_cursor=reject-2"));
 });
 
+test("ignores a first submission result that resolves after a replacement submission", async () => {
+  const firstResult = deferred<Response>();
+  const secondResult = deferred<Response>();
+  let submissions = 0;
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/v1/backtests") {
+      submissions += 1;
+      return response({ run_id: submissions === 1 ? "first-run" : "second-run" }, 202);
+    }
+    if (url.includes("/runs/")) {
+      return response({ status: "succeeded" });
+    }
+    return url.includes("first-run") ? firstResult.promise : secondResult.promise;
+  });
+
+  render(<BacktestsPage />);
+  const submit = screen.getByRole("button", { name: "开始回测" });
+  fireEvent.click(submit);
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("first-run")));
+  fireEvent.click(submit);
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining("/api/v1/backtests/second-run?group=A"),
+  ));
+
+  firstResult.resolve(response(resultResponse("A")));
+  await Promise.resolve();
+  expect(screen.queryByText("A-only-metric")).toBeNull();
+  secondResult.resolve(response(resultResponse("A", {}, "B")));
+  expect(await screen.findByText("B-only-metric")).toBeTruthy();
+});
+
+test("ignores an obsolete group response after the user switches back", async () => {
+  const groupA = deferred<Response>();
+  const groupB = deferred<Response>();
+  let groupARequests = 0;
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/v1/backtests") return response({ run_id: "group-run" }, 202);
+    if (url === "/api/v1/runs/group-run") return response({ status: "succeeded" });
+    if (url.includes("group=B")) return groupB.promise;
+    groupARequests += 1;
+    return groupARequests === 1 ? response(resultResponse("A")) : groupA.promise;
+  });
+
+  render(<BacktestsPage />);
+  fireEvent.click(screen.getByRole("button", { name: "开始回测" }));
+  expect(await screen.findByText("A-only-metric")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "分组 B" }));
+  fireEvent.click(screen.getByRole("button", { name: "分组 A" }));
+
+  groupB.resolve(response(resultResponse("B")));
+  await Promise.resolve();
+  expect(screen.queryByText("B-only-metric")).toBeNull();
+  groupA.resolve(response(resultResponse("A")));
+  expect(await screen.findByText("A-only-metric")).toBeTruthy();
+});
+
+test("does not append a stale audit page after a group change", async () => {
+  const tradePage = deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/v1/backtests") return response({ run_id: "page-run" }, 202);
+    if (url === "/api/v1/runs/page-run") return response({ status: "succeeded" });
+    if (url.includes("trade_cursor=trade-2")) return tradePage.promise;
+    if (url.includes("group=B")) return response(resultResponse("B"));
+    return response(resultResponse("A", {
+      trades: { items: [{ order_id: "trade-1" }], next_cursor: "trade-2" },
+    }));
+  });
+
+  render(<BacktestsPage />);
+  fireEvent.click(screen.getByRole("button", { name: "开始回测" }));
+  expect(await screen.findByText("trade-1")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "加载更多成交" }));
+  fireEvent.click(screen.getByRole("button", { name: "分组 B" }));
+  expect(await screen.findByText("B-only-metric")).toBeTruthy();
+
+  tradePage.resolve(response(resultResponse("A", {
+    trades: { items: [{ order_id: "trade-2" }], next_cursor: null },
+  })));
+  await Promise.resolve();
+  expect(screen.queryByText("trade-2")).toBeNull();
+});
+
 function resultResponse(
   group: string,
   pages: Partial<{ trades: object; rejected_attempts: object }> = {},
+  metricGroup = group,
 ): object {
   return {
     run_id: "result-run",
@@ -235,15 +326,27 @@ function resultResponse(
       metrics: {},
     })),
     group,
-    metrics: { [`${group}-only-metric`]: "1" },
+    metrics: { [`${metricGroup}-only-metric`]: "1" },
     metric_details: {},
     warnings: [],
     equity_curve: {
-      items: [{ trade_date: "2023-01-02", equity: "100", drawdown: "-0.02" }],
+      items: [{ trade_date: "2023-01-02", equity: "100" }],
       next_cursor: null,
     },
     trades: { items: [], next_cursor: null },
     rejected_attempts: { items: [], next_cursor: null },
     ...pages,
   };
+}
+
+function response(body: object, status = 200): Response {
+  return new Response(JSON.stringify(body), { status });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   BacktestApiError,
@@ -16,12 +16,16 @@ export function BacktestsPage(): JSX.Element {
   const [end, setEnd] = useState("2025-12-31");
   const [runId, setRunId] = useState<string>();
   const [group, setGroup] = useState("A");
+  const [availableGroups, setAvailableGroups] = useState<string[]>([]);
   const [result, setResult] = useState<BacktestResult>();
   const [runStatus, setRunStatus] = useState<string>();
-  const [submissionGeneration, setSubmissionGeneration] = useState(0);
+  const [requestVersion, setRequestVersion] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string>();
+  const activeRequestVersion = useRef(0);
+  const activeRunId = useRef<string>();
+  const activeGroup = useRef(group);
   const request = useMemo(
     () => ({
       strategy_version: "v2.12",
@@ -33,16 +37,35 @@ export function BacktestsPage(): JSX.Element {
     [start, end],
   );
 
+  const advanceRequestVersion = (): number => {
+    const nextVersion = activeRequestVersion.current + 1;
+    activeRequestVersion.current = nextVersion;
+    setRequestVersion(nextVersion);
+    return nextVersion;
+  };
+
+  const isCurrentRequest = (
+    version: number,
+    expectedRunId: string,
+    expectedGroup: string,
+  ): boolean => {
+    return activeRequestVersion.current === version
+      && activeRunId.current === expectedRunId
+      && activeGroup.current === expectedGroup;
+  };
+
   useEffect(() => {
     if (!runId) {
       return undefined;
     }
+    const version = requestVersion;
+    const expectedGroup = group;
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const checkStatus = async (): Promise<void> => {
       try {
         const run = await getRun(runId);
-        if (cancelled) {
+        if (cancelled || !isCurrentRequest(version, runId, expectedGroup)) {
           return;
         }
         setRunStatus(run.status);
@@ -60,7 +83,7 @@ export function BacktestsPage(): JSX.Element {
           setError("任务已结束，未生成可展示的回测结果。");
         }
       } catch {
-        if (cancelled) {
+        if (cancelled || !isCurrentRequest(version, runId, expectedGroup)) {
           return;
         }
         setWaiting(false);
@@ -74,21 +97,23 @@ export function BacktestsPage(): JSX.Element {
         clearTimeout(retry);
       }
     };
-  }, [runId, submissionGeneration]);
+  }, [group, requestVersion, runId]);
 
   useEffect(() => {
     if (!runId || runStatus !== "succeeded") {
       return;
     }
+    const version = requestVersion;
     let cancelled = false;
     const loadResult = async (): Promise<void> => {
       try {
         const next = await getBacktest(runId, group);
-        if (!cancelled && next.group === group) {
+        if (!cancelled && isCurrentRequest(version, runId, group) && next.group === group) {
           setResult(next);
+          setAvailableGroups(next.groups.map((summary) => summary.group));
         }
       } catch (loadError) {
-        if (cancelled) {
+        if (cancelled || !isCurrentRequest(version, runId, group)) {
           return;
         }
         if (loadError instanceof BacktestApiError && loadError.status === 404) {
@@ -102,21 +127,33 @@ export function BacktestsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [group, runId, runStatus, submissionGeneration]);
+  }, [group, requestVersion, runId, runStatus]);
 
   const submit = async (): Promise<void> => {
+    const version = advanceRequestVersion();
     setSubmitting(true);
     setError(undefined);
     setResult(undefined);
     setRunStatus(undefined);
+    setWaiting(false);
+    setAvailableGroups([]);
+    activeRunId.current = undefined;
+    setRunId(undefined);
     try {
       const run = await submitBacktest(request);
+      if (activeRequestVersion.current !== version) {
+        return;
+      }
+      activeRunId.current = run.run_id;
       setRunId(run.run_id);
-      setSubmissionGeneration((generation) => generation + 1);
     } catch {
-      setError("回测任务提交失败，请检查研究参数后重试。");
+      if (activeRequestVersion.current === version) {
+        setError("回测任务提交失败，请检查研究参数后重试。");
+      }
     } finally {
-      setSubmitting(false);
+      if (activeRequestVersion.current === version) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -124,6 +161,8 @@ export function BacktestsPage(): JSX.Element {
     if (nextGroup === group) {
       return;
     }
+    advanceRequestVersion();
+    activeGroup.current = nextGroup;
     setResult(undefined);
     setError(undefined);
     setGroup(nextGroup);
@@ -133,21 +172,31 @@ export function BacktestsPage(): JSX.Element {
     if (!runId || !result) {
       return;
     }
+    const version = requestVersion;
+    const expectedRunId = runId;
+    const expectedGroup = group;
     const cursor = result[kind].next_cursor;
     if (!cursor) {
       return;
     }
     try {
       const next = await getBacktest(
-        runId,
-        group,
+        expectedRunId,
+        expectedGroup,
         kind === "trades" ? { tradeCursor: cursor } : { rejectedCursor: cursor },
       );
-      if (next.group !== group) {
+      if (
+        next.group !== expectedGroup
+        || !isCurrentRequest(version, expectedRunId, expectedGroup)
+      ) {
         return;
       }
       setResult((current) => {
-        if (!current || current.group !== group) {
+        if (
+          !current
+          || current.group !== expectedGroup
+          || !isCurrentRequest(version, expectedRunId, expectedGroup)
+        ) {
           return current;
         }
         return {
@@ -159,7 +208,9 @@ export function BacktestsPage(): JSX.Element {
         };
       });
     } catch {
-      setError("审计记录加载失败，请稍后重试。");
+      if (isCurrentRequest(version, expectedRunId, expectedGroup)) {
+        setError("审计记录加载失败，请稍后重试。");
+      }
     }
   };
 
@@ -191,10 +242,10 @@ export function BacktestsPage(): JSX.Element {
       </div>
       {error ? <div className="alert" role="alert">{error}</div> : null}
       {waiting ? <div className="empty-state">任务已提交，正在等待持久回测结果...</div> : null}
-      {result ? (
+      {availableGroups.length > 0 ? (
         <>
           <div className="heading-actions">{GROUPS.filter((item) => (
-            result.groups.some((summary) => summary.group === item)
+            availableGroups.includes(item)
           )).map((item) => (
             <button
               className={item === group ? "btn" : "btn btn-secondary"}
@@ -204,11 +255,13 @@ export function BacktestsPage(): JSX.Element {
               分组 {item}
             </button>
           ))}</div>
-          <BacktestSummary
-            onLoadMoreRejected={() => void loadMore("rejected_attempts")}
-            onLoadMoreTrades={() => void loadMore("trades")}
-            result={result}
-          />
+          {result ? (
+            <BacktestSummary
+              onLoadMoreRejected={() => void loadMore("rejected_attempts")}
+              onLoadMoreTrades={() => void loadMore("trades")}
+              result={result}
+            />
+          ) : <div className="empty-state">正在加载所选分组的回测结果...</div>}
         </>
       ) : null}
     </section>

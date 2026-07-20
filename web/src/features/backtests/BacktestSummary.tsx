@@ -20,6 +20,25 @@ interface MetricDetail {
   diagnostic?: string | null;
 }
 
+function drawdown(equity: string, peak: number): { peak: number; value: string } {
+  const numericEquity = Number(equity);
+  if (!Number.isFinite(numericEquity) || numericEquity <= 0) {
+    return { peak, value: "-" };
+  }
+  const nextPeak = Math.max(peak, numericEquity);
+  const ratio = numericEquity / nextPeak - 1;
+  return { peak: nextPeak, value: Number(ratio.toFixed(6)).toString() };
+}
+
+function drawdowns(points: Array<Record<string, string>>): string[] {
+  let peak = 0;
+  return points.map((point) => {
+    const computed = drawdown(point.equity ?? "", peak);
+    peak = computed.peak;
+    return computed.value;
+  });
+}
+
 function gradeLabel(grade: string): string {
   return grade === "research" ? "研究级数据" : `数据等级：${grade}`;
 }
@@ -140,6 +159,7 @@ export function BacktestSummary({
   const selected = result.groups.find((item) => item.group === result.group);
   const acceptanceGates = gates(result.metric_details);
   const details = metricDetails(result.metric_details);
+  const drawdownSeries = drawdowns(result.equity_curve.items);
   return (
     <>
       <div className="notice">仅供研究和人工执行，不自动交易</div>
@@ -225,7 +245,7 @@ export function BacktestSummary({
             >
               <strong>{point.trade_date ?? point.date ?? "-"}</strong>
               <div className="timeline-bar"><span style={{ width: "100%" }} /></div>
-              <strong>{point.drawdown ?? "-"}</strong>
+              <strong>{drawdownSeries[index]}</strong>
             </div>
           ))}
         </div>
