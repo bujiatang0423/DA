@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Response
 
 from backend.app.contracts.runs import RunKind, RunRef
 from .contracts import CandidateRecommendationResponse, CandidateSubmitRequest
@@ -21,16 +21,19 @@ def build_router(
     @router.post("", response_model=RunRef, status_code=202)
     def submit_candidate(
         request: CandidateSubmitRequest,
+        response: Response,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> RunRef:
         if submit is None:
             raise RuntimeError("candidate submission is not configured")
-        return submit(
+        run = submit(
             RunKind.CANDIDATE_RECOMMENDATION,
             {"portfolio_id": request.portfolio_id, "as_of_time": request.as_of_time.isoformat()},
             idempotency_key,
             datetime.now(UTC),
         )
+        response.headers["Location"] = f"/api/v1/candidates/{run.run_id}"
+        return run
 
     @router.get("/latest", response_model=CandidateRecommendationResponse)
     def latest() -> CandidateRecommendationResponse:
