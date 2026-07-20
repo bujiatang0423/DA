@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
+from backend.app.bootstrap.application import create_app
+from backend.app.features.runs.module import build_runs_feature
 from backend.app.contracts.runs import RunKind, RunStatus
 from backend.app.features.runs.service import RunsService
 from backend.app.infrastructure.persistence.models import RunRow
@@ -77,3 +80,83 @@ def test_run_detail_projects_observable_status_without_raw_failure_text(
     assert detail.retry_count == 2
     assert detail.error_code == "PROVIDER_UNAVAILABLE"
     assert "connection reset" not in detail.model_dump_json()
+
+
+@pytest.mark.postgres
+def test_retrying_a_failed_run_preserves_its_idempotency_identity(
+    postgres_engine: Engine,
+) -> None:
+    submitted_at = datetime(2026, 7, 20, 9, 30, tzinfo=UTC)
+    retried_at = datetime(2026, 7, 20, 9, 35, tzinfo=UTC)
+    with postgres_engine.begin() as connection:
+        connection.execute(text("TRUNCATE TABLE run_events, runs CASCADE"))
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    service = RunsService(factory)
+    submitted = service.submit(RunKind.BACKTEST, {"account": "private"}, "retry-key", submitted_at)
+    claimed = service.claim_next(submitted_at, "worker-a", "token-a")
+    assert claimed is not None
+    service.transition(
+        claimed.id,
+        RunStatus.FAILED,
+        submitted_at,
+        "worker-a",
+        "token-a",
+        "PROVIDER_UNAVAILABLE",
+    )
+
+    client = TestClient(create_app((build_runs_feature(service),)))
+    response = client.post(f"/api/v1/runs/{submitted.run_id}/retry")
+
+    assert response.status_code == 202
+    assert response.headers["location"] == f"/api/v1/runs/{submitted.run_id}"
+    assert response.json()["run_id"] == submitted.run_id
+    assert response.json()["status"] == RunStatus.QUEUED.value
+    assert service.get(submitted.run_id).retry_count == 1
+    with factory() as session:
+        row = session.get(RunRow, UUID(submitted.run_id))
+        assert row is not None
+        assert row.idempotency_key == "retry-key"
+        assert row.error_code is None
+        assert row.claim_owner is None
+        assert row.claim_token is None
+        assert (
+            session.execute(
+                text(
+                    "SELECT event_type FROM run_events WHERE run_id = :id ORDER BY id DESC LIMIT 1"
+                ),
+                {"id": row.id},
+            ).scalar_one()
+            == "retry_requested"
+        )
+    reclaimed = service.claim_next(retried_at, "worker-b", "token-b")
+    assert reclaimed is not None
+    assert reclaimed.id == UUID(submitted.run_id)
+
+
+@pytest.mark.parametrize("status", (RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.SUCCEEDED))
+@pytest.mark.postgres
+def test_retry_endpoint_rejects_non_failed_runs_with_a_safe_stable_error(
+    postgres_engine: Engine,
+    status: RunStatus,
+) -> None:
+    now = datetime(2026, 7, 20, 9, 30, tzinfo=UTC)
+    with postgres_engine.begin() as connection:
+        connection.execute(text("TRUNCATE TABLE run_events, runs CASCADE"))
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    service = RunsService(factory)
+    queued = service.submit(RunKind.BACKTEST, {"email": "person@example.test"}, None, now)
+    with factory.begin() as session:
+        row = session.get(RunRow, UUID(queued.run_id))
+        assert row is not None
+        row.status = status.value
+    client = TestClient(create_app((build_runs_feature(service),)))
+
+    response = client.post(f"/api/v1/runs/{queued.run_id}/retry")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "RUN_RETRY_NOT_ALLOWED",
+        "message": "only failed runs can be retried",
+        "request_id": response.headers["x-request-id"],
+        "details": {},
+    }

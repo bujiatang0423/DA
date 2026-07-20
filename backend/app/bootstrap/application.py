@@ -14,6 +14,7 @@ from backend.app.contracts.common import ErrorResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunLinks, RunRef, RunStatus
 from backend.app.features.runs.module import build_runs_feature
+from backend.app.features.runs.repository import RunRetryNotAllowed
 from backend.app.features.runs.service import RunsService
 from backend.app.features.candidates.module import build_candidate_feature
 from backend.app.features.holdings.module import build_holdings_feature
@@ -71,6 +72,23 @@ class _MemoryRuns:
         if idempotency_key:
             self._idempotency[(kind, idempotency_key)] = run_id
         return ref
+
+    def retry(self, run_id: str, submitted_at: datetime) -> RunRef:
+        row = self.get(run_id)
+        if row.status is not RunStatus.FAILED:
+            raise RunRetryNotAllowed(row.status)
+        retried = row.model_copy(
+            update={
+                "status": RunStatus.QUEUED,
+                "stage": None,
+                "progress": 0,
+                "heartbeat_at": None,
+                "retry_count": row.retry_count + 1,
+                "error_code": None,
+            }
+        )
+        self._rows[str(run_id)] = retried
+        return retried
 
 
 class _EmptyPortfolioReader:
@@ -153,6 +171,16 @@ def create_app(
                 "details": {},
             },
         )
+
+    @app.exception_handler(RunRetryNotAllowed)
+    async def retry_not_allowed(request: Request, exc: RunRetryNotAllowed) -> JSONResponse:
+        body = ErrorResponse(
+            code="RUN_RETRY_NOT_ALLOWED",
+            message="only failed runs can be retried",
+            request_id=request.state.request_id,
+            details={},
+        )
+        return JSONResponse(status_code=409, content=body.model_dump())
 
     @app.exception_handler(ConcurrentPortfolioUpdate)
     async def concurrent_update(request: Request, exc: ConcurrentPortfolioUpdate) -> JSONResponse:

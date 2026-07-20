@@ -127,3 +127,7 @@ class RunsService:
     def requeue_stale(self, cutoff: datetime, now: datetime) -> tuple[UUID, ...]:
         with self._factory.begin() as session:
             return RunRepository(session).requeue_stale(cutoff, now)
+
+    def retry(self, run_id: UUID | str, now: datetime) -> RunRef:
+        with self._factory.begin() as session:
+            return self._ref(RunRepository(session).retry_failed(UUID(str(run_id)), now))

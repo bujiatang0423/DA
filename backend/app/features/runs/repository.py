@@ -13,6 +13,10 @@ class InvalidRunTransition(RuntimeError):
     """Raised when a run state transition is not allowed."""
 
 
+class RunRetryNotAllowed(RuntimeError):
+    """Raised when a retry is requested for a run that did not fail."""
+
+
 ALLOWED: dict[RunStatus, set[RunStatus]] = {
     RunStatus.QUEUED: {RunStatus.RUNNING, RunStatus.CANCELLED},
     RunStatus.RUNNING: {
@@ -158,6 +162,27 @@ class RunRepository:
         for run_id in ids:
             self._event(run_id, "requeued_after_stale_heartbeat", now)
         return ids
+
+    def retry_failed(self, run_id: UUID, now: datetime) -> RunRow:
+        row = self._session.scalar(select(RunRow).where(RunRow.id == run_id).with_for_update())
+        if row is None:
+            raise KeyError(str(run_id))
+        if RunStatus(row.status) is not RunStatus.FAILED:
+            raise RunRetryNotAllowed(row.status)
+        row.status = RunStatus.QUEUED.value
+        row.stage = None
+        row.progress = 0
+        row.started_at = None
+        row.heartbeat_at = None
+        row.finished_at = None
+        row.retry_count += 1
+        row.error_code = None
+        row.error_message = None
+        row.claim_owner = None
+        row.claim_token = None
+        self._event(run_id, "retry_requested", now)
+        self._session.flush()
+        return row
 
     def _event(self, run_id: UUID, event_type: str, now: datetime) -> None:
         self._session.add(

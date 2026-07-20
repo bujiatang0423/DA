@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { listRuns, type RunDetail } from "../../shared/api/client";
+import { listRuns, retryRun, type RunDetail } from "../../shared/api/client";
 
 const labels: Record<string, string> = {
   candidate_recommendation: "候选推荐",
@@ -47,6 +47,7 @@ export function RunsPage(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
+  const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
 
   const refresh = async (): Promise<void> => {
     setLoading(true);
@@ -57,6 +58,19 @@ export function RunsPage(): JSX.Element {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const retry = async (runId: string): Promise<void> => {
+    setRetryingRunId(runId);
+    setError(null);
+    try {
+      await retryRun(runId);
+      await refresh();
+    } catch {
+      setError("重试请求未被接受，请刷新后确认任务状态。");
+    } finally {
+      setRetryingRunId(null);
     }
   };
 
@@ -176,7 +190,18 @@ export function RunsPage(): JSX.Element {
                     </div>
                   </td>
                   <td><RunLinks run={run} /></td>
-                  <td><span className="status-badge status-warning">人工确认</span></td>
+                  <td>
+                    <span className="status-badge status-warning">人工确认</span>
+                    {run.status === "failed" ? (
+                      <button
+                        className="btn btn-secondary"
+                        disabled={retryingRunId === run.run_id}
+                        onClick={() => void retry(run.run_id)}
+                      >
+                        {retryingRunId === run.run_id ? "重试中…" : "重试任务"}
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

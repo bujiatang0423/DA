@@ -2,6 +2,7 @@ from datetime import datetime, UTC
 from uuid import UUID
 from fastapi import APIRouter, Header, Response
 
+from backend.app.contracts.common import ErrorResponse
 from backend.app.contracts.runs import Page, RunDetail, RunKind, RunRef
 from backend.app.features.runs.service import RunsService
 
@@ -20,6 +21,17 @@ def build_router(service: RunsService) -> APIRouter:
     @router.get("/{run_id}/artifacts")
     def artifacts(run_id: UUID) -> list[dict[str, object]]:
         return service.artifacts(run_id)
+
+    @router.post(
+        "/{run_id}/retry",
+        response_model=RunRef,
+        status_code=202,
+        responses={409: {"model": ErrorResponse}},
+    )
+    def retry_run(run_id: UUID, response: Response) -> RunRef:
+        result = service.retry(run_id, datetime.now(UTC))
+        response.headers["Location"] = result.links.self
+        return result
 
     @router.post("", response_model=RunRef, status_code=202)
     def submit_run(
