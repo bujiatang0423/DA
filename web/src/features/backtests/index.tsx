@@ -18,6 +18,7 @@ export function BacktestsPage(): JSX.Element {
   const [group, setGroup] = useState("A");
   const [result, setResult] = useState<BacktestResult>();
   const [runStatus, setRunStatus] = useState<string>();
+  const [submissionGeneration, setSubmissionGeneration] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string>();
@@ -73,7 +74,7 @@ export function BacktestsPage(): JSX.Element {
         clearTimeout(retry);
       }
     };
-  }, [runId]);
+  }, [runId, submissionGeneration]);
 
   useEffect(() => {
     if (!runId || runStatus !== "succeeded") {
@@ -101,7 +102,7 @@ export function BacktestsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [group, runId, runStatus]);
+  }, [group, runId, runStatus, submissionGeneration]);
 
   const submit = async (): Promise<void> => {
     setSubmitting(true);
@@ -111,6 +112,7 @@ export function BacktestsPage(): JSX.Element {
     try {
       const run = await submitBacktest(request);
       setRunId(run.run_id);
+      setSubmissionGeneration((generation) => generation + 1);
     } catch {
       setError("回测任务提交失败，请检查研究参数后重试。");
     } finally {

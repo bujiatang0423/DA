@@ -111,6 +111,29 @@ test("checks queued runs without fetching unavailable result data", async () => 
   expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/v1/backtests/run-queued"));
 });
 
+test("reloads an idempotent run when the same request is submitted again", async () => {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/v1/backtests") {
+      return new Response(JSON.stringify({ run_id: "same-run" }), { status: 202 });
+    }
+    if (url === "/api/v1/runs/same-run") {
+      return new Response(JSON.stringify({ run_id: "same-run", status: "succeeded" }));
+    }
+    return new Response(JSON.stringify(resultResponse("A")));
+  });
+
+  render(<BacktestsPage />);
+  const submit = screen.getByRole("button", { name: "开始回测" });
+  fireEvent.click(submit);
+  expect(await screen.findByText("A-only-metric")).toBeTruthy();
+
+  fireEvent.click(submit);
+  expect(screen.queryByText("A-only-metric")).toBeNull();
+  expect(await screen.findByText("A-only-metric")).toBeTruthy();
+  expect(fetch).toHaveBeenCalledTimes(6);
+});
+
 test("uses run status before results and stops safely when a run fails", async () => {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input);
