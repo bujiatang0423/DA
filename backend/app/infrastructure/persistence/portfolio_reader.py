@@ -132,7 +132,7 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             effective_stop=None,
             highest_close=None,
             add_count=0,
-            batch_id="legacy",
+            batch_id=row.batch_id,
             buy_date=None,
         )
         for row in rows

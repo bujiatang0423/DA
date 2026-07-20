@@ -27,6 +27,14 @@ class FakeHoldingAnalysisRepository:
         matches = [result for result in self.saved if result.portfolio_id == portfolio_id]
         return max(matches, key=lambda result: (result.as_of_time, result.run_id), default=None)
 
+    def at(self, portfolio_id: str, as_of_time: datetime) -> HoldingAnalysisResult | None:
+        matches = [
+            result
+            for result in self.saved
+            if result.portfolio_id == portfolio_id and result.as_of_time == as_of_time
+        ]
+        return max(matches, key=lambda result: result.run_id, default=None)
+
 
 @dataclass
 class FakePointInTimeWarehouse:

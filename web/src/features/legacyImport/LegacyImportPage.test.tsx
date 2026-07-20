@@ -32,6 +32,8 @@ test("requires explicit confirmation before showing a frozen import batch", asyn
   vi.mocked(legacyImportApi.confirm).mockResolvedValue({
     batch_id: "batch-1",
     manifest_sha256: "a".repeat(64),
+    portfolio_id: "main",
+    effective_at: "2026-07-19T09:00:00+08:00",
     raw_file_count: 3,
     opening_position_count: 1,
     historical_snapshot_count: 2,
@@ -52,4 +54,8 @@ test("requires explicit confirmation before showing a frozen import batch", asyn
   await waitFor(() => expect(screen.getByText("batch-1")).toBeTruthy());
   expect(screen.getByText("首次导入")).toBeTruthy();
   expect(screen.getByText("不自动触发持仓分析")).toBeTruthy();
+  const analysisLink = screen.getByRole("link", { name: "打开持仓分析" });
+  expect(analysisLink.getAttribute("href")).toContain("/holdings?");
+  expect(analysisLink.getAttribute("href")).toContain("batch_id=batch-1");
+  expect(analysisLink.getAttribute("href")).toContain("manifest_sha256=");
 });

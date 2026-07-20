@@ -4,6 +4,7 @@ from backend.app.ports.portfolio import PortfolioReader
 from backend.app.ports.portfolio import PortfolioWriter
 from backend.app.core.clock import Clock
 from .router import build_router
+from .router import LegacyImportProvenanceReader
 from .maintenance_router import build_maintenance_router
 from backend.app.infrastructure.persistence.portfolio_maintenance import (
     SqlPortfolioMaintenanceService,
@@ -21,6 +22,7 @@ def build_holdings_feature(
     result_repository: HoldingResultRepository | None = None,
     analysis_service: V212HoldingAnalysisService | None = None,
     portfolio_writer: PortfolioWriter | None = None,
+    import_provenance_reader: LegacyImportProvenanceReader | None = None,
     clock: Clock | None = None,
 ) -> FeatureModule:
     router = build_router(
@@ -29,6 +31,7 @@ def build_holdings_feature(
         result_repository,
         portfolio_reader=reader,
         portfolio_writer=portfolio_writer,
+        import_provenance_reader=import_provenance_reader,
         clock=clock,
     )
     if maintenance is not None:

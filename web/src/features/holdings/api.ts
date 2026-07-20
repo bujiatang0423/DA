@@ -76,6 +76,15 @@ export interface PositionPage {
   cash: string;
   equity: string;
   items: PositionItem[];
+  import_provenance: {
+    batch_id: string;
+    manifest_sha256: string;
+  } | null;
+}
+
+export interface ImportProvenanceRequest {
+  batchId: string;
+  manifestSha256: string;
 }
 
 export interface PositionCorrection {
@@ -128,14 +137,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function queryForPortfolio(portfolioId: string): string {
-  return `?portfolio_id=${encodeURIComponent(portfolioId)}`;
+function queryForPortfolio(
+  portfolioId: string,
+  asOfTime?: string,
+  importProvenance?: ImportProvenanceRequest,
+): string {
+  const query = new URLSearchParams({ portfolio_id: portfolioId });
+  if (asOfTime) {
+    query.set("as_of_time", asOfTime);
+  }
+  if (importProvenance) {
+    query.set("import_batch_id", importProvenance.batchId);
+    query.set("import_manifest_sha256", importProvenance.manifestSha256);
+  }
+  return `?${query.toString()}`;
 }
 
 export const holdingApi = {
-  positions: (portfolioId: string): Promise<PositionPage> =>
+  positions: (
+    portfolioId: string,
+    asOfTime?: string,
+    importProvenance?: ImportProvenanceRequest,
+  ): Promise<PositionPage> =>
     request<PositionPage>(
-      `/api/v1/portfolio/positions${queryForPortfolio(portfolioId)}`,
+      `/api/v1/portfolio/positions${queryForPortfolio(
+        portfolioId,
+        asOfTime,
+        importProvenance,
+      )}`,
     ),
   correctPositions: (requestBody: PositionCorrection): Promise<PositionPage> =>
     request<PositionPage>("/api/v1/portfolio/positions", {
@@ -149,10 +178,10 @@ export const holdingApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     }),
-  latest: async (portfolioId: string): Promise<HoldingResult | null> => {
+  latest: async (portfolioId: string, asOfTime?: string): Promise<HoldingResult | null> => {
     try {
       return await request<HoldingResult>(
-        `/api/v1/holding-analyses/latest${queryForPortfolio(portfolioId)}`,
+        `/api/v1/holding-analyses/latest${queryForPortfolio(portfolioId, asOfTime)}`,
       );
     } catch (error) {
       if (error instanceof HoldingApiError && error.status === 404) {

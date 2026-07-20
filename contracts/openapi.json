@@ -1018,10 +1018,33 @@
         "title": "LegacyImportPreviewResponse",
         "type": "object"
       },
+      "LegacyImportProvenanceResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256"
+        ],
+        "title": "LegacyImportProvenanceResponse",
+        "type": "object"
+      },
       "LegacyImportResultResponse": {
         "properties": {
           "batch_id": {
             "title": "Batch Id",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
             "type": "string"
           },
           "historical_snapshot_count": {
@@ -1040,6 +1063,10 @@
             "title": "Opening Position Count",
             "type": "integer"
           },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
           "raw_file_count": {
             "title": "Raw File Count",
             "type": "integer"
@@ -1048,6 +1075,8 @@
         "required": [
           "batch_id",
           "manifest_sha256",
+          "portfolio_id",
+          "effective_at",
           "raw_file_count",
           "opening_position_count",
           "historical_snapshot_count",
@@ -1573,6 +1602,16 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Equity",
             "type": "string"
+          },
+          "import_provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegacyImportProvenanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "items": {
             "items": {
@@ -2736,6 +2775,23 @@
               "title": "Portfolio Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
+            }
           }
         ],
         "responses": {
@@ -2861,6 +2917,23 @@
               "default": "default",
               "title": "Portfolio Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
             }
           }
         ],
@@ -3301,6 +3374,38 @@
                 }
               ],
               "title": "As Of Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_manifest_sha256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Manifest Sha256"
             }
           }
         ],
