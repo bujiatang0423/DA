@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
 from backend.app.infrastructure.persistence.models import Base
@@ -75,6 +76,24 @@ class SqlHoldingAnalysisRepository:
     def save(self, result: HoldingAnalysisResult) -> None:
         with self._sessions.begin() as session:
             existing = session.get(HoldingResultRow, result.run_id)
+            if existing is None:
+                try:
+                    with session.begin_nested():
+                        session.add(
+                            HoldingResultRow(
+                                run_id=result.run_id,
+                                as_of_time=result.as_of_time,
+                                payload=_encode(result),
+                            )
+                        )
+                        # This is a separate projection with an FK, not an ORM relationship.
+                        # Persist the parent before adding its normalized item rows.
+                        session.flush()
+                except IntegrityError:
+                    existing = session.get(HoldingResultRow, result.run_id)
+                    if existing is None:
+                        raise
+
             if existing is not None:
                 if str(existing.payload.get("manifest_hash")) != result.manifest_hash:
                     raise HoldingAnalysisConflict(result.run_id)
@@ -91,13 +110,6 @@ class SqlHoldingAnalysisRepository:
                         )
                     )
                 return
-            session.add(
-                HoldingResultRow(
-                    run_id=result.run_id,
-                    as_of_time=result.as_of_time,
-                    payload=_encode(result),
-                )
-            )
             session.add_all(
                 _item_row(result.run_id, item_index, item)
                 for item_index, item in enumerate(
