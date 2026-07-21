@@ -20,7 +20,7 @@ test("loads imported opening positions from the unified portfolio endpoint", asy
             origin: "legacy_opening_balance",
             quantity: 1100,
             available_to_sell: 0,
-            average_cost: "31.191",
+            average_cost: "31.191000",
             effective_stop: null,
             highest_close: null,
             strategy_book: null,
