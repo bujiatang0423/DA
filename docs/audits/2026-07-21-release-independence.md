@@ -5,6 +5,8 @@
 This record covers the DA runtime boundary and the release checks that prevent accidental
 coupling to the legacy workspace, unsafe filesystem links, uncontrolled output, and sensitive
 request logging. It does not certify external provider availability or trading execution.
+This is a local repository audit only: it does not claim a production release, Docker build, or
+PostgreSQL service availability.
 
 ## Checks
 
@@ -12,6 +14,9 @@ request logging. It does not certify external provider availability or trading e
 - `python -m pytest backend/tests/test_independent_paths.py -q`
 - `python tools/audit_release.py`
 - `python -m ruff check tools/audit_release.py backend/tests/system/test_release_audit.py`
+
+No Docker daemon or production deployment is required by these checks; PostgreSQL checks, when
+run separately, must target the explicitly configured loopback service.
 
 The checks cover `tools/audit_release.py` and the independent-path test
 `backend/tests/test_independent_paths.py`. The release audit scans the runtime roots and reports
