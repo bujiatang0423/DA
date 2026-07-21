@@ -752,6 +752,24 @@
         "title": "HoldingFactorsResponse",
         "type": "object"
       },
+      "HoldingImportProvenanceResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256"
+        ],
+        "title": "HoldingImportProvenanceResponse",
+        "type": "object"
+      },
       "HoldingRisk": {
         "additionalProperties": false,
         "properties": {
@@ -932,6 +950,40 @@
         "title": "HoldingRiskSummaryResponse",
         "type": "object"
       },
+      "LegacyHoldingAnalysisLinkResponse": {
+        "properties": {
+          "as_of_time": {
+            "format": "date-time",
+            "title": "As Of Time",
+            "type": "string"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "import_batch_id": {
+            "title": "Import Batch Id",
+            "type": "string"
+          },
+          "import_manifest_sha256": {
+            "title": "Import Manifest Sha256",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portfolio_id",
+          "as_of_time",
+          "import_batch_id",
+          "import_manifest_sha256",
+          "href"
+        ],
+        "title": "LegacyHoldingAnalysisLinkResponse",
+        "type": "object"
+      },
       "LegacyImportConfirmRequest": {
         "properties": {
           "confirmation_token": {
@@ -1080,6 +1132,9 @@
             "title": "Historical Snapshot Count",
             "type": "integer"
           },
+          "holding_analysis": {
+            "$ref": "#/components/schemas/LegacyHoldingAnalysisLinkResponse"
+          },
           "idempotent": {
             "title": "Idempotent",
             "type": "boolean"
@@ -1103,13 +1158,14 @@
         },
         "required": [
           "batch_id",
-          "manifest_sha256",
           "portfolio_id",
           "effective_at",
+          "manifest_sha256",
           "raw_file_count",
           "opening_position_count",
           "historical_snapshot_count",
-          "idempotent"
+          "idempotent",
+          "holding_analysis"
         ],
         "title": "LegacyImportResultResponse",
         "type": "object"
@@ -2278,6 +2334,32 @@
             "title": "As Of Time",
             "type": "string"
           },
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "import_manifest_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Manifest Sha256"
+          },
           "portfolio_id": {
             "minLength": 1,
             "title": "Portfolio Id",
@@ -2333,6 +2415,13 @@
             "title": "Portfolio Id",
             "type": "string"
           },
+          "portfolio_imports": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingImportProvenanceResponse"
+            },
+            "title": "Portfolio Imports",
+            "type": "array"
+          },
           "run_id": {
             "title": "Run Id",
             "type": "string"
@@ -2355,7 +2444,8 @@
           "data_grade",
           "llm_grade",
           "summary",
-          "items"
+          "items",
+          "portfolio_imports"
         ],
         "title": "HoldingAnalysisResponse",
         "type": "object"

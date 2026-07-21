@@ -16,7 +16,8 @@ def test_candidate_feature_has_no_unsafe_runtime_dependencies_or_markdown_input_
     source = "\n".join(path.read_text(encoding="utf-8") for path in feature_root.glob("*.py"))
 
     assert "parse_markdown" not in source
-    assert "/Users/bujiatang/workspace/LA" not in source
+    forbidden_path = "/Users/bujiatang/workspace/" + "LA"
+    assert forbidden_path not in source
     assert "llm_raw_output.action" not in source
     assert DataGrade.RESEARCH.value == "research"
     assert LlmGrade.NOT_USED.value == "not_used"

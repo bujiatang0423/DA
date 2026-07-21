@@ -746,6 +746,13 @@ export interface components {
             /** V */
             v: string;
         };
+        /** HoldingImportProvenanceResponse */
+        HoldingImportProvenanceResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+        };
         /** HoldingRisk */
         HoldingRisk: {
             /** Average Cost */
@@ -791,6 +798,22 @@ export interface components {
             market_state: string;
             /** Portfolio Risk Pct */
             portfolio_risk_pct: string;
+        };
+        /** LegacyHoldingAnalysisLinkResponse */
+        LegacyHoldingAnalysisLinkResponse: {
+            /**
+             * As Of Time
+             * Format: date-time
+             */
+            as_of_time: string;
+            /** Href */
+            href: string;
+            /** Import Batch Id */
+            import_batch_id: string;
+            /** Import Manifest Sha256 */
+            import_manifest_sha256: string;
+            /** Portfolio Id */
+            portfolio_id: string;
         };
         /** LegacyImportConfirmRequest */
         LegacyImportConfirmRequest: {
@@ -858,6 +881,7 @@ export interface components {
             effective_at: string;
             /** Historical Snapshot Count */
             historical_snapshot_count: number;
+            holding_analysis: components["schemas"]["LegacyHoldingAnalysisLinkResponse"];
             /** Idempotent */
             idempotent: boolean;
             /** Manifest Sha256 */
@@ -1254,6 +1278,10 @@ export interface components {
              * Format: date-time
              */
             as_of_time: string;
+            /** Import Batch Id */
+            import_batch_id?: string | null;
+            /** Import Manifest Sha256 */
+            import_manifest_sha256?: string | null;
             /** Portfolio Id */
             portfolio_id: string;
         };
@@ -1286,6 +1314,8 @@ export interface components {
             manifest_hash: string;
             /** Portfolio Id */
             portfolio_id: string;
+            /** Portfolio Imports */
+            portfolio_imports: components["schemas"]["HoldingImportProvenanceResponse"][];
             /** Run Id */
             run_id: string;
             /**
