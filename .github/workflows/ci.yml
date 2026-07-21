@@ -2,15 +2,9 @@ name: ci
 on: [push, pull_request]
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env: {POSTGRES_USER: da, POSTGRES_PASSWORD: da, POSTGRES_DB: da_test}
-        ports: ["55433:5432"]
-        options: >-
-          --health-cmd="pg_isready -U da -d da_test"
-          --health-interval=5s --health-timeout=5s --health-retries=10
+    # This workflow is intended for a self-hosted runner with PostgreSQL
+    # already listening on 127.0.0.1:5432. It deliberately does not require Docker.
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,7 +22,7 @@ jobs:
       - run: python -m tools.export_openapi
       - run: git diff --exit-code -- contracts/openapi.json
       - run: python -m pytest -m postgres
-        env: {TEST_DATABASE_URL: postgresql+psycopg://da:da@127.0.0.1:55433/da_test}
+        env: {TEST_DATABASE_URL: postgresql+psycopg://da:da@127.0.0.1:5432/da_test}
       - uses: actions/setup-node@v4
         with: {node-version: "20"}
       - run: npm ci
