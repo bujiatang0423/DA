@@ -232,6 +232,9 @@ class PitAuditRunner:
         if snapshot.quality.has_errors:
             failures.append(f"snapshot:{failure_date}:QUALITY_ERROR")
             return
+        if not _is_sha256(snapshot.manifest_hash):
+            failures.append(f"snapshot:{failure_date}:MANIFEST_HASH_INVALID")
+            return
         try:
             coverage_evidence = self._warehouse.coverage_evidence(
                 as_of_time=as_of_time,

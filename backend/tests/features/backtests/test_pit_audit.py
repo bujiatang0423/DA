@@ -379,6 +379,31 @@ def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
     )
 
 
+def test_audit_rejects_a_poison_snapshot_manifest_hash() -> None:
+    universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
+
+    class PoisonManifestWarehouse(CandidateWarehouse):
+        def candidate_snapshot(
+            self,
+            *,
+            as_of_time: datetime,
+            scope: SnapshotScope,
+        ) -> PointInTimeSnapshot:
+            snapshot = super().candidate_snapshot(as_of_time=as_of_time, scope=scope)
+            return replace(snapshot, manifest_hash="poison-manifest")
+
+    report = PitAuditRunner(
+        PoisonManifestWarehouse(complete_records(universe._values)),
+        (FIRST_DATE,),
+        universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is False
+    assert report.failures == ("snapshot:2020-06-01:MANIFEST_HASH_INVALID",)
+
+
 def test_empty_date_universe_fails_closed() -> None:
     universe = DateUniverse({FIRST_DATE: ()})
     report = PitAuditRunner(
