@@ -156,7 +156,7 @@ class FrozenE2EWarehouse:
                         "amount": 100_000_000,
                     },
                 )
-                for i in range(60)
+                for i in range(18)
             )
             facts = tuple(
                 TemporalRecord(
