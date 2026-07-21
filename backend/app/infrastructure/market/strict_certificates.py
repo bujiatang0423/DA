@@ -196,7 +196,6 @@ def bundle_set_hash_for_range(session: Session, start: date, end: date) -> str:
     if not rows:
         raise ValueError("no persisted PIT bundle covers the requested range")
 
-    cursor = start
     manifest_sets: set[tuple[str, ...]] = set()
     segment_end = start - timedelta(days=1)
     active: list[PitBundleRow] = []
@@ -205,12 +204,8 @@ def bundle_set_hash_for_range(session: Session, start: date, end: date) -> str:
         row_end = min(end, row.coverage_end)
         if row_start > row_end:
             continue
-        if row_start > cursor and not active:
-            raise ValueError("persisted PIT bundle coverage has a gap")
         if row_start > segment_end + timedelta(days=1):
-            manifest_sets.add(tuple(sorted(item.manifest_sha256 for item in active)))
-            active = []
-            cursor = row_start
+            raise ValueError("persisted PIT bundle coverage has a gap")
         active.append(row)
         segment_end = max(segment_end, row_end)
         if segment_end >= end:

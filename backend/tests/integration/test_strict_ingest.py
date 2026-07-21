@@ -144,7 +144,9 @@ def test_new_source_versions_append_without_overwriting_history(
         .group_by(DailyBarRawRow.source_record_id)
         .order_by(DailyBarRawRow.source_record_id)
     ).all()
-    assert source_versions == [("dbr-1", 2), ("dbr-2", 2)]
+    with first_bundle.file("daily_bars_raw").path.open(newline="", encoding="utf-8") as stream:
+        expected_source_ids = sorted(row["record_id"] for row in csv.DictReader(stream))
+    assert source_versions == [(source_id, 2) for source_id in expected_source_ids]
 
     disclosure_ids = {
         disclosure.id for disclosure in strict_pit_session.scalars(select(FinancialDisclosureRow))
