@@ -299,6 +299,8 @@ def _scope_covers(actual: SnapshotScope, expected: SnapshotScope) -> bool:
         actual.security_ids == expected.security_ids
         and actual.history_start == expected.history_start
         and set(actual.required_kinds).issuperset(expected.required_kinds)
+        and actual.market_id == expected.market_id
+        and actual.universe_id == expected.universe_id
     )
 
 

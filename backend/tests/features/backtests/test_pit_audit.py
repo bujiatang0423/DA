@@ -294,7 +294,7 @@ def test_missing_bar_or_status_for_one_visible_security_fails_closed() -> None:
     assert report.failures == ("daily_bar_raw:2020-06-01:ENTITY_COVERAGE_MISSING",)
 
 
-@pytest.mark.parametrize("change", ("scope", "as_of", "future"))
+@pytest.mark.parametrize("change", ("scope", "market", "as_of", "future"))
 def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
     universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
 
@@ -311,6 +311,14 @@ def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
             market_inputs = snapshot.market_inputs
             if change == "scope":
                 returned_scope = SnapshotScope(scope.security_ids, (DataKind.DAILY_BAR_RAW,))
+            if change == "market":
+                returned_scope = SnapshotScope(
+                    scope.security_ids,
+                    scope.required_kinds,
+                    scope.history_start,
+                    market_id="US",
+                    universe_id="SP500",
+                )
             if change == "as_of":
                 returned_as_of = as_of_time - timedelta(seconds=1)
             if change == "future":
@@ -343,8 +351,10 @@ def test_audit_rejects_adversarial_snapshot_contract_drift(change: str) -> None:
 
     assert report.passed is False
     assert (
-        report.failures == (f"snapshot:2020-06-01:{change.upper()}_MISMATCH",)
-        if change in {"scope", "as_of"}
+        report.failures == (
+            f"snapshot:2020-06-01:{'SCOPE' if change == 'market' else change.upper()}_MISMATCH",
+        )
+        if change in {"scope", "market", "as_of"}
         else ("snapshot:2020-06-01:FUTURE_RECORD",)
     )
 
