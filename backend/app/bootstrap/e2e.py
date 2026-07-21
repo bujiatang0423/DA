@@ -50,6 +50,10 @@ from backend.app.infrastructure.market.strict_certificates import (
 )
 from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
 from backend.app.infrastructure.persistence.strict_pit_rows import PitAuditReportRow
+from backend.app.infrastructure.persistence.portfolio_rows import (
+    PortfolioSnapshotProjectionRow,
+    PortfolioVersionRow,
+)
 
 
 class E2EConfigurationError(ValueError):
@@ -66,6 +70,10 @@ _STRICT_E2E_TABLES = (
     "fee_schedules"
 )
 _E2E_RUN_TABLES = "runs, worker_leases"
+_E2E_PORTFOLIO_TABLES = (
+    "portfolio_audit_events, portfolio_lot_projections, portfolio_snapshot_projections, "
+    "portfolio_versions"
+)
 
 
 def require_local_e2e_mode(environment: Mapping[str, str]) -> None:
@@ -301,7 +309,17 @@ def bootstrap_local_e2e_strict_pit(
     )
     with sessions() as session:
         session.execute(text(f"TRUNCATE TABLE {_E2E_RUN_TABLES} CASCADE"))
+        session.execute(text(f"TRUNCATE TABLE {_E2E_PORTFOLIO_TABLES} CASCADE"))
         session.execute(text(f"TRUNCATE TABLE {_STRICT_E2E_TABLES} CASCADE"))
+        session.add(PortfolioVersionRow(portfolio_id="default", version=0))
+        session.add(
+            PortfolioSnapshotProjectionRow(
+                portfolio_id="default",
+                as_of_time=E2E_BACKTEST_START,
+                cash="100000",
+                equity="100000",
+            )
+        )
         StrictPitIngestor(session).ingest(bundle)
         session.flush()
         authority = SqlPitCertificateAuthority(session, settings.pit_approval_secret)
