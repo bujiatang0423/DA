@@ -31,5 +31,6 @@ def test_feature_has_no_markdown_parser_or_la_runtime_dependency() -> None:
     source = "\n".join(path.read_text(encoding="utf-8") for path in files)
 
     assert "parse_markdown" not in source
-    assert "/Users/bujiatang/workspace/LA" not in source
+    forbidden_path = "/Users/bujiatang/workspace/" + "LA"
+    assert forbidden_path not in source
     assert "auto_trade_enabled=True" not in source
