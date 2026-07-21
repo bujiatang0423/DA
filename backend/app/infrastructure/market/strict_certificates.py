@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 import hmac
 from string import hexdigits
@@ -49,9 +49,10 @@ class SqlPitCertificateAuthority:
             raise ValueError("audit report scope identity does not match certificate scope")
         if not _is_sha256(report.bundle_set_hash) or not _is_sha256(report.audit_hash):
             raise ValueError("audit report integrity hashes are invalid")
-        start_hash = bundle_set_hash_for(self._session, report.coverage_start)
-        end_hash = bundle_set_hash_for(self._session, report.coverage_end)
-        if report.bundle_set_hash != start_hash or start_hash != end_hash:
+        covered_hash = bundle_set_hash_for_range(
+            self._session, report.coverage_start, report.coverage_end
+        )
+        if report.bundle_set_hash != covered_hash:
             raise ValueError("audit report does not match the persisted bundle set")
         records, lineage, issues = SqlStrictRecordReader(self._session).read(
             as_of_time=as_of_time,
@@ -176,6 +177,50 @@ def bundle_set_hash_for(session: Session, as_of_date: date) -> str:
     ).all()
     if not manifests:
         raise ValueError("no persisted PIT bundle covers the requested date")
+    return sha256("|".join(manifests).encode("utf-8")).hexdigest()
+
+
+def bundle_set_hash_for_range(session: Session, start: date, end: date) -> str:
+    """Return the bundle-set hash only when the complete date range is covered.
+
+    Certificates represent one immutable bundle set.  A range with a missing day
+    or a changing set of manifests cannot be certified by that single hash.
+    """
+    if start > end:
+        raise ValueError("bundle coverage start must not be after end")
+    rows = session.scalars(
+        select(PitBundleRow)
+        .where(PitBundleRow.coverage_end >= start, PitBundleRow.coverage_start <= end)
+        .order_by(PitBundleRow.coverage_start, PitBundleRow.coverage_end, PitBundleRow.id)
+    ).all()
+    if not rows:
+        raise ValueError("no persisted PIT bundle covers the requested range")
+
+    cursor = start
+    manifest_sets: set[tuple[str, ...]] = set()
+    segment_end = start - timedelta(days=1)
+    active: list[PitBundleRow] = []
+    for row in rows:
+        row_start = max(start, row.coverage_start)
+        row_end = min(end, row.coverage_end)
+        if row_start > row_end:
+            continue
+        if row_start > cursor and not active:
+            raise ValueError("persisted PIT bundle coverage has a gap")
+        if row_start > segment_end + timedelta(days=1):
+            manifest_sets.add(tuple(sorted(item.manifest_sha256 for item in active)))
+            active = []
+            cursor = row_start
+        active.append(row)
+        segment_end = max(segment_end, row_end)
+        if segment_end >= end:
+            break
+    if segment_end < end:
+        raise ValueError("persisted PIT bundle coverage has a gap")
+    manifest_sets.add(tuple(sorted(item.manifest_sha256 for item in active)))
+    if len(manifest_sets) != 1:
+        raise ValueError("persisted PIT bundle set changes within the certified range")
+    manifests = next(iter(manifest_sets))
     return sha256("|".join(manifests).encode("utf-8")).hexdigest()
 
 

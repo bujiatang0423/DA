@@ -16,6 +16,7 @@ from backend.app.infrastructure.market.strict_bundle import PitBundleManifest
 from backend.app.infrastructure.market.strict_certificates import (
     SqlPitCertificateAuthority,
     bundle_set_hash_for,
+    bundle_set_hash_for_range,
 )
 from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
 from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
@@ -25,6 +26,7 @@ from backend.app.infrastructure.persistence.strict_pit_rows import (
     DailyBarRawRow,
     MarketBreadthRow,
     PitAuditReportRow,
+    PitBundleRow,
     PitCertificateRow,
     PolicyDocumentRow,
 )
@@ -123,6 +125,35 @@ def test_production_build_requires_approved_persisted_audit_report(
 
 
 @pytest.mark.postgres
+def test_bundle_set_hash_rejects_uncovered_days(strict_session: Session) -> None:
+    strict_session.execute(delete(PitBundleRow))
+    strict_session.add_all(
+        [
+            PitBundleRow(
+                id="bundle-first",
+                manifest_sha256="1" * 64,
+                coverage_start=AS_OF.date().replace(day=1),
+                coverage_end=AS_OF.date().replace(day=10),
+            ),
+            PitBundleRow(
+                id="bundle-second",
+                manifest_sha256="2" * 64,
+                coverage_start=AS_OF.date().replace(day=12),
+                coverage_end=AS_OF.date().replace(day=30),
+            ),
+        ]
+    )
+    strict_session.commit()
+
+    with pytest.raises(ValueError, match="coverage has a gap"):
+        bundle_set_hash_for_range(
+            strict_session,
+            AS_OF.date().replace(day=1),
+            AS_OF.date().replace(day=30),
+        )
+
+
+@pytest.mark.postgres
 def test_strict_reader_selects_only_market_breadth_visible_at_the_snapshot(
     strict_session: Session,
 ) -> None:
@@ -135,6 +166,20 @@ def test_strict_reader_selects_only_market_breadth_visible_at_the_snapshot(
     assert [(record.kind, record.payload["breadth"]) for record in records] == [
         (DataKind.MARKET_BREADTH, "0.610000")
     ]
+
+
+@pytest.mark.postgres
+def test_strict_reader_does_not_return_a_future_trading_session(
+    strict_session: Session,
+) -> None:
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.TRADING_CALENDAR,)),
+    )
+
+    assert issues == ()
+    assert all(record.event_time <= AS_OF for record in records)
+    assert AS_OF.date().replace(day=2) not in {record.event_time.date() for record in records}
 
 
 @pytest.mark.postgres
