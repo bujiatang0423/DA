@@ -3,7 +3,11 @@ from backend.app.core.strategy.types import SecurityEvaluation
 from .models import *
 
 
-def project_security(value: SecurityEvaluation) -> CandidateItem:
+def project_security(
+    value: SecurityEvaluation,
+    *,
+    evidence_refs: tuple[str, ...] = (),
+) -> CandidateItem:
     f = (
         value.factors
         or type("F", (), {"p": 0, "f": 0, "r": 0, "t": 0, "v": 0, "s": 0, "percentile": 0})()
@@ -38,5 +42,5 @@ def project_security(value: SecurityEvaluation) -> CandidateItem:
         "risk or market invalidation",
         value.reasons,
         value.quality_codes,
-        (),
+        evidence_refs,
     )

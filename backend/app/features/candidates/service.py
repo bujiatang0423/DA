@@ -80,7 +80,13 @@ class CandidateService:
         llm_grade, llm_quality = derive_llm_grade(llm_manifest)
         items = tuple(
             sorted(
-                (project_security(item) for item in evaluation.securities),
+                (
+                    project_security(
+                        item,
+                        evidence_refs=_evidence_refs(snapshot, item.security_id),
+                    )
+                    for item in evaluation.securities
+                ),
                 key=lambda item: (
                     item.bucket.value,
                     item.factors.percentile_rank,
@@ -105,8 +111,35 @@ class CandidateService:
 
 
 def _llm_manifest(snapshot: object) -> dict[str, object] | None:
-    records = getattr(snapshot, "market_inputs", ())
+    records = _snapshot_records(snapshot)
     llm = [record for record in records if record.kind is DataKind.LLM_FACTOR]
     if not llm:
         return None
-    return {"grade": "reconstructed", "valid": True}
+    payload = dict(llm[-1].payload)
+    return {
+        "grade": str(payload.get("grade", "reconstructed")),
+        "valid": bool(payload.get("valid", False)),
+    }
+
+
+def _snapshot_records(snapshot: object) -> tuple[object, ...]:
+    market = tuple(getattr(snapshot, "market_inputs", ()))
+    security = tuple(
+        record
+        for observation in getattr(snapshot, "security_observations", ())
+        for record in observation.records
+    )
+    return (*market, *security)
+
+
+def _evidence_refs(snapshot: object, security_id: str) -> tuple[str, ...]:
+    records = sorted(
+        (
+            record
+            for record in _snapshot_records(snapshot)
+            if record.entity_id == security_id
+            and record.kind in (DataKind.DAILY_BAR_RAW, DataKind.LLM_FACTOR)
+        ),
+        key=lambda record: (record.kind.value, record.record_id),
+    )
+    return tuple(f"pit:{record.kind.value}:{record.source_artifact_hash}" for record in records)
