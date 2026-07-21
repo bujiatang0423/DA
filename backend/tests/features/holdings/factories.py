@@ -23,6 +23,7 @@ from backend.app.core.strategy.types import (
     MarketState,
     SecurityEvaluation,
     StrategyEvaluation,
+    StrategyPortfolioSummary,
 )
 from backend.app.features.holdings.models import (
     AdviceAction,
@@ -210,6 +211,11 @@ def strategy_evaluation(
             confidence="medium",
             week_cooldown_remaining=0,
             month_cooldown_remaining=0,
+        ),
+        portfolio_summary=StrategyPortfolioSummary(
+            gross_exposure_pct=65.0,
+            portfolio_risk_pct=1.25,
+            market_state=MarketState.NEUTRAL,
         ),
         securities=securities or (security_evaluation(),),
     )
