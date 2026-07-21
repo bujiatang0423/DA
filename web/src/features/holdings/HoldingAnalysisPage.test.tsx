@@ -34,6 +34,7 @@ const positionPageFixture: PositionPage = {
   version: 7,
   cash: "350000",
   equity: "1000000",
+  import_provenance: null,
   items: [
     {
       security_id: "000001.SZ",
