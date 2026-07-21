@@ -40,6 +40,12 @@ class HoldingRiskSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldingImportProvenance:
+    batch_id: str
+    manifest_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class HoldingAdviceItem:
     security_id: str
     security_name: str
@@ -73,6 +79,7 @@ class HoldingAnalysisResult:
     llm_grade: LlmGrade
     summary: HoldingRiskSummary
     items: tuple[HoldingAdviceItem, ...]
+    portfolio_imports: tuple[HoldingImportProvenance, ...] = ()
 
     @property
     def auto_trade_enabled(self) -> bool:

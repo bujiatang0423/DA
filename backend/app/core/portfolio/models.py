@@ -50,6 +50,7 @@ class PortfolioLot:
     add_count: int
     batch_id: str = "default"
     buy_date: date | None = None
+    import_manifest_sha256: str | None = None
 
 
 @dataclass(frozen=True)

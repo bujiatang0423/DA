@@ -35,6 +35,8 @@ class LegacyImportConfirmRequest(LegacyImportPreviewRequest):
 
 class LegacyImportResultResponse(BaseModel):
     batch_id: str
+    portfolio_id: str
+    effective_at: datetime
     manifest_sha256: str
     portfolio_id: str
     effective_at: datetime
@@ -42,3 +44,12 @@ class LegacyImportResultResponse(BaseModel):
     opening_position_count: int
     historical_snapshot_count: int
     idempotent: bool
+    holding_analysis: "LegacyHoldingAnalysisLinkResponse"
+
+
+class LegacyHoldingAnalysisLinkResponse(BaseModel):
+    portfolio_id: str
+    as_of_time: datetime
+    import_batch_id: str
+    import_manifest_sha256: str
+    href: str

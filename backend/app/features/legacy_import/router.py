@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from backend.app.features.legacy_import.contracts import (
     LegacyImportConfirmRequest,
+    LegacyHoldingAnalysisLinkResponse,
     LegacyImportPreviewRequest,
     LegacyImportPreviewResponse,
     LegacyImportResultResponse,
@@ -11,6 +12,7 @@ from backend.app.features.legacy_import.contracts import (
 from backend.app.features.legacy_import.inspect import LegacySourcePathError
 from backend.app.features.legacy_import.web_service import (
     LegacyImportConfirmationError,
+    LegacyImportResult,
     LegacyImportWebService,
 )
 
@@ -55,13 +57,31 @@ def build_router(service: LegacyImportWebService) -> APIRouter:
             raise HTTPException(status_code=409, detail="manual confirmation is required") from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="legacy import source not found") from exc
-        return LegacyImportResultResponse(**value.__dict__)
+        return _result_response(value)
 
     @router.get("/{batch_id}", response_model=LegacyImportResultResponse)
     def result(batch_id: str) -> LegacyImportResultResponse:
         try:
-            return LegacyImportResultResponse(**service.result(batch_id).__dict__)
+            return _result_response(service.result(batch_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="legacy import batch not found") from exc
 
     return router
+
+
+def _result_response(result: LegacyImportResult) -> LegacyImportResultResponse:
+    if result.holding_analysis is None:
+        raise RuntimeError("legacy import result is missing its manual analysis link")
+    return LegacyImportResultResponse(
+        batch_id=result.batch_id,
+        portfolio_id=result.portfolio_id,
+        effective_at=result.effective_at,
+        manifest_sha256=result.manifest_sha256,
+        raw_file_count=result.raw_file_count,
+        opening_position_count=result.opening_position_count,
+        historical_snapshot_count=result.historical_snapshot_count,
+        idempotent=result.idempotent,
+        holding_analysis=LegacyHoldingAnalysisLinkResponse(
+            **result.holding_analysis.__dict__
+        ),
+    )

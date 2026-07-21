@@ -66,6 +66,7 @@ def test_reader_filters_legacy_rows_and_applies_t_plus_one() -> None:
     same_day = SqlPortfolioReader(sessions).snapshot(portfolio_id="p", as_of_time=effective)
     assert same_day.lots[0].origin.value == "legacy_opening_balance"
     assert same_day.lots[0].batch_id == "batch-1"
+    assert same_day.lots[0].import_manifest_sha256 == "a" * 64
     assert same_day.lots[0].available_to_sell == 0
     next_day = SqlPortfolioReader(sessions).snapshot(
         portfolio_id="p", as_of_time=datetime(2026, 7, 17, 9, 30, tzinfo=UTC)

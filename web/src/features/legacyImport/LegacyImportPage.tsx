@@ -8,16 +8,6 @@ function asShanghaiIso(value: string): string {
   return `${value}:00+08:00`;
 }
 
-function holdingAnalysisHref(result: LegacyImportResult): string {
-  const query = new URLSearchParams({
-    portfolio_id: result.portfolio_id,
-    as_of_time: result.effective_at,
-    batch_id: result.batch_id,
-    manifest_sha256: result.manifest_sha256,
-  });
-  return `/holdings?${query.toString()}`;
-}
-
 export function LegacyImportPage(): JSX.Element {
   const [sources, setSources] = useState<LegacyImportSource[]>([]);
   const [sourceId, setSourceId] = useState("");
@@ -114,7 +104,9 @@ export function LegacyImportPage(): JSX.Element {
         <p className="muted">Manifest {result.manifest_sha256}</p>
         <p>{result.idempotent ? "重复导入，已复用已有批次" : "首次导入"}</p>
         <p>原始文件 {result.raw_file_count} · opening positions {result.opening_position_count} · 历史快照 {result.historical_snapshot_count}</p>
-        <a className="btn btn-secondary" href={holdingAnalysisHref(result)}>打开持仓分析</a>
+        <a className="btn btn-secondary" href={result.holding_analysis.href}>
+          手动分析已导入持仓
+        </a>
       </div> : null}
     </section>
   );

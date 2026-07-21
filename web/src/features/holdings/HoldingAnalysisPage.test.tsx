@@ -34,7 +34,6 @@ const positionPageFixture: PositionPage = {
   version: 7,
   cash: "350000",
   equity: "1000000",
-  import_provenance: null,
   items: [
     {
       security_id: "000001.SZ",
@@ -125,10 +124,7 @@ beforeEach(() => {
   vi.mocked(holdingApi.latest).mockResolvedValue(holdingResultFixture);
 });
 
-afterEach(() => {
-  cleanup();
-  window.history.replaceState({}, "", "/holdings");
-});
+afterEach(cleanup);
 
 test("renders risk-first, legacy, and manual-only semantics", async () => {
   renderPage();
@@ -166,58 +162,29 @@ test("submits an asynchronous analysis for the loaded portfolio", async () => {
   ).toBe(`/runs/${runRefFixture.run_id}`);
 });
 
-test("uses explicit imported portfolio context only after manual analysis submission", async () => {
+test("only submits an imported portfolio analysis after its manual action", async () => {
+  vi.mocked(holdingApi.submit).mockResolvedValue(runRefFixture);
   window.history.pushState(
     {},
     "",
-    "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00Z&batch_id=batch-1&manifest_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00%2B08%3A00&import_batch_id=batch-1&import_manifest_sha256=abc",
   );
-  vi.mocked(holdingApi.positions).mockResolvedValue({
-    ...positionPageFixture,
-    portfolio_id: "main",
-    as_of_time: "2026-07-19T09:00:00Z",
-    import_provenance: {
-      batch_id: "batch-1",
-      manifest_sha256: "a".repeat(64),
-    },
-  });
-  vi.mocked(holdingApi.submit).mockResolvedValue(runRefFixture);
-
   renderPage();
 
-  await screen.findByText("导入批次：batch-1");
-  expect(holdingApi.positions).toHaveBeenCalledWith("main", "2026-07-19T09:00:00Z", {
-    batchId: "batch-1",
-    manifestSha256: "a".repeat(64),
-  });
-  expect(holdingApi.latest).toHaveBeenCalledWith("main", "2026-07-19T09:00:00Z");
-  expect(screen.getByText("尚未运行持仓分析。")).toBeTruthy();
-  expect(screen.queryByText("全部退出")).toBeNull();
+  await screen.findByRole("button", { name: "分析当前持仓" });
   expect(holdingApi.submit).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "分析当前持仓" }));
 
   await waitFor(() => expect(holdingApi.submit).toHaveBeenCalledOnce());
   expect(holdingApi.submit).toHaveBeenCalledWith(
-    { portfolio_id: "main", as_of_time: "2026-07-19T09:00:00Z" },
-    "holding:main:2026-07-19T09:00:00Z",
+    expect.objectContaining({
+      portfolio_id: "main",
+      as_of_time: "2026-07-19T09:00:00+08:00",
+      import_batch_id: "batch-1",
+      import_manifest_sha256: "abc",
+    }),
+    expect.any(String),
   );
-});
-
-test("masks a tampered import URL when the server rejects its provenance", async () => {
-  const tamperedManifest = "b".repeat(64);
-  window.history.pushState(
-    {},
-    "",
-    `/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00Z&batch_id=batch-1&manifest_sha256=${tamperedManifest}`,
-  );
-  vi.mocked(holdingApi.positions).mockRejectedValue(new HoldingApiError(409));
-
-  renderPage();
-
-  expect((await screen.findByRole("alert")).textContent).toContain("持仓分析数据加载失败");
-  expect(document.body.textContent).not.toContain("导入批次：batch-1");
-  expect(document.body.textContent).not.toContain(tamperedManifest);
-  expect(holdingApi.submit).not.toHaveBeenCalled();
 });
 
 test("records the user-entered actual execution time", async () => {

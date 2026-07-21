@@ -92,7 +92,7 @@ def build_router(
             raise RuntimeError("holding analysis submission is not configured")
         ref = submit(
             RunKind.HOLDING_ANALYSIS,
-            request.model_dump(mode="json"),
+            request.model_dump(mode="json", exclude_none=True),
             idempotency_key,
             resolved_clock.now(),
         )

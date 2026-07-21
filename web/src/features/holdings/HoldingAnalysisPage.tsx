@@ -4,7 +4,6 @@ import {
   HoldingApiError,
   holdingApi,
   type HoldingResult,
-  type ImportProvenanceRequest,
   type ManualFill,
   type PositionCorrection,
   type PositionPage,
@@ -16,47 +15,26 @@ import { PositionCorrectionForm } from "./PositionCorrectionForm";
 
 const DEFAULT_PORTFOLIO_ID = "default";
 
-interface ImportedPortfolioContext {
+interface ImportedAnalysisContext {
   portfolioId: string;
-  asOfTime: string;
-  batchId: string;
-  manifestSha256: string;
+  asOfTime: string | null;
+  importBatchId: string | null;
+  importManifestSha256: string | null;
 }
 
-function importedPortfolioContext(): ImportedPortfolioContext | null {
+function importedAnalysisContext(): ImportedAnalysisContext {
   const query = new URLSearchParams(window.location.search);
-  const portfolioId = query.get("portfolio_id");
-  const asOfTime = query.get("as_of_time");
-  const batchId = query.get("batch_id");
-  const manifestSha256 = query.get("manifest_sha256");
-  if (
-    !portfolioId || !/^[A-Za-z0-9._-]{1,64}$/.test(portfolioId)
-    || !asOfTime || Number.isNaN(Date.parse(asOfTime))
-    || !batchId || !/^[A-Za-z0-9._-]{1,64}$/.test(batchId)
-    || !manifestSha256 || !/^[a-f0-9]{64}$/i.test(manifestSha256)
-  ) {
-    return null;
-  }
-  return { portfolioId, asOfTime, batchId, manifestSha256 };
-}
-
-function matchesPositionPage(result: HoldingResult | null, page: PositionPage): boolean {
-  return Boolean(
-    result
-      && result.portfolio_id === page.portfolio_id
-      && Date.parse(result.as_of_time) === Date.parse(page.as_of_time),
-  );
+  return {
+    portfolioId: query.get("portfolio_id") || DEFAULT_PORTFOLIO_ID,
+    asOfTime: query.get("as_of_time"),
+    importBatchId: query.get("import_batch_id"),
+    importManifestSha256: query.get("import_manifest_sha256"),
+  };
 }
 
 export function HoldingAnalysisPage(): JSX.Element {
-  const importedContext = importedPortfolioContext();
-  const portfolioId = importedContext?.portfolioId ?? DEFAULT_PORTFOLIO_ID;
-  const requestedAsOfTime = importedContext?.asOfTime;
-  const importBatchId = importedContext?.batchId;
-  const importManifestSha256 = importedContext?.manifestSha256;
-  const requestedImportProvenance: ImportProvenanceRequest | undefined = importedContext
-    ? { batchId: importedContext.batchId, manifestSha256: importedContext.manifestSha256 }
-    : undefined;
+  const context = importedAnalysisContext();
+  const portfolioId = context.portfolioId;
   const [positionPage, setPositionPage] = useState<PositionPage | null>(null);
   const [result, setResult] = useState<HoldingResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,11 +51,11 @@ export function HoldingAnalysisPage(): JSX.Element {
     setLoadError(false);
     try {
       const [positions, latest] = await Promise.all([
-        holdingApi.positions(portfolioId, requestedAsOfTime, requestedImportProvenance),
-        holdingApi.latest(portfolioId, requestedAsOfTime),
+        holdingApi.positions(portfolioId),
+        holdingApi.latest(portfolioId),
       ]);
       setPositionPage(positions);
-      setResult(matchesPositionPage(latest, positions) ? latest : null);
+      setResult(latest);
     } catch {
       setLoadError(true);
     } finally {
@@ -87,14 +65,10 @@ export function HoldingAnalysisPage(): JSX.Element {
 
   useEffect(() => {
     void load();
-  }, [portfolioId, requestedAsOfTime, importBatchId, importManifestSha256]);
+  }, []);
 
   const reloadPositions = async (): Promise<void> => {
-    const positions = await holdingApi.positions(
-      portfolioId,
-      requestedAsOfTime,
-      requestedImportProvenance,
-    );
+    const positions = await holdingApi.positions(portfolioId);
     setPositionPage(positions);
   };
 
@@ -139,13 +113,20 @@ export function HoldingAnalysisPage(): JSX.Element {
   };
 
   const submit = async (): Promise<void> => {
-    const asOfTime = positionPage?.as_of_time ?? new Date().toISOString();
+    const asOfTime = context.asOfTime ?? positionPage?.as_of_time ?? new Date().toISOString();
     setSubmitting(true);
     try {
       setRun(
         await holdingApi.submit(
-          { portfolio_id: portfolioId, as_of_time: asOfTime },
-          `holding:${portfolioId}:${asOfTime}`,
+          {
+            portfolio_id: portfolioId,
+            as_of_time: asOfTime,
+            ...(context.importBatchId ? { import_batch_id: context.importBatchId } : {}),
+            ...(context.importManifestSha256
+              ? { import_manifest_sha256: context.importManifestSha256 }
+              : {}),
+          },
+          `holding:${portfolioId}:${asOfTime}:${context.importBatchId ?? "current"}`,
         ),
       );
     } catch {
@@ -196,11 +177,8 @@ export function HoldingAnalysisPage(): JSX.Element {
         </div>
       </div>
       <div className="alert">仅供人工确认，不自动下单</div>
-      {positionPage?.import_provenance ? (
-        <div className="alert">
-          <div>导入批次：{positionPage.import_provenance.batch_id}</div>
-          <div>导入 Manifest：{positionPage.import_provenance.manifest_sha256}</div>
-        </div>
+      {context.importBatchId ? (
+        <div className="alert">已选定导入批次 {context.importBatchId}；请核对后手动提交分析。</div>
       ) : null}
       {mutationError ? (
         <div className="alert" role="alert">

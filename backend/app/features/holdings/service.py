@@ -13,7 +13,7 @@ from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
 from backend.app.ports.strategy import StrategyDecisionPort
 
-from .models import HoldingAnalysisResult, HoldingRiskSummary
+from .models import HoldingAnalysisResult, HoldingImportProvenance, HoldingRiskSummary
 from .quality import holding_evidence, llm_grade_from_snapshot
 from .repository import HoldingAnalysisRepository
 from .strategy_projection import project_position
@@ -33,6 +33,8 @@ class HoldingAnalysisCommand:
     portfolio_id: str
     as_of_time: datetime
     strategy_version: Literal["v2.12"] = "v2.12"
+    import_batch_id: str | None = None
+    import_manifest_sha256: str | None = None
 
 
 class HoldingAnalysisService:
@@ -64,6 +66,7 @@ class HoldingAnalysisService:
             scope=SnapshotScope.holding_analysis(security_ids),
         )
         self._validate_inputs(command, portfolio, snapshot)
+        self._validate_import_provenance(command, portfolio)
         if snapshot.quality.has_errors:
             raise HoldingMarketDataMissing(self._missing_data_detail(snapshot))
 
@@ -120,6 +123,17 @@ class HoldingAnalysisService:
                 market_state=portfolio_view.market_state.value,
             ),
             items=items,
+            portfolio_imports=tuple(
+                HoldingImportProvenance(batch_id, manifest_sha256)
+                for batch_id, manifest_sha256 in sorted(
+                    {
+                        (lot.batch_id, lot.import_manifest_sha256)
+                        for lot in portfolio.lots
+                        if lot.origin.value == "legacy_opening_balance"
+                        and lot.import_manifest_sha256 is not None
+                    }
+                )
+            ),
         )
         self._repository.save(result)
         return result
@@ -155,6 +169,26 @@ class HoldingAnalysisService:
             raise HoldingAnalysisInvariantError("prepared manifest mismatch")
         if evaluation.manifest_hash != snapshot.manifest_hash:
             raise HoldingAnalysisInvariantError("evaluation manifest mismatch")
+
+    @staticmethod
+    def _validate_import_provenance(
+        command: HoldingAnalysisCommand,
+        portfolio: PortfolioSnapshot,
+    ) -> None:
+        if command.import_batch_id is None:
+            return
+        matching_lots = tuple(
+            lot
+            for lot in portfolio.lots
+            if lot.batch_id == command.import_batch_id
+            and lot.origin.value == "legacy_opening_balance"
+        )
+        if not matching_lots:
+            raise HoldingAnalysisInvariantError("requested import batch is not in the portfolio snapshot")
+        if command.import_manifest_sha256 is not None and any(
+            lot.import_manifest_sha256 != command.import_manifest_sha256 for lot in matching_lots
+        ):
+            raise HoldingAnalysisInvariantError("requested import manifest does not match the portfolio snapshot")
 
     @staticmethod
     def _missing_data_detail(snapshot: PointInTimeSnapshot) -> str:

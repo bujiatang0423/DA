@@ -25,9 +25,9 @@ class Repository:
         self._manifests.add(batch.manifest_sha256)
         self._rows[batch.batch_id] = {
             "batch_id": batch.batch_id,
-            "manifest_sha256": batch.manifest_sha256,
             "portfolio_id": batch.portfolio_id,
             "effective_at": batch.effective_at,
+            "manifest_sha256": batch.manifest_sha256,
             "raw_file_count": len(raw_files),
             "opening_position_count": len(positions),
             "historical_snapshot_count": len(snapshots),
@@ -113,8 +113,18 @@ def test_import_api_only_accepts_configured_sources_and_requires_confirmation(
 
     assert confirmed.status_code == 200
     batch_id = confirmed.json()["batch_id"]
-    assert confirmed.json()["portfolio_id"] == "main"
-    assert confirmed.json()["effective_at"] == "2026-07-19T09:00:00Z"
+    link = confirmed.json()["holding_analysis"]
+    assert link == {
+        "portfolio_id": "main",
+        "as_of_time": "2026-07-19T09:00:00Z",
+        "import_batch_id": batch_id,
+        "import_manifest_sha256": confirmed.json()["manifest_sha256"],
+        "href": (
+            "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00%2B00%3A00"
+            f"&import_batch_id={batch_id}&import_manifest_sha256="
+            f"{confirmed.json()['manifest_sha256']}"
+        ),
+    }
     assert client.get(f"/api/v1/legacy-imports/{batch_id}").json()["raw_file_count"] == 2
 
 

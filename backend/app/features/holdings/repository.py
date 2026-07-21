@@ -180,6 +180,10 @@ def _encode(result: HoldingAnalysisResult) -> dict[str, object]:
         "items": [
             _encode_item(item) for item in sorted(result.items, key=lambda value: value.security_id)
         ],
+        "portfolio_imports": [
+            {"batch_id": item.batch_id, "manifest_sha256": item.manifest_sha256}
+            for item in result.portfolio_imports
+        ],
     }
 
 
@@ -271,7 +275,13 @@ def _decode(
     from backend.app.contracts.grades import DataGrade, LlmGrade
     from backend.app.core.portfolio.models import PositionOrigin, StrategyBook
     from backend.app.core.strategy.reason_codes import ReasonCode
-    from .models import AdviceAction, HoldingAdviceItem, HoldingFactors, HoldingRiskSummary
+    from .models import (
+        AdviceAction,
+        HoldingAdviceItem,
+        HoldingFactors,
+        HoldingImportProvenance,
+        HoldingRiskSummary,
+    )
 
     summary = dict(payload["summary"])
     items = []
@@ -328,4 +338,11 @@ def _decode(
             market_state=str(summary["market_state"]),
         ),
         items=tuple(items),
+        portfolio_imports=tuple(
+            HoldingImportProvenance(
+                batch_id=str(dict(value)["batch_id"]),
+                manifest_sha256=str(dict(value)["manifest_sha256"]),
+            )
+            for value in payload.get("portfolio_imports", [])
+        ),
     )

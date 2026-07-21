@@ -1,6 +1,8 @@
 export interface HoldingRequest {
   portfolio_id: string;
   as_of_time: string;
+  import_batch_id?: string;
+  import_manifest_sha256?: string;
 }
 
 export interface HoldingFactors {

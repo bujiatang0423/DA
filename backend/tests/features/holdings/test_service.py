@@ -13,6 +13,7 @@ from backend.app.core.market.pit_models import (
     TemporalRecord,
 )
 from backend.app.core.market.strategy_inputs import StrategyInputError
+from backend.app.core.portfolio.models import PositionOrigin
 from backend.app.core.strategy.types import MarketState, StrategyPortfolioSummary
 from backend.app.features.holdings.models import AdviceAction
 from backend.app.features.holdings.markdown import render_markdown
@@ -93,6 +94,22 @@ def test_service_reads_portfolio_and_market_at_identical_as_of_time() -> None:
     assert result.manifest_hash == warehouse.snapshot_value.manifest_hash
     assert result.summary.gross_exposure_pct == Decimal("65.0")
     assert repository.saved == [result]
+
+
+def test_service_persists_actual_legacy_import_provenance() -> None:
+    service, command, _, portfolios, _, _, _ = build_service()
+    lot = replace(
+        portfolios.snapshot_value.lots[0],
+        origin=PositionOrigin.LEGACY_OPENING_BALANCE,
+        batch_id="legacy-import-1",
+        import_manifest_sha256="a" * 64,
+    )
+    portfolios.snapshot_value = replace(portfolios.snapshot_value, lots=(lot,))
+
+    result = service.run(command)
+
+    assert result.portfolio_imports[0].batch_id == "legacy-import-1"
+    assert result.portfolio_imports[0].manifest_sha256 == "a" * 64
 
 
 def test_service_projects_the_strategy_portfolio_summary_without_recalculation() -> None:

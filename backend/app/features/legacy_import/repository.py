@@ -84,6 +84,8 @@ class SqlLegacyRepository:
             return None
         return LegacyImportResult(
             batch_id=batch.id,
+            portfolio_id=batch.portfolio_id,
+            effective_at=batch.effective_at,
             manifest_sha256=batch.manifest_sha256,
             portfolio_id=batch.portfolio_id,
             effective_at=batch.effective_at,

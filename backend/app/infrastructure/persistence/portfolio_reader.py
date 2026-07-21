@@ -107,8 +107,8 @@ def read_portfolio_snapshot(
 
 
 def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> list[PortfolioLot]:
-    rows = session.scalars(
-        select(OpeningPositionRow)
+    rows = session.execute(
+        select(OpeningPositionRow, LegacyImportBatchRow)
         .join(LegacyImportBatchRow, OpeningPositionRow.batch_id == LegacyImportBatchRow.id)
         .where(
             OpeningPositionRow.portfolio_id == portfolio_id,
@@ -119,12 +119,14 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
     ).all()
     return [
         PortfolioLot(
-            lot_id=f"legacy:{row.batch_id}:{row.id}",
-            security_id=row.security_id,
-            quantity=row.quantity,
-            available_to_sell=row.quantity if as_of_time.date() > row.effective_at.date() else 0,
-            average_cost=_decimal(row.inherited_unit_cost),
-            effective_at=row.effective_at,
+            lot_id=f"legacy:{opening.batch_id}:{opening.id}",
+            security_id=opening.security_id,
+            quantity=opening.quantity,
+            available_to_sell=(
+                opening.quantity if as_of_time.date() > opening.effective_at.date() else 0
+            ),
+            average_cost=_decimal(opening.inherited_unit_cost),
+            effective_at=opening.effective_at,
             origin=PositionOrigin.LEGACY_OPENING_BALANCE,
             strategy_book=None,
             entry_score=None,
@@ -132,11 +134,12 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             effective_stop=None,
             highest_close=None,
             add_count=0,
-            batch_id=row.batch_id,
+            batch_id=opening.batch_id,
             buy_date=None,
+            import_manifest_sha256=batch.manifest_sha256,
         )
-        for row in rows
-        if row.quantity > 0
+        for opening, batch in rows
+        if opening.quantity > 0
     ]
 
 
@@ -160,6 +163,7 @@ def _projection_lot(row: PortfolioLotProjectionRow, as_of_time: datetime) -> Por
         add_count=int(row.add_count or 0),
         batch_id=row.batch_id,
         buy_date=row.buy_date,
+        import_manifest_sha256=None,
     )
 
 
@@ -185,6 +189,7 @@ def _revision_lot(row: dict[str, object], as_of_time: datetime) -> PortfolioLot:
         add_count=int(row.get("add_count") or 0),
         batch_id=str(row.get("batch_id") or "default"),
         buy_date=datetime.fromisoformat(str(buy_date)).date() if buy_date else None,
+        import_manifest_sha256=None,
     )
 
 
