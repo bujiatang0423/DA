@@ -105,3 +105,25 @@ def test_records_without_lineage_fail_closed_with_evidence_quality_error() -> No
 
     assert snapshot.quality.has_errors
     assert any(issue.code == "LINEAGE_MISSING" for issue in snapshot.quality.issues)
+
+
+def test_llm_provider_failure_is_fail_closed_with_sanitized_quality_codes() -> None:
+    class LlmFailureSource:
+        provider = "structured_llm_factor"
+
+        def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
+            del as_of_time, scope
+            raise RuntimeError("api_key=secret response=private")
+
+    snapshot = ResearchPointInTimeWarehouse((LlmFailureSource(),)).snapshot(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.LLM_FACTOR,)),
+    )
+
+    issues = snapshot.quality.issues
+    assert snapshot.quality.has_errors
+    assert {issue.code for issue in issues} >= {
+        "PROVIDER_UNAVAILABLE",
+        "REQUIRED_DATASET_MISSING",
+    }
+    assert all("secret" not in issue.detail and "private" not in issue.detail for issue in issues)
