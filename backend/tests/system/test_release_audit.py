@@ -31,9 +31,16 @@ def test_local_release_check_defines_two_pass_acceptance() -> None:
 
     assert script.is_file()
     source = script.read_text(encoding="utf-8")
-    assert "for _ in range(2)" in source
+    assert "passes = 2" in source
     assert "tools.audit_release" in source
     assert "contracts/openapi.json" in source
+
+
+def test_local_release_check_can_include_loopback_postgres() -> None:
+    from tools.verify_local_release import _postgres_command, _postgres_environment
+
+    assert _postgres_command() == ("-m", "pytest", "-m", "postgres", "-q")
+    assert _postgres_environment()["TEST_DATABASE_URL"].endswith("@127.0.0.1:5432/da_test")
 
 
 def test_release_audit_accepts_the_repository_runtime_surface() -> None:
