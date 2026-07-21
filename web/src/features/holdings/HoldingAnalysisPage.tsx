@@ -15,6 +15,11 @@ import { PositionCorrectionForm } from "./PositionCorrectionForm";
 
 const DEFAULT_PORTFOLIO_ID = "default";
 
+const trimDecimalZeros = (value: string): string => {
+  if (!value.includes(".")) return value;
+  return value.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+};
+
 interface ImportedAnalysisContext {
   portfolioId: string;
   asOfTime: string | null;
@@ -226,7 +231,7 @@ export function HoldingAnalysisPage(): JSX.Element {
           <div className="metric-grid">
             <div className="metric-card">
               <span className="metric-label">组合权益</span>
-              <div className="metric-value">{result.summary.equity}</div>
+              <div className="metric-value">{trimDecimalZeros(result.summary.equity)}</div>
             </div>
             <div className="metric-card">
               <span className="metric-label">总敞口</span>

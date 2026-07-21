@@ -33,7 +33,7 @@ const positionPageFixture: PositionPage = {
   as_of_time: "2026-07-17T15:00:00+08:00",
   version: 7,
   cash: "350000",
-  equity: "1000000",
+  equity: "1000000.000000",
   import_provenance: null,
   items: [
     {
@@ -63,7 +63,7 @@ const holdingResultFixture: HoldingResult = {
   auto_trade_enabled: false,
   human_confirm_required: true,
   summary: {
-    equity: "1000000",
+    equity: "1000000.000000",
     cash: "350000",
     gross_exposure_pct: "65.00",
     portfolio_risk_pct: "1.25",
@@ -138,6 +138,13 @@ test("renders risk-first, legacy, and manual-only semantics", async () => {
   expect(screen.getByLabelText("PIT 证据").textContent).toContain(
     "market-close:000001.SZ:2026-07-17",
   );
+});
+
+test("trims trailing zeroes from the displayed portfolio equity", async () => {
+  renderPage();
+
+  expect(await screen.findByText("1000000")).toBeTruthy();
+  expect(screen.queryByText("1000000.000000")).toBeNull();
 });
 
 test("renders a not-yet-run state when latest analysis is absent", async () => {
