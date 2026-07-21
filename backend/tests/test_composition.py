@@ -11,7 +11,16 @@ from backend.app.bootstrap.composition import (
     build_warehouse,
 )
 from backend.app.bootstrap.settings import Settings
-from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
+from backend.app.core.market.pit_models import (
+    DataKind,
+    LineageRef,
+    PointInTimeSnapshot,
+    SnapshotQuality,
+    SnapshotScope,
+    SecurityObservation,
+    TemporalRecord,
+)
+from backend.app.contracts.grades import DataGrade
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
@@ -25,6 +34,44 @@ class FrozenWarehouse:
         scope: SnapshotScope,
     ) -> PointInTimeSnapshot:
         raise AssertionError((as_of_time, scope))
+
+
+class DeterministicCandidateWarehouse:
+    def snapshot(
+        self,
+        *,
+        as_of_time: datetime,
+        scope: SnapshotScope,
+    ) -> PointInTimeSnapshot:
+        source_hash = "c" * 64
+        records = tuple(
+            TemporalRecord(
+                f"{kind.value}:AAA",
+                kind,
+                "AAA",
+                as_of_time,
+                as_of_time,
+                as_of_time,
+                source_hash,
+                {"source_id": "fixture", "value": "neutral"},
+            )
+            for kind in (
+                DataKind.FINANCIAL_DISCLOSURE,
+                DataKind.FINANCIAL_FACT,
+                DataKind.POLICY_DOCUMENT,
+                DataKind.LLM_FACTOR,
+            )
+        )
+        return PointInTimeSnapshot(
+            as_of_time=as_of_time,
+            scope=scope,
+            data_grade=DataGrade.RESEARCH,
+            market_inputs=(),
+            security_observations=(SecurityObservation("AAA", records),),
+            quality=SnapshotQuality(()),
+            lineage=(LineageRef("candidate-fixture", "test", source_hash),),
+            manifest_hash="d" * 64,
+        )
 
 
 def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
@@ -158,3 +205,30 @@ def test_components_share_the_explicit_fake_warehouse() -> None:
     assert components.candidate_service._warehouse is warehouse
     assert components.holding_service._warehouse is warehouse
     assert components.portfolio_writer.__class__.__name__ == "AuditedPortfolioWriter"
+
+
+def test_candidate_composition_accepts_deterministic_policy_financial_llm_fixture() -> None:
+    settings = Settings(_env_file=None, environment="test", provider_mode="fake")
+    warehouse = DeterministicCandidateWarehouse()
+
+    components = build_components(settings, sessionmaker(), fake_warehouse=warehouse)
+    snapshot = components.warehouse.snapshot(
+        as_of_time=datetime(2026, 1, 1),
+        scope=SnapshotScope(
+            security_ids=("AAA",),
+            required_kinds=(
+                DataKind.FINANCIAL_DISCLOSURE,
+                DataKind.FINANCIAL_FACT,
+                DataKind.POLICY_DOCUMENT,
+                DataKind.LLM_FACTOR,
+            ),
+        ),
+    )
+
+    assert components.candidate_service._warehouse is warehouse
+    assert {record.kind for record in snapshot.security_observations[0].records} == {
+        DataKind.FINANCIAL_DISCLOSURE,
+        DataKind.FINANCIAL_FACT,
+        DataKind.POLICY_DOCUMENT,
+        DataKind.LLM_FACTOR,
+    }
