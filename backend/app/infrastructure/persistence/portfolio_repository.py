@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.portfolio.models import (
@@ -23,6 +23,7 @@ from .portfolio_rows import (
     PortfolioAuditEventRow,
     PortfolioLotProjectionRow,
     PortfolioSnapshotProjectionRow,
+    PortfolioSnapshotRevisionRow,
     PortfolioVersionRow,
 )
 
@@ -32,6 +33,10 @@ class InsufficientCash(ValueError):
 
 
 class InsufficientSellableQuantity(ValueError):
+    pass
+
+
+class BackdatedPortfolioMutation(ValueError):
     pass
 
 
@@ -64,10 +69,23 @@ class SqlPortfolioEventStore:
             if version is None:
                 version = PortfolioVersionRow(portfolio_id=portfolio_id, version=0)
                 session.add(version)
-            current = read_portfolio_snapshot(session, portfolio_id, as_of_time)
+            current_as_of_time = _current_projection_time(session, portfolio_id, event.recorded_at)
+            if _as_utc(as_of_time) < _as_utc(current_as_of_time):
+                raise BackdatedPortfolioMutation(
+                    "manual fills and corrections cannot predate the current portfolio projection"
+                )
+            current = read_portfolio_snapshot(session, portfolio_id, event.recorded_at)
             next_version = current_version + 1
             updated = _apply_payload(current, payload, next_version)
             version.version = next_version
+            _write_revision(
+                session,
+                current,
+                current_as_of_time,
+                recorded_at=current_as_of_time,
+            )
+            _supersede_revisions(session, updated, event.recorded_at)
+            _write_revision(session, updated, updated.as_of_time, recorded_at=event.recorded_at)
             _write_projection(session, updated)
             session.add(
                 PortfolioAuditEventRow(
@@ -96,6 +114,10 @@ def _payload_identity(payload: object) -> tuple[str, datetime]:
     if isinstance(payload, ManualFillCommand):
         return payload.portfolio_id, payload.filled_at
     raise TypeError(f"unsupported portfolio payload: {type(payload).__name__}")
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _apply_payload(
@@ -222,3 +244,101 @@ def _write_projection(session: Session, snapshot: PortfolioSnapshot) -> None:
                 add_count=lot.add_count,
             )
         )
+
+
+def _current_projection_time(
+    session: Session,
+    portfolio_id: str,
+    as_of_time: datetime,
+) -> datetime:
+    revision = session.scalar(
+        select(PortfolioSnapshotRevisionRow.as_of_time)
+        .where(
+            PortfolioSnapshotRevisionRow.portfolio_id == portfolio_id,
+            PortfolioSnapshotRevisionRow.as_of_time <= as_of_time,
+        )
+        .order_by(
+            PortfolioSnapshotRevisionRow.as_of_time.desc(),
+            PortfolioSnapshotRevisionRow.version.desc(),
+        )
+    )
+    if revision is not None:
+        return revision
+    projection = session.scalar(
+        select(PortfolioSnapshotProjectionRow.as_of_time)
+        .where(
+            PortfolioSnapshotProjectionRow.portfolio_id == portfolio_id,
+            PortfolioSnapshotProjectionRow.as_of_time <= as_of_time,
+        )
+        .order_by(PortfolioSnapshotProjectionRow.as_of_time.desc())
+    )
+    return projection or as_of_time
+
+
+def _write_revision(
+    session: Session,
+    snapshot: PortfolioSnapshot,
+    as_of_time: datetime,
+    *,
+    recorded_at: datetime,
+) -> None:
+    existing = session.scalar(
+        select(PortfolioSnapshotRevisionRow).where(
+            PortfolioSnapshotRevisionRow.portfolio_id == snapshot.portfolio_id,
+            PortfolioSnapshotRevisionRow.as_of_time == as_of_time,
+            PortfolioSnapshotRevisionRow.version == snapshot.version,
+        )
+    )
+    if existing is not None:
+        return
+    session.add(
+        PortfolioSnapshotRevisionRow(
+            portfolio_id=snapshot.portfolio_id,
+            as_of_time=as_of_time,
+            recorded_at=recorded_at,
+            superseded_at=None,
+            version=snapshot.version,
+            cash=snapshot.cash,
+            equity=snapshot.equity,
+            lots=[_lot_payload(lot) for lot in snapshot.lots],
+        )
+    )
+
+
+def _supersede_revisions(
+    session: Session,
+    snapshot: PortfolioSnapshot,
+    recorded_at: datetime,
+) -> None:
+    session.execute(
+        update(PortfolioSnapshotRevisionRow)
+        .where(
+            PortfolioSnapshotRevisionRow.portfolio_id == snapshot.portfolio_id,
+            PortfolioSnapshotRevisionRow.as_of_time >= snapshot.as_of_time,
+            PortfolioSnapshotRevisionRow.recorded_at < recorded_at,
+            PortfolioSnapshotRevisionRow.superseded_at.is_(None),
+        )
+        .values(superseded_at=recorded_at)
+    )
+
+
+def _lot_payload(lot: PortfolioLot) -> dict[str, object]:
+    return {
+        "lot_id": lot.lot_id,
+        "batch_id": lot.batch_id,
+        "security_id": lot.security_id,
+        "buy_date": lot.buy_date.isoformat() if lot.buy_date else None,
+        "quantity": lot.quantity,
+        "available_to_sell": lot.available_to_sell,
+        "average_cost": str(lot.average_cost),
+        "effective_at": lot.effective_at.isoformat(),
+        "origin": lot.origin.value,
+        "strategy_book": lot.strategy_book.value if lot.strategy_book else None,
+        "entry_score": str(lot.entry_score) if lot.entry_score is not None else None,
+        "initial_risk_per_share": (
+            str(lot.initial_risk_per_share) if lot.initial_risk_per_share is not None else None
+        ),
+        "effective_stop": str(lot.effective_stop) if lot.effective_stop is not None else None,
+        "highest_close": str(lot.highest_close) if lot.highest_close is not None else None,
+        "add_count": lot.add_count,
+    }
