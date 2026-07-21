@@ -89,6 +89,11 @@ class PortfolioPositionResponse(BaseModel):
         )
 
 
+class LegacyImportProvenanceResponse(BaseModel):
+    batch_id: str
+    manifest_sha256: str
+
+
 class PortfolioPositionPage(BaseModel):
     portfolio_id: str
     as_of_time: datetime
@@ -96,9 +101,14 @@ class PortfolioPositionPage(BaseModel):
     cash: Decimal
     equity: Decimal
     items: tuple[PortfolioPositionResponse, ...]
+    import_provenance: LegacyImportProvenanceResponse | None = None
 
     @classmethod
-    def from_domain(cls, snapshot: PortfolioSnapshot) -> "PortfolioPositionPage":
+    def from_domain(
+        cls,
+        snapshot: PortfolioSnapshot,
+        import_provenance: LegacyImportProvenanceResponse | None = None,
+    ) -> "PortfolioPositionPage":
         return cls(
             portfolio_id=snapshot.portfolio_id,
             as_of_time=snapshot.as_of_time,
@@ -108,6 +118,7 @@ class PortfolioPositionPage(BaseModel):
             items=tuple(
                 PortfolioPositionResponse.from_domain(position) for position in snapshot.positions
             ),
+            import_provenance=import_provenance,
         )
 
 
