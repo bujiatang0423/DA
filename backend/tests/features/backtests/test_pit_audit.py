@@ -97,6 +97,26 @@ class CandidateWarehouse:
         return tuple(evidence)
 
 
+class UncoveredBundleWarehouse(CandidateWarehouse):
+    def bundle_set_hash(self, coverage_start: date, coverage_end: date) -> str:
+        raise ValueError("no persisted bundle covers this range")
+
+
+def test_audit_fails_closed_when_canonical_bundle_coverage_is_unavailable() -> None:
+    universe = DateUniverse({FIRST_DATE: ("000001.SZ",)})
+    report = PitAuditRunner(
+        UncoveredBundleWarehouse(complete_records(universe._values)),
+        (FIRST_DATE,),
+        universe,
+        market_id="CN_A",
+        universe_id="ALL_A",
+    ).run(coverage_start=FIRST_DATE, coverage_end=FIRST_DATE)
+
+    assert report.passed is False
+    assert report.bundle_set_hash == ""
+    assert report.failures == ("bundle_set:ValueError",)
+
+
 def test_audit_binds_each_date_to_its_own_ipo_and_delisting_universe() -> None:
     universe = DateUniverse(
         {

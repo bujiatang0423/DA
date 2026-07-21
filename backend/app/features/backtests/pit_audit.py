@@ -164,7 +164,11 @@ class PitAuditRunner:
                 coverage_evidence_digests=coverage_evidence_digests,
             )
 
-        bundle_set_hash = self._warehouse.bundle_set_hash(coverage_start, coverage_end)
+        try:
+            bundle_set_hash = self._warehouse.bundle_set_hash(coverage_start, coverage_end)
+        except Exception as error:
+            bundle_set_hash = ""
+            failures.append(f"bundle_set:{type(error).__name__}")
         body = {
             "bundle_set_hash": bundle_set_hash,
             "coverage_end": coverage_end.isoformat(),
