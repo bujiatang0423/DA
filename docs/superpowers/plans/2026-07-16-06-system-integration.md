@@ -1,12 +1,16 @@
-# DA System Integration and Release Implementation Plan
+# DA Local System Integration and Acceptance Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 foundation、PIT/legacy、候选、持仓、research backtest 和 strict PIT 扩展接成一个可验证、可运维、默认本地安全的 DA 发布候选。
+**Goal:** 将 foundation、PIT/legacy、候选、持仓和 backtest 接成一个可在本机 PostgreSQL 上重复验收的 DA 本地测试系统。
 
-**Architecture:** 组合根只实例化并注入已完成模块，功能逻辑仍留在各自 vertical slice；统一 Alembic 迁移和 OpenAPI 由协调 Agent 生成。系统测试用冻结 fake 数据运行真实 API、PostgreSQL worker 和 Web，发布镜像的构建上下文只有 DA，从执行环境证明不存在 LA 依赖。
+**Scope boundary:** 本计划不包含上线、生产 provider、发布镜像、Docker/Compose 部署或远程 CI
+运行。所有验收均使用本地 `127.0.0.1:5432` PostgreSQL、冻结 fixture、FastAPI、worker 和本地
+Web；未来需要上线时另立生产部署计划。
 
-**Tech Stack:** FastAPI、SQLAlchemy/Alembic、PostgreSQL 16、pytest、React/TypeScript、Vitest、Playwright、Docker、OpenAPI TypeScript
+**Architecture:** 组合根只实例化并注入已完成模块，功能逻辑仍留在各自 vertical slice；统一 Alembic 迁移和 OpenAPI 由协调 Agent 生成。系统测试用冻结 fake 数据运行真实 API、PostgreSQL worker 和 Web，并验证 DA 运行时不依赖 LA。
+
+**Tech Stack:** FastAPI、SQLAlchemy/Alembic、PostgreSQL 16、pytest、React/TypeScript、Vitest、Playwright、OpenAPI TypeScript
 
 ---
 
@@ -21,7 +25,7 @@ cd web && npm test -- --run
 ```
 
 协调 Agent 独占本计划涉及的 `bootstrap/**`、`main.py`、Alembic 迁移链、
-`contracts/openapi.json`、`web/src/generated/**`、`web/src/app/**`、Docker 和 CI。
+`contracts/openapi.json`、`web/src/generated/**`、`web/src/app/**` 和本地验收脚本。
 本计划不得修改以下共享公式实现：
 
 ```text
@@ -453,14 +457,14 @@ position, execution or result-mapping logic. It injects the `PortfolioReader` an
 `build_components(settings, trading_days).features`.
 `build_application()` and `build_worker()` pass the same injected calendar to `build_components` once each
 and register the exact same
-`FeatureModule.job_handlers`. Add `provider_mode: Literal["production", "fake"] = "production"` to
-`Settings`; production startup must never select fake implicitly.
+`FeatureModule.job_handlers`. Add a local-only `provider_mode: Literal["fake"] = "fake"` setting to
+`Settings`; local startup must never access network providers implicitly.
 
-- [ ] **Step 4: 验证组合顺序、重复 handler 拒绝和生产默认值**
+- [ ] **Step 4: 验证组合顺序、重复 handler 拒绝和本地默认值**
 
 Run: `python -m pytest backend/tests/system/test_composition.py backend/tests/system/test_backtest_decision_adapter.py backend/tests/infrastructure/tasks/test_worker.py -q`
-Expected: tests PASS；同一 `RunKind` 注册两次仍抛 `ValueError`；默认 provider mode 是
-`production`。
+Expected: tests PASS；同一 `RunKind` 注册两次仍抛 `ValueError`；默认 provider mode 是 `fake`，
+并且不会隐式访问网络 provider。
 
 - [ ] **Step 5: 提交组合根**
 
@@ -784,7 +788,7 @@ security_id,name,quantity,cost_price,buy_date
 
 1. clean and migrate PostgreSQL to head for each test session;
 2. create `Settings(environment="test", provider_mode="fake")`;
-3. build the production composition root with only adapter constructors replaced by frozen fake providers;
+3. build the local composition root with only adapter constructors replaced by frozen fake providers;
 4. expose a TestClient and Worker sharing the same database;
 5. return exact valid payloads for all three create routes;
 6. assert fake providers never open network sockets.
@@ -889,7 +893,7 @@ strategy version and portfolio risk. It maps `research` to `研究级数据`,
 - [ ] **Step 4: 运行全部 Web tests、typecheck 和 build**
 
 Run: `cd web && npm test -- --run && npm run typecheck && npm run build`
-Expected: tests PASS，TypeScript 零错误，production build 成功。
+Expected: tests PASS，TypeScript 零错误，local Web build 成功。
 
 - [ ] **Step 5: 提交全局 Web 接线**
 
@@ -905,7 +909,7 @@ git commit -m "feat: connect all product slices through one trustworthy dashboar
 - Create: `web/e2e/product-flow.spec.ts`
 - Create: `tools/start_e2e_stack.sh`
 - Modify: `web/package.json`
-- Modify: `compose.yaml`
+- Modify: `tools/start_e2e_stack.sh`
 
 - [ ] **Step 1: 写失败的浏览器端到端 test**
 
@@ -965,7 +969,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 export DA_ENVIRONMENT=test
 export DA_PROVIDER_MODE=fake
-export DA_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:55433/da_test
+export DA_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:5432/da_test
 alembic downgrade base
 alembic upgrade head
 da-api &
@@ -979,22 +983,22 @@ trap 'kill "$api_pid" "$worker_pid" "$web_pid" 2>/dev/null || true' EXIT
 wait "$web_pid"
 ```
 
-Ensure `postgres-test` is healthy before the script. The fake mode reads only checked-in system fixtures;
+Ensure the local PostgreSQL service is healthy before the script. The fake mode reads only checked-in system fixtures;
 it never calls AkShare, BaoStock, policy sites or an LLM endpoint.
 
 - [ ] **Step 4: 运行 Chromium E2E 两次验证确定性**
 
-Run: `docker compose up -d postgres-test && cd web && npm run e2e && npm run e2e`
+Run: `pg_isready -h 127.0.0.1 -p 5432 && cd web && npm run e2e && npm run e2e`
 Expected: both runs PASS；每次三类 job 均 succeeded，backtest 始终显示 research/reconstructed。
 
 - [ ] **Step 5: 提交关键路径 E2E**
 
 ```bash
-git add web/package.json web/package-lock.json web/playwright.config.ts web/e2e tools/start_e2e_stack.sh compose.yaml
+git add web/package.json web/package-lock.json web/playwright.config.ts web/e2e tools/start_e2e_stack.sh
 git commit -m "test: exercise all four product capabilities through the browser"
 ```
 
-### Task 7: 执行本地部署安全边界和日志最小化
+### Task 7: 执行本地安全边界和日志最小化
 
 **Files:**
 - Create: `backend/app/bootstrap/security.py`
@@ -1016,7 +1020,7 @@ from backend.app.bootstrap.settings import Settings
 
 
 @pytest.mark.parametrize("authentication_enabled", (False, True))
-def test_first_release_rejects_non_loopback(authentication_enabled: bool) -> None:
+def test_local_startup_rejects_non_loopback(authentication_enabled: bool) -> None:
     with pytest.raises(ValidationError, match="non-loopback"):
         Settings(
             _env_file=None,
@@ -1091,7 +1095,7 @@ def validate_security(
         raise ValueError("wildcard CORS origin is forbidden")
 ```
 
-Call `validate_security` from a `Settings.model_validator(mode="after")`. The first release has no remote
+Call `validate_security` from a `Settings.model_validator(mode="after")`. The local test system has no remote
 authentication subsystem, so even `authentication_enabled=true` cannot bypass this guard. Keep CORS
 `allow_credentials=False` and methods limited to GET/POST/PUT.
 
@@ -1113,17 +1117,13 @@ git add backend/app/bootstrap backend/app/infrastructure backend/tests/security
 git commit -m "fix: fail closed at DA network, artifact, SQL, and logging boundaries"
 ```
 
-### Task 8: 增加 readiness、worker lease、容器和恢复 runbook
+### Task 8: 增加 readiness、worker lease 和本地恢复 runbook
 
 **Files:**
 - Create: `backend/app/infrastructure/tasks/health.py`
 - Create: `backend/app/infrastructure/tasks/db_models.py`
 - Create: `backend/migrations/versions/20260716_0003_worker_lease.py`
 - Create: `backend/tests/operations/test_readiness.py`
-- Create: `backend/Dockerfile`
-- Create: `web/Dockerfile`
-- Create: `web/nginx.conf`
-- Create: `compose.release.yaml`
 - Create: `docs/runbook.md`
 - Modify: `backend/app/infrastructure/tasks/worker.py`
 - Modify: `backend/app/bootstrap/application.py`
@@ -1161,7 +1161,7 @@ def test_ready_requires_database_and_recent_worker(
 Run: `python -m pytest backend/tests/operations/test_readiness.py -q -m postgres`
 Expected: FAIL，`/api/v1/health/ready` 为 404 或没有 worker component。
 
-- [ ] **Step 3: 实现 persistent worker lease 和容器启动顺序**
+- [ ] **Step 3: 实现 persistent worker lease 和本地启动顺序**
 
 ```python
 # backend/app/infrastructure/tasks/db_models.py
@@ -1187,45 +1187,34 @@ Worker calls `touch` before each claim and after each handler. The API readiness
 `worker_models` in its loaded tuple before generating:
 
 ```bash
-DA_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:55433/da_test \
+DA_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:5432/da_test \
   alembic revision --autogenerate --rev-id 20260716_0003 -m "add worker lease"
 ```
 
-Set `down_revision = "20260716_0002"`. `backend/Dockerfile` uses
-`python:3.11-slim`, installs the wheel as a non-root user, and defaults to `da-api`.
-`web/Dockerfile` builds with Node 20 and serves static output through nginx bound to 8080.
-`compose.release.yaml` defines postgres, migrate, api, worker and web; dependencies are:
+Set `down_revision = "20260716_0002"`. API and Web are started directly by local commands and bind only
+to loopback. Secrets enter only through environment variables. `docs/runbook.md` gives exact local start,
+stop, migration, health, stale-worker restart, database backup and artifact-hash verification commands.
 
-```text
-postgres healthy → migrate completed → api + worker → web
-```
+- [ ] **Step 4: 验证 readiness 和 health**
 
-API binds `127.0.0.1:8000` on the host, Web binds `127.0.0.1:8080`. Secrets enter only through
-environment variables. `docs/runbook.md` gives exact start, stop, migration, health, stale-worker restart,
-database backup and artifact-hash verification commands.
-
-- [ ] **Step 4: 验证 readiness、容器构建和 health**
-
-Run: `python -m pytest backend/tests/operations/test_readiness.py -q -m postgres && docker compose -f compose.release.yaml build && docker compose -f compose.release.yaml up -d --wait && curl -fsS http://127.0.0.1:8000/api/v1/health/ready`
-Expected: test PASS，两个 images build，compose healthy，curl JSON 为 `status=ready`。
+Run: `TEST_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:5432/da_test python -m pytest backend/tests/operations/test_readiness.py -q -m postgres && curl -fsS http://127.0.0.1:8000/api/v1/health/ready`
+Expected: test PASS，curl JSON 为 `status=ready`。
 
 - [ ] **Step 5: 提交运维边界**
 
 ```bash
-git add backend/app/infrastructure/tasks backend/app/bootstrap/application.py backend/migrations backend/tests/operations backend/Dockerfile web/Dockerfile web/nginx.conf compose.release.yaml docs/runbook.md
+git add backend/app/infrastructure/tasks backend/app/bootstrap/application.py backend/migrations backend/tests/operations docs/runbook.md
 git commit -m "feat: make DA startup order and worker health observable"
 ```
 
-### Task 9: 执行独立性、legacy 冻结导入和发布验收
+### Task 9: 执行独立性、legacy 冻结导入和本地验收
 
 **Files:**
 - Create: `tools/audit_release.py`
-- Create: `docs/release-checklist.md`
-- Create: `CHANGELOG.md`
-- Modify: `.github/workflows/ci.yml`
+- Create: `docs/local-acceptance-checklist.md`
 - Test: `backend/tests/system/test_release_audit.py`
 
-- [ ] **Step 1: 写失败的发布审计 test**
+- [ ] **Step 1: 写失败的本地审计 test**
 
 ```python
 # backend/tests/system/test_release_audit.py
@@ -1234,19 +1223,19 @@ from pathlib import Path
 from tools.audit_release import audit_repository
 
 
-def test_release_audit_proves_independence_and_labels() -> None:
+def test_local_audit_proves_independence_and_labels() -> None:
     findings = audit_repository(Path("."))
     assert findings == []
     assert "research" in Path("contracts/openapi.json").read_text(encoding="utf-8")
     assert "pit_verified" in Path("contracts/openapi.json").read_text(encoding="utf-8")
 ```
 
-- [ ] **Step 2: 运行审计 test 并确认工具缺失**
+- [ ] **Step 2: 运行本地审计 test 并确认工具缺失**
 
 Run: `python -m pytest backend/tests/system/test_release_audit.py -q`
 Expected: FAIL，包含 `No module named 'tools.audit_release'`。
 
-- [ ] **Step 3: 实现发布审计并执行一次冻结 legacy 导入**
+- [ ] **Step 3: 实现本地审计并执行一次冻结 legacy 导入**
 
 ```python
 # tools/audit_release.py
@@ -1294,41 +1283,38 @@ Expected: one batch with `origin=legacy_opening_balance`; raw bytes copied under
 `buy_date_after_snapshot` when present; no source file mtime/hash changes. Re-run the exact command and
 assert it returns the same batch id and creates no duplicate opening positions.
 
-`release-checklist.md` requires recorded evidence for `make verify`, Playwright, migrations, OpenAPI
-no-diff, security suite, compose health, legacy quality report and the four-feature browser flow.
-`CHANGELOG.md` labels backtest delivery as research capability and states that strategy effectiveness is not
-claimed without `pit_verified` evidence and V2.12 sample-out thresholds.
+`local-acceptance-checklist.md` requires recorded evidence for local pytest, Playwright, migrations,
+OpenAPI no-diff, security suite, local health, legacy quality report and the four-feature browser flow.
+Backtest evidence is labeled as research capability; strategy effectiveness is not claimed without
+`pit_verified` evidence and V2.12 sample-out thresholds.
 
-- [ ] **Step 4: 运行最终 no-LA-context 和全量发布验收**
+- [ ] **Step 4: 运行最终 no-LA-context 和全量本地验收**
 
 Run:
 
 ```bash
 python -m tools.audit_release
-make verify
+TEST_DATABASE_URL=postgresql+psycopg://da:da@127.0.0.1:5432/da_test make verify
 python -m pytest backend/tests/security backend/tests/system backend/tests/operations -q
 cd web && npm run e2e
 cd ..
 python -m tools.check_openapi
-docker build -f backend/Dockerfile .
-docker build -f web/Dockerfile .
 git diff --exit-code
 ```
 
-Expected: 全部退出 0。Docker build context 只有 DA，因此镜像构建无法读取 sibling LA；工作树无
-生成差异；research 与 PIT/LLM grades 在 API、Web 和导出报告中保留。
+Expected: 全部退出 0；工作树无生成差异；research 与 PIT/LLM grades 在 API、Web 和导出报告中保留。
 
-- [ ] **Step 5: 提交发布证据与 CI**
+- [ ] **Step 5: 提交本地验收证据**
 
-Extend CI after frontend build with PostgreSQL-backed system/security tests, Playwright Chromium and both
-Docker builds. CI uses fake providers and never receives production secrets.
+Record the local PostgreSQL-backed system/security tests, Playwright Chromium, independence audit and
+generated-file checks. No Docker build or production secret is required.
 
 ```bash
-git add tools/audit_release.py docs/release-checklist.md CHANGELOG.md .github/workflows/ci.yml backend/tests/system/test_release_audit.py
-git commit -m "chore: gate DA releases on independence, safety, and end-to-end evidence"
+git add tools/audit_release.py docs/local-acceptance-checklist.md backend/tests/system/test_release_audit.py
+git commit -m "chore: record DA local acceptance evidence"
 ```
 
-## 发布门槛
+## 本地验收门槛
 
 - Web 可以发起/查看候选、持仓和回测，并在运行中心看到跨重启保存的状态与产物。
 - research 结果始终显示 `data_grade=research`；只有 `05` 的毒丸审计全部通过才显示
@@ -1339,4 +1325,4 @@ git commit -m "chore: gate DA releases on independence, safety, and end-to-end e
 - 日志不含密钥、完整 LLM 原文、请求 payload、持仓备注或 PII。
 - legacy batch 保留原始字节、SHA-256、来源和质量标签，只从
   `effective_at` 起作为 `legacy_opening_balance`。
-- Docker 独立构建、全量 CI、Playwright、迁移 no-diff 和 OpenAPI no-diff 均通过。
+- 本地 PostgreSQL、Playwright、迁移 no-diff、OpenAPI no-diff 和独立性审计均通过。

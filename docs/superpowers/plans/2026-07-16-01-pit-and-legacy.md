@@ -1263,12 +1263,12 @@ python -m pytest backend/tests/contracts/test_research_adapter_contract.py backe
 ```
 
 Expected: FAIL，至少包含 `No module named 'backend.app.ports.research_data'`；禁止在看到该
-RED 结果前创建 production adapter。
+RED 结果前创建 local fixture adapter。
 
 - [ ] **Step 4: 迁移 adapters，保留 fallback 但统一转换为 `TemporalRecord`**
 
-`research_adapters.py` 创建 `AkShareResearchAdapter`、`BaoStockResearchAdapter`、
-`SinaQuoteAdapter` 和 `FallbackResearchAdapter`。从 LA 迁移时逐个方法保留其重试和字段转换测试，
+`research_adapters.py` 创建确定性的本地 `FixtureResearchAdapter` 和必要的字段转换适配器；
+从 LA 迁移时逐个方法保留其重试和字段转换测试，
 但必须作以下确定性改动：AkShare `adjust=""`；BaoStock `adjustflag="3"`；Sina 只用于
 `observed_at` 对应的实时 quote；财报使用实际公告时间，缺公告时间的行只能带
 `RESEARCH_RECONSTRUCTED_AVAILABILITY` 质量码。`OfficialPolicyAdapter` 只接受 A 级官方原文或
@@ -1693,7 +1693,7 @@ class DeepSeekStructuredFactorAdapter:
 
 在 `research_adapters.py` 以三个窄转换器
 `MarketEvidenceSource`、`PolicyEvidenceSource`、`LlmEvidenceSource` 分别把 port DTO 转成
-`TemporalRecord`，再用下列 concrete source 聚合；它是 production composition 注册的对象：
+`TemporalRecord`，再用下列 concrete source 聚合；它是 local composition 注册的对象：
 
 ```python
 from dataclasses import asdict
@@ -2100,7 +2100,7 @@ def test_candidate_scope_contains_complete_hybrid_evidence(
     assert DataKind.LLM_FACTOR in scope.required_kinds
 
 
-def test_production_factory_registers_one_complete_evidence_source(
+def test_local_factory_registers_one_complete_evidence_source(
     fake_market_port,
     fake_policy_port,
     fake_llm_port,

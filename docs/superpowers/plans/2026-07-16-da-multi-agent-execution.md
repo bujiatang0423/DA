@@ -58,7 +58,7 @@ flowchart LR
 | Plan 03 agent | `backend/app/features/holdings/**`, `web/src/features/holdings/**` |
 | Plan 04 agent | `backend/app/features/backtests/**`, `web/src/features/backtests/**` |
 | Plan 05 agent | strict PIT adapters, audits, and the strict extensions named in plan 05 |
-| Plan 06 agent | global wiring, migrations, E2E, deployment, and release documentation |
+| Plan 06 agent | global wiring, migrations, local E2E, and local acceptance documentation |
 
 Every agent prompt enforces these rules:
 
@@ -252,13 +252,14 @@ cd /Users/bujiatang/workspace/DA
 git worktree add /Users/bujiatang/workspace/DA-worktrees/06-integration -b codex/06-integration main
 ```
 
-Only this agent may now edit global routers, Alembic history, generated OpenAPI, navigation, deployment,
-and cross-feature E2E tests.
+Only this agent may now edit global routers, Alembic history, generated OpenAPI, navigation, local
+acceptance scripts, and cross-feature E2E tests.
 
-- [ ] **Step 2: Run the complete release gate**
+- [ ] **Step 2: Run the complete local acceptance gate**
 
-Run every backend, PostgreSQL, OpenAPI, Web, Playwright, security, and LA-independence command from plan
-06. Expected: all commands pass and generated-file checks leave the worktree clean.
+Run every backend, local PostgreSQL, OpenAPI, Web, Playwright, security, and LA-independence command from
+plan 06. Do not run Docker/Compose or remote deployment checks. Expected: all local commands pass and
+generated-file checks leave the worktree clean.
 
 - [ ] **Step 3: Merge integration**
 
@@ -267,7 +268,7 @@ cd /Users/bujiatang/workspace/DA
 git merge --no-ff codex/06-integration -m "feat: complete DA analysis platform integration"
 ```
 
-### Task 7: Close safely
+### Task 7: Close local acceptance safely
 
 **Files:**
 - Verify: `backend/`, `web/`, `contracts/`, `strategies/`, `migrations/`, `.github/`
