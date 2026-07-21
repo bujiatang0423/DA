@@ -175,7 +175,11 @@ class HoldingAnalysisService:
         command: HoldingAnalysisCommand,
         portfolio: PortfolioSnapshot,
     ) -> None:
-        if command.import_batch_id is None:
+        if (command.import_batch_id is None) != (command.import_manifest_sha256 is None):
+            raise HoldingAnalysisInvariantError(
+                "import batch and manifest must be supplied together"
+            )
+        if command.import_batch_id is None or command.import_manifest_sha256 is None:
             return
         matching_lots = tuple(
             lot
@@ -184,11 +188,16 @@ class HoldingAnalysisService:
             and lot.origin.value == "legacy_opening_balance"
         )
         if not matching_lots:
-            raise HoldingAnalysisInvariantError("requested import batch is not in the portfolio snapshot")
-        if command.import_manifest_sha256 is not None and any(
-            lot.import_manifest_sha256 != command.import_manifest_sha256 for lot in matching_lots
+            raise HoldingAnalysisInvariantError(
+                "requested import batch is not in the portfolio snapshot"
+            )
+        if any(
+            lot.import_manifest_sha256 != command.import_manifest_sha256
+            for lot in matching_lots
         ):
-            raise HoldingAnalysisInvariantError("requested import manifest does not match the portfolio snapshot")
+            raise HoldingAnalysisInvariantError(
+                "requested import manifest does not match the portfolio snapshot"
+            )
 
     @staticmethod
     def _missing_data_detail(snapshot: PointInTimeSnapshot) -> str:

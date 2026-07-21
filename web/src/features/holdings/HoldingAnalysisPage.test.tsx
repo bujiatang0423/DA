@@ -168,7 +168,10 @@ test("only submits an imported portfolio analysis after its manual action", asyn
   window.history.pushState(
     {},
     "",
-    "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00%2B08%3A00&import_batch_id=batch-1&import_manifest_sha256=abc",
+    [
+      "/holdings?portfolio_id=main&as_of_time=2026-07-19T09%3A00%3A00%2B08%3A00",
+      "&import_batch_id=batch-1&import_manifest_sha256=abc",
+    ].join(""),
   );
   renderPage();
 

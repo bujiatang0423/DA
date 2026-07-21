@@ -51,8 +51,17 @@ export function HoldingAnalysisPage(): JSX.Element {
     setLoadError(false);
     try {
       const [positions, latest] = await Promise.all([
-        holdingApi.positions(portfolioId),
-        holdingApi.latest(portfolioId),
+        holdingApi.positions(
+          portfolioId,
+          context.asOfTime ?? undefined,
+          context.importBatchId && context.importManifestSha256
+            ? {
+                batchId: context.importBatchId,
+                manifestSha256: context.importManifestSha256,
+              }
+            : undefined,
+        ),
+        holdingApi.latest(portfolioId, context.asOfTime ?? undefined),
       ]);
       setPositionPage(positions);
       setResult(latest);
@@ -178,7 +187,9 @@ export function HoldingAnalysisPage(): JSX.Element {
       </div>
       <div className="alert">仅供人工确认，不自动下单</div>
       {context.importBatchId ? (
-        <div className="alert">已选定导入批次 {context.importBatchId}；请核对后手动提交分析。</div>
+        <div className="alert">
+          已选定导入批次 {context.importBatchId}；请核对后手动提交分析。
+        </div>
       ) : null}
       {mutationError ? (
         <div className="alert" role="alert">

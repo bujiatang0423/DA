@@ -86,6 +86,26 @@ def test_service_projects_only_visible_lineage_backed_evidence() -> None:
             source_artifact_hash=source_hash,
             payload={"grade": "forward_observed", "valid": True},
         ),
+        TemporalRecord(
+            record_id="llm-factor-future",
+            kind=DataKind.LLM_FACTOR,
+            entity_id="000001.SZ",
+            event_time=as_of_time.replace(hour=8),
+            observed_at=as_of_time.replace(hour=8),
+            available_at=as_of_time.replace(hour=8),
+            source_artifact_hash=source_hash,
+            payload={"grade": "reconstructed", "valid": True},
+        ),
+        TemporalRecord(
+            record_id="daily-bar-unlineaged",
+            kind=DataKind.DAILY_BAR_RAW,
+            entity_id="000001.SZ",
+            event_time=as_of_time,
+            observed_at=as_of_time,
+            available_at=as_of_time,
+            source_artifact_hash="b" * 64,
+            payload={},
+        ),
     )
     snapshot = PointInTimeSnapshot(
         as_of_time=as_of_time,

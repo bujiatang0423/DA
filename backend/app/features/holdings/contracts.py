@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.core.portfolio.models import PortfolioPosition, PortfolioSnapshot
 
@@ -20,6 +20,12 @@ class HoldingAnalysisRequest(BaseModel):
     as_of_time: AwareDatetime
     import_batch_id: str | None = Field(default=None, min_length=1, max_length=64)
     import_manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_import_provenance_pair(self) -> "HoldingAnalysisRequest":
+        if (self.import_batch_id is None) != (self.import_manifest_sha256 is None):
+            raise ValueError("import_batch_id and import_manifest_sha256 must be supplied together")
+        return self
 
 
 class CorrectedPositionRequest(BaseModel):
