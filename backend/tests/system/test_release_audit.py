@@ -5,6 +5,21 @@ from pathlib import Path
 from tools.audit_release import audit_repository
 
 
+def test_release_audit_has_a_dated_independence_record() -> None:
+    report = Path("docs/audits/2026-07-21-release-independence.md")
+
+    assert report.is_file()
+    content = report.read_text(encoding="utf-8")
+    for marker in (
+        "## Scope",
+        "## Checks",
+        "## Result",
+        "tools/audit_release.py",
+        "test_independent_paths.py",
+    ):
+        assert marker in content
+
+
 def test_release_audit_accepts_the_repository_runtime_surface() -> None:
     findings = audit_repository(Path("."))
 
