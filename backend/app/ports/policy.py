@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -13,5 +13,6 @@ class PolicyMaterial:
     text: str
 
 
+@runtime_checkable
 class PolicyPort(Protocol):
     def materials(self, *, as_of_time: datetime) -> tuple[PolicyMaterial, ...]: ...

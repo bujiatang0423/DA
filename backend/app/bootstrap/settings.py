@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="DA_", extra="ignore")
     environment: Literal["development", "test", "production"] = "development"
     provider_mode: Literal["production", "fake"] = "production"
+    research_provider_factory: str | None = None
     bind_host: str = "127.0.0.1"
     bind_port: int = Field(default=8000, ge=1, le=65535)
     database_url: str = "postgresql+psycopg://da:da@127.0.0.1:55432/da"

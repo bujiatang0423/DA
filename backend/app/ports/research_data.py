@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,7 @@ class FinancialMaterial:
     source_hash: str
 
 
+@runtime_checkable
 class ResearchMarketDataPort(Protocol):
     def trade_calendar(self, start: date, end: date) -> tuple[CalendarDay, ...]: ...
     def universe(self, as_of_time: datetime) -> tuple[UniverseSecurity, ...]: ...
