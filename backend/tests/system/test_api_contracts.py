@@ -253,6 +253,28 @@ def test_composed_application_returns_a_run_status_location(
 
 
 @pytest.mark.postgres
+def test_candidate_idempotency_survives_application_rebuild(
+    composed_client: TestClient,
+) -> None:
+    payload = {
+        "portfolio_id": "candidate-restart",
+        "as_of_time": "2026-07-20T09:30:00Z",
+    }
+    headers = {"Idempotency-Key": "candidate-restart-key"}
+
+    first = composed_client.post("/api/v1/candidates", json=payload, headers=headers)
+    replay = composed_client.post("/api/v1/candidates", json=payload, headers=headers)
+    assert first.status_code == replay.status_code == 202
+    assert first.json()["run_id"] == replay.json()["run_id"]
+
+    rebuilt_client = TestClient(build_application())
+    after_rebuild = rebuilt_client.post("/api/v1/candidates", json=payload, headers=headers)
+
+    assert after_rebuild.status_code == 202
+    assert after_rebuild.json()["run_id"] == first.json()["run_id"]
+
+
+@pytest.mark.postgres
 def test_composed_application_maps_a_real_portfolio_version_conflict_to_409(
     composed_client: TestClient,
 ) -> None:
