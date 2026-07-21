@@ -40,6 +40,21 @@ class ResearchPointInTimeWarehouse:
                 )
         records = tuple(r for b in batches for r in b.records)
         lineage = tuple(x for b in batches for x in b.lineage)
+        lineage_hashes = {item.source_artifact_hash for item in lineage}
+        if missing_lineage := tuple(
+            record.record_id
+            for record in records
+            if record.source_artifact_hash not in lineage_hashes
+        ):
+            issues.append(
+                QualityIssue(
+                    "LINEAGE_MISSING",
+                    QualitySeverity.ERROR,
+                    "lineage",
+                    None,
+                    f"records missing source lineage: {','.join(missing_lineage)}",
+                )
+            )
         present = {r.kind for r in records}
         for kind in set(scope.required_kinds) - present:
             issues.append(

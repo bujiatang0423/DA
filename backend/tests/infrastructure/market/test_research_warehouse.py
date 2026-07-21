@@ -78,3 +78,30 @@ def test_missing_required_dataset_remains_a_quality_error() -> None:
 
     assert snapshot.quality.has_errors
     assert "REQUIRED_DATASET_MISSING" in {issue.code for issue in snapshot.quality.issues}
+
+
+def test_records_without_lineage_fail_closed_with_evidence_quality_error() -> None:
+    class UnattributedSource:
+        provider = "policy_provider"
+
+        def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
+            del scope
+            record = TemporalRecord(
+                "policy-1",
+                DataKind.POLICY_DOCUMENT,
+                "MARKET:POLICY",
+                as_of_time,
+                as_of_time,
+                as_of_time,
+                "policy-hash",
+                {},
+            )
+            return ResearchBatch((record,), ())
+
+    snapshot = ResearchPointInTimeWarehouse((UnattributedSource(),)).snapshot(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.POLICY_DOCUMENT,)),
+    )
+
+    assert snapshot.quality.has_errors
+    assert any(issue.code == "LINEAGE_MISSING" for issue in snapshot.quality.issues)
