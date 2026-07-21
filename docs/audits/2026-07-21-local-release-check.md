@@ -12,4 +12,5 @@ export, and a clean diff check for `contracts/openapi.json`. Both passes must co
 non-zero command blocks release. PostgreSQL integration, browser E2E, and external provider
 availability remain separate gates. When PostgreSQL is already running locally, add
 `--postgres` to run the marked backend tests against `127.0.0.1:5432`; `--passes=1` is available
-for a quick smoke check, while the default remains two passes.
+for a quick smoke check, while the default remains two passes. Add `--e2e` to run the Playwright
+flow in `web` during each pass.

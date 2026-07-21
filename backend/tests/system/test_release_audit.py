@@ -43,6 +43,13 @@ def test_local_release_check_can_include_loopback_postgres() -> None:
     assert _postgres_environment()["TEST_DATABASE_URL"].endswith("@127.0.0.1:5432/da_test")
 
 
+def test_local_release_check_can_include_playwright() -> None:
+    source = Path("tools/verify_local_release.py").read_text(encoding="utf-8")
+
+    assert "--e2e" in source
+    assert '"npm", "run", "e2e"' in source
+
+
 def test_release_audit_accepts_the_repository_runtime_surface() -> None:
     findings = audit_repository(Path("."))
 
