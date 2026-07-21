@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.bootstrap.composition import (
+    ProductionResearchProviders,
     ProviderConfigurationError,
     build_components,
     build_warehouse,
@@ -70,6 +71,77 @@ def test_missing_optional_market_clients_fail_closed(monkeypatch: pytest.MonkeyP
         raise composition.ProviderConfigurationError(name)
 
     monkeypatch.setattr(composition, "_provider_module", missing)
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
+
+
+def test_configured_provider_factory_builds_the_unified_research_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="fixture_provider:build",
+    )
+
+    class Market:
+        def trade_calendar(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+        def universe(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+        def quotes(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+        def daily_bars(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+        def financials(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+        def fee_schedules(self, *args: object) -> tuple[object, ...]:
+            return ()
+
+    class Policy:
+        def materials(self, *, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            return ()
+
+    class Llm:
+        def extract(self, **kwargs: object) -> object:
+            del kwargs
+            return object()
+
+    import sys
+
+    module = ModuleType("fixture_provider")
+    module.build = lambda current: ProductionResearchProviders(Market(), Policy(), Llm())
+    monkeypatch.setitem(sys.modules, "fixture_provider", module)
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, ResearchPointInTimeWarehouse)
+    assert warehouse.sources[0].sources[0].provider == "research_market"
+
+
+def test_incomplete_configured_provider_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="fixture_provider:build",
+    )
+    import sys
+
+    module = ModuleType("fixture_provider")
+    module.build = lambda current: object()
+    monkeypatch.setitem(sys.modules, "fixture_provider", module)
 
     warehouse = build_warehouse(settings)
 
