@@ -87,8 +87,6 @@ class SqlLegacyRepository:
             portfolio_id=batch.portfolio_id,
             effective_at=batch.effective_at,
             manifest_sha256=batch.manifest_sha256,
-            portfolio_id=batch.portfolio_id,
-            effective_at=batch.effective_at,
             raw_file_count=self._raw_file_count(batch_id),
             opening_position_count=self._opening_position_count(batch_id),
             historical_snapshot_count=self._historical_snapshot_count(batch_id),

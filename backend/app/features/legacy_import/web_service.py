@@ -198,8 +198,6 @@ class LegacyImportWebService:
             portfolio_id=stored.portfolio_id,
             effective_at=stored.effective_at,
             manifest_sha256=stored.manifest_sha256,
-            portfolio_id=stored.portfolio_id,
-            effective_at=stored.effective_at,
             raw_file_count=stored.raw_file_count,
             opening_position_count=stored.opening_position_count,
             historical_snapshot_count=stored.historical_snapshot_count,
