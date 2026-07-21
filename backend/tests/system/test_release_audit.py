@@ -26,6 +26,16 @@ def test_ci_runs_the_independence_path_audit() -> None:
     assert "backend/tests/test_independent_paths.py" in workflow
 
 
+def test_local_release_check_defines_two_pass_acceptance() -> None:
+    script = Path("tools/verify_local_release.py")
+
+    assert script.is_file()
+    source = script.read_text(encoding="utf-8")
+    assert "for _ in range(2)" in source
+    assert "tools.audit_release" in source
+    assert "contracts/openapi.json" in source
+
+
 def test_release_audit_accepts_the_repository_runtime_surface() -> None:
     findings = audit_repository(Path("."))
 
