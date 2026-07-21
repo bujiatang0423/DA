@@ -14,10 +14,14 @@ class MarketEvidenceSource:
 
     def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
         if hasattr(self.market, "research_records"):
+            allowed_ids = set(scope.security_ids)
+            required = set(scope.required_kinds)
             result = tuple(
                 record
                 for record in self.market.research_records(as_of_time=as_of_time, scope=scope)
                 if record.event_time <= as_of_time and record.available_at <= as_of_time
+                and (not allowed_ids or record.entity_id in allowed_ids)
+                and (not required or record.kind in required)
             )
             return ResearchBatch(result, _lineage(self.provider, result))
         result: list[TemporalRecord] = []
@@ -96,9 +100,21 @@ def _record(
 
 
 def _lineage(provider: str, records: tuple[TemporalRecord, ...]) -> tuple[LineageRef, ...]:
+    return _lineage_from_hashes(provider, {r.source_artifact_hash for r in records})
+
+
+def _lineage_from_hashes(provider: str, hashes: set[str]) -> tuple[LineageRef, ...]:
+    return tuple(LineageRef(f"{provider}-{h[:16]}", provider, h) for h in sorted(hashes))
+
+
+def _merge_lineage(
+    first: tuple[LineageRef, ...], second: tuple[LineageRef, ...]
+) -> tuple[LineageRef, ...]:
     return tuple(
-        LineageRef(f"{provider}-{h[:16]}", provider, h)
-        for h in sorted({r.source_artifact_hash for r in records})
+        sorted(
+            set(first) | set(second),
+            key=lambda item: (item.source_artifact_hash, item.provider, item.batch_id),
+        )
     )
 
 
@@ -144,6 +160,7 @@ class LlmEvidenceSource:
         )
         ids = scope.security_ids or tuple(x.security_id for x in self.market.universe(as_of_time))
         rows = []
+        input_hashes: set[str] = set()
         for sid in ids:
             financials = tuple(
                 x for x in self.market.financials(sid, as_of_time) if x.published_at <= as_of_time
@@ -156,12 +173,22 @@ class LlmEvidenceSource:
             )
             if factor.as_of_time != as_of_time or factor.security_id != sid:
                 raise ValueError("LLM factor identity mismatch")
+            if not all(
+                isinstance(getattr(factor, field, None), str)
+                and bool(getattr(factor, field).strip())
+                for field in ("model_id", "prompt_hash", "input_hash", "output_hash")
+            ) or not isinstance(factor.payload, dict):
+                raise ValueError("LLM factor metadata/schema mismatch")
             validate_factor(
                 factor.payload,
                 as_of_time=as_of_time,
                 allowed_evidence={item.source_id for item in policies}
                 | {item.source_hash for item in financials},
             )
+            row_input_hashes = {item.content_hash for item in policies} | {
+                item.source_hash for item in financials
+            }
+            input_hashes.update(row_input_hashes)
             rows.append(
                 _record(
                     DataKind.LLM_FACTOR,
@@ -175,12 +202,19 @@ class LlmEvidenceSource:
                         "prompt_hash": factor.prompt_hash,
                         "input_hash": factor.input_hash,
                         "output_hash": factor.output_hash,
+                        "input_artifact_hashes": tuple(sorted(row_input_hashes)),
                         "factor": factor.payload,
                     },
                 )
             )
         result = tuple(rows)
-        return ResearchBatch(result, _lineage(self.provider, result))
+        return ResearchBatch(
+            result,
+            _merge_lineage(
+                _lineage(self.provider, result),
+                _lineage_from_hashes(self.provider, input_hashes),
+            ),
+        )
 
 
 class ResearchEvidenceSource:

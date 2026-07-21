@@ -196,6 +196,76 @@ def test_market_source_filters_future_records_from_research_records_fast_path() 
     assert batch.records == ()
 
 
+def test_market_source_fast_path_honors_security_scope() -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class RecordsMarket:
+        def research_records(
+            self, *, as_of_time: datetime, scope: SnapshotScope
+        ) -> tuple[TemporalRecord, ...]:
+            del as_of_time, scope
+            return (
+                TemporalRecord(
+                    "financial_disclosure:AAA:one",
+                    DataKind.FINANCIAL_DISCLOSURE,
+                    "AAA",
+                    as_of,
+                    as_of,
+                    as_of,
+                    "aaa-hash",
+                    {},
+                ),
+                TemporalRecord(
+                    "financial_disclosure:BBB:one",
+                    DataKind.FINANCIAL_DISCLOSURE,
+                    "BBB",
+                    as_of,
+                    as_of,
+                    as_of,
+                    "bbb-hash",
+                    {},
+                ),
+            )
+
+    batch = MarketEvidenceSource(RecordsMarket()).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(
+            security_ids=("AAA",),
+            required_kinds=(DataKind.FINANCIAL_DISCLOSURE,),
+        ),
+    )
+
+    assert {record.entity_id for record in batch.records} == {"AAA"}
+
+
+def test_llm_lineage_includes_all_input_artifacts() -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class InputPolicy(Policy):
+        def materials(self, *, as_of_time: datetime) -> tuple[Material, ...]:
+            return (Material("p1", as_of_time, as_of_time, "A", "policy-hash", "text"),)
+
+    class InputMarket(Market):
+        def financials(self, sid: str, as_of_time: datetime) -> tuple[FinancialMaterial, ...]:
+            return (
+                FinancialMaterial(sid, date(2025, 12, 31), as_of_time, {}, "financial-hash"),
+            )
+
+    batch = LlmEvidenceSource(Llm(), InputPolicy(), InputMarket()).fetch(
+        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+    )
+
+    assert {item.source_artifact_hash for item in batch.lineage} == {
+        "output",
+        "policy-hash",
+        "financial-hash",
+    }
+    assert batch.records[0].payload["input_artifact_hashes"] == (
+        "financial-hash",
+        "policy-hash",
+    )
+
+
 def test_market_source_maps_available_financial_disclosure_and_facts() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -252,6 +322,27 @@ def test_llm_source_rejects_unvalidated_factor_before_snapshot_assembly() -> Non
 
     with pytest.raises(LlmFactorValidationError, match="forbidden"):
         LlmEvidenceSource(InvalidLlm(), Policy(), Market()).fetch(
+            as_of_time=as_of, scope=SnapshotScope(("AAA",))
+        )
+
+
+def test_llm_source_rejects_malformed_factor_metadata() -> None:
+    as_of = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class MalformedLlm:
+        def extract(self, **kwargs: Any) -> Factor:  # noqa: ANN401
+            return Factor(
+                kwargs["as_of_time"],
+                kwargs["security_id"],
+                "",
+                "prompt",
+                "input",
+                "output",
+                valid_factor_payload(kwargs["as_of_time"]),
+            )
+
+    with pytest.raises(ValueError, match="metadata"):
+        LlmEvidenceSource(MalformedLlm(), Policy(), Market()).fetch(
             as_of_time=as_of, scope=SnapshotScope(("AAA",))
         )
 
