@@ -20,6 +20,12 @@ def test_release_audit_has_a_dated_independence_record() -> None:
         assert marker in content
 
 
+def test_ci_runs_the_independence_path_audit() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "backend/tests/test_independent_paths.py" in workflow
+
+
 def test_release_audit_accepts_the_repository_runtime_surface() -> None:
     findings = audit_repository(Path("."))
 

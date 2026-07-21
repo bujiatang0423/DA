@@ -22,7 +22,9 @@ jobs:
       - run: python -m ruff format --check backend tools
       - run: python -m mypy backend
       - run: python -m tools.audit_release
-      - run: python -m pytest backend/tests/security backend/tests/system/test_release_audit.py -q
+      - run: >-
+          python -m pytest backend/tests/security backend/tests/system/test_release_audit.py
+          backend/tests/test_independent_paths.py -q
       - run: python -m tools.export_openapi
       - run: git diff --exit-code -- contracts/openapi.json
       - run: python -m pytest -m postgres
