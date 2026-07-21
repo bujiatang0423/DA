@@ -79,6 +79,37 @@ def test_frozen_e2e_warehouse_contains_candidate_evidence_inputs() -> None:
     assert len(snapshot.lineage) >= 3
 
 
+def test_frozen_e2e_fixture_projects_three_candidate_buckets() -> None:
+    from backend.app.bootstrap.e2e import FrozenE2EWarehouse
+    from backend.app.core.market.strategy_inputs import StrategyInputBuilder
+    from backend.app.core.strategy.service import V212StrategyEngine
+    from backend.app.features.candidates.service import (
+        CandidateRecommendationCommand,
+        CandidateService,
+    )
+    from backend.tests.features.holdings.factories import portfolio_snapshot
+
+    as_of_time = datetime(2020, 1, 2, 7, 30, tzinfo=UTC)
+
+    class Portfolios:
+        def snapshot(self, *, portfolio_id: str, as_of_time: datetime) -> object:
+            return portfolio_snapshot(as_of_time)
+
+    class Repository:
+        def save(self, result: object) -> None:
+            del result
+
+    result = CandidateService(
+        FrozenE2EWarehouse(),
+        Portfolios(),
+        StrategyInputBuilder(),
+        V212StrategyEngine(),
+        Repository(),
+    ).run(CandidateRecommendationCommand("fixture-run", "default", as_of_time))
+
+    assert result.executable and result.watchlist and result.excluded
+
+
 def test_local_e2e_application_uses_the_frozen_warehouse_only_in_test_mode() -> None:
     from backend.app.bootstrap.e2e import build_local_e2e_application, build_local_e2e_worker
     from backend.app.bootstrap.settings import Settings

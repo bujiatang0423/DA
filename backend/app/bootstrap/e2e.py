@@ -133,7 +133,7 @@ class FrozenE2EWarehouse:
                 {
                     "name": f"Fixture {security_id}",
                     "listing_days": 1000,
-                    "status": "ACTIVE",
+                    "status": "SUSPENDED" if offset == 2 else "ACTIVE",
                     "industry_id": "fixture",
                 },
             )
@@ -147,16 +147,16 @@ class FrozenE2EWarehouse:
                     as_of_time,
                     artifact_hash,
                     {
-                        "trade_date": (as_of_time.date() - timedelta(days=60 - i)).isoformat(),
-                        "open": 100 + i + offset,
-                        "high": 101 + i + offset,
-                        "low": 99 + i + offset,
-                        "close": 100 + i + offset,
+                        "trade_date": (as_of_time.date() - timedelta(days=20 - i)).isoformat(),
+                        "open": 100 + i * (0.001 if offset == 0 else 1) + offset,
+                        "high": 100 + i * (0.001 if offset == 0 else 1) + offset + 0.01,
+                        "low": 100 + i * (0.001 if offset == 0 else 1) + offset - 0.01,
+                        "close": 100 + i * (0.001 if offset == 0 else 1) + offset,
                         "volume": 1_000_000,
                         "amount": 100_000_000,
                     },
                 )
-                for i in range(18)
+                for i in range(20)
             )
             facts = tuple(
                 TemporalRecord(
