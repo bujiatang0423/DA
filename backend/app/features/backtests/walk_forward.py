@@ -33,17 +33,49 @@ class WalkForwardPlan:
 
     @classmethod
     def rolling(cls, start: date, end: date, holdout_months: int = 12) -> WalkForwardPlan:
-        holdout_start = end - timedelta(days=holdout_months * 30)
+        if start > end:
+            raise ValueError("walk-forward start must not be after end")
+        if holdout_months <= 0:
+            raise ValueError("holdout_months must be positive")
+        holdout_start = _shift_months(end, -holdout_months) + timedelta(days=1)
+        if holdout_start <= start:
+            raise ValueError("walk-forward range is shorter than the holdout")
         holdout = HoldoutLock(holdout_start, end)
         development_end = holdout_start - timedelta(days=1)
         windows: list[WalkForwardWindow] = []
         cursor = start
-        while cursor + timedelta(days=365) <= development_end:
-            dev_end = cursor + timedelta(days=365 * 3 - 1)
-            val_end = min(dev_end + timedelta(days=365), development_end)
+        while _shift_years(cursor, 3) - timedelta(days=1) <= development_end:
+            dev_end = _shift_years(cursor, 3) - timedelta(days=1)
+            val_end = min(_shift_years(dev_end + timedelta(days=1), 1) - timedelta(days=1), development_end)
             if dev_end < development_end:
                 windows.append(
                     WalkForwardWindow(cursor, dev_end, dev_end + timedelta(days=1), val_end)
                 )
-            cursor += timedelta(days=365)
+            cursor = _shift_years(cursor, 1)
+        if not windows:
+            raise ValueError("walk-forward range has no complete development window")
         return cls(tuple(windows), holdout)
+
+
+def _shift_years(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year + years)
+    except ValueError:
+        # Preserve a valid calendar date for February 29 anniversaries.
+        return value.replace(year=value.year + years, day=28)
+
+
+def _shift_months(value: date, months: int) -> date:
+    month_index = value.year * 12 + (value.month - 1) + months
+    year, month_zero = divmod(month_index, 12)
+    month = month_zero + 1
+    day = min(value.day, _days_in_month(year, month))
+    return date(year, month, day)
+
+
+def _days_in_month(year: int, month: int) -> int:
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    return (next_month - date(year, month, 1)).days
