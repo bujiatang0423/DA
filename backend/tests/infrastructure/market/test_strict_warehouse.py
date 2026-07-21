@@ -23,6 +23,7 @@ from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReade
 from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitDataError
 from backend.app.infrastructure.persistence.models import Base
 from backend.app.infrastructure.persistence.strict_pit_rows import (
+    CorporateActionRow,
     DailyBarRawRow,
     MarketBreadthRow,
     PitAuditReportRow,
@@ -166,6 +167,32 @@ def test_strict_reader_selects_only_market_breadth_visible_at_the_snapshot(
     assert [(record.kind, record.payload["breadth"]) for record in records] == [
         (DataKind.MARKET_BREADTH, "0.610000")
     ]
+
+
+@pytest.mark.postgres
+def test_strict_reader_excludes_future_effective_corporate_actions(
+    strict_session: Session,
+) -> None:
+    strict_session.add(
+        CorporateActionRow(
+            id="ca-future-effective",
+            source_record_id="ca-future-effective",
+            security_id="000001.SZ",
+            available_at=datetime(2020, 5, 1, tzinfo=UTC),
+            source_artifact_hash="e" * 64,
+            payload_json='{"ex_date":"2020-07-01","action_type":"split"}',
+        )
+    )
+    strict_session.commit()
+
+    records, _, issues = SqlStrictRecordReader(strict_session).read(
+        as_of_time=AS_OF,
+        scope=SnapshotScope(required_kinds=(DataKind.CORPORATE_ACTION,)),
+    )
+
+    assert issues == ()
+    assert len(records) == 1
+    assert records[0].payload["ex_date"] == "2020-03-01"
 
 
 @pytest.mark.postgres

@@ -132,6 +132,8 @@ class SqlStrictRecordReader:
         scope: SnapshotScope,
     ) -> list[StrictRow]:
         statement = select(model).where(model.available_at <= as_of_time)
+        if hasattr(model, "trade_date"):
+            statement = statement.where(model.trade_date <= as_of_time.date())
         if scope.security_ids and hasattr(model, "security_id"):
             statement = statement.where(model.security_id.in_(scope.security_ids))
         if model is MarketBreadthRow:
@@ -204,6 +206,14 @@ def _effective_at(kind: DataKind, row: StrictRow, as_of_time: datetime) -> bool:
         end_value = payload.get("effective_to") or None
         end = date.fromisoformat(end_value) if end_value else None
         return start <= as_of_date and (end is None or end > as_of_date)
+    if kind is DataKind.CORPORATE_ACTION:
+        payload = json.loads(cast(str, row.payload_json))
+        ex_date = date.fromisoformat(str(payload["ex_date"]))
+        return ex_date <= as_of_date
+    if kind is DataKind.ADJUSTMENT_FACTOR:
+        payload = json.loads(cast(str, row.payload_json))
+        trade_date = date.fromisoformat(str(payload["trade_date"]))
+        return trade_date <= as_of_date
     if kind is DataKind.FEE_SCHEDULE:
         effective_from = cast(date, row.effective_from)
         effective_to = cast(date | None, row.effective_to)
