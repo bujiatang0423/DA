@@ -147,8 +147,15 @@ def build_warehouse(
     if settings.environment != "test":
         return UnavailableResearchWarehouse()
 
-    akshare = akshare_module or _provider_module("akshare")
-    baostock = baostock_module or _provider_module("baostock")
+    try:
+        akshare = akshare_module or _provider_module("akshare")
+        baostock = baostock_module or _provider_module("baostock")
+    except ProviderConfigurationError:
+        # A test/development process without optional market clients must remain
+        # fail-closed instead of failing during application import.  The
+        # resulting warehouse reports unavailable required datasets and can
+        # never produce an executable recommendation.
+        return UnavailableResearchWarehouse()
     daily_bars = FallbackDailyBarProvider(
         primary=AkShareDailyBarProvider(akshare),
         fallback=BaoStockDailyBarProvider(baostock),

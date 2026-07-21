@@ -13,6 +13,7 @@ from backend.app.bootstrap.settings import Settings
 from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
+from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 
 
 class FrozenWarehouse:
@@ -37,7 +38,7 @@ def test_fake_provider_mode_requires_an_explicit_frozen_warehouse() -> None:
 
 
 def test_production_provider_mode_builds_the_real_fallback_chain() -> None:
-    settings = Settings(_env_file=None, provider_mode="production")
+    settings = Settings(_env_file=None, environment="test", provider_mode="production")
     akshare = ModuleType("akshare")
     baostock = ModuleType("baostock")
 
@@ -59,6 +60,20 @@ def test_production_provider_mode_rejects_a_fake_override() -> None:
 
     with pytest.raises(ProviderConfigurationError, match="production"):
         build_warehouse(settings, fake_warehouse=FrozenWarehouse())
+
+
+def test_missing_optional_market_clients_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(_env_file=None, environment="test", provider_mode="production")
+    from backend.app.bootstrap import composition
+
+    def missing(name: str) -> ModuleType:
+        raise composition.ProviderConfigurationError(name)
+
+    monkeypatch.setattr(composition, "_provider_module", missing)
+
+    warehouse = build_warehouse(settings)
+
+    assert isinstance(warehouse, UnavailableResearchWarehouse)
 
 
 def test_components_share_the_explicit_fake_warehouse() -> None:
