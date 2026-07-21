@@ -22,6 +22,17 @@ def test_request_rejects_client_owned_strategy_and_llm_fields() -> None:
         )
 
 
+def test_request_requires_import_batch_and_manifest_together() -> None:
+    with pytest.raises(ValidationError):
+        HoldingAnalysisRequest.model_validate(
+            {
+                "portfolio_id": "default",
+                "as_of_time": "2026-07-17T15:00:00+08:00",
+                "import_batch_id": "batch-1",
+            }
+        )
+
+
 def test_worker_reports_durable_progress() -> None:
     service = RecordingAnalysisService()
     heartbeats: list[tuple[str, int]] = []

@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.core.portfolio.models import PortfolioPosition, PortfolioSnapshot
 
@@ -18,6 +18,14 @@ class HoldingAnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     portfolio_id: str = Field(min_length=1)
     as_of_time: AwareDatetime
+    import_batch_id: str | None = Field(default=None, min_length=1, max_length=64)
+    import_manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_import_provenance_pair(self) -> "HoldingAnalysisRequest":
+        if (self.import_batch_id is None) != (self.import_manifest_sha256 is None):
+            raise ValueError("import_batch_id and import_manifest_sha256 must be supplied together")
+        return self
 
 
 class CorrectedPositionRequest(BaseModel):
@@ -201,6 +209,7 @@ class HoldingAnalysisResponse(BaseModel):
     llm_grade: str
     summary: HoldingRiskSummaryResponse
     items: tuple[HoldingAdviceItemResponse, ...]
+    portfolio_imports: tuple["HoldingImportProvenanceResponse", ...]
     auto_trade_enabled: Literal[False] = False
     human_confirm_required: Literal[True] = True
 
@@ -216,4 +225,16 @@ class HoldingAnalysisResponse(BaseModel):
             llm_grade=result.llm_grade.value,
             summary=HoldingRiskSummaryResponse.from_domain(result.summary),
             items=tuple(HoldingAdviceItemResponse.from_domain(item) for item in result.items),
+            portfolio_imports=tuple(
+                HoldingImportProvenanceResponse(
+                    batch_id=provenance.batch_id,
+                    manifest_sha256=provenance.manifest_sha256,
+                )
+                for provenance in result.portfolio_imports
+            ),
         )
+
+
+class HoldingImportProvenanceResponse(BaseModel):
+    batch_id: str
+    manifest_sha256: str

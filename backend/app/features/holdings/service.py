@@ -13,8 +13,8 @@ from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
 from backend.app.ports.strategy import StrategyDecisionPort
 
-from .models import HoldingAnalysisResult, HoldingRiskSummary
-from .quality import llm_grade_from_snapshot
+from .models import HoldingAnalysisResult, HoldingImportProvenance, HoldingRiskSummary
+from .quality import holding_evidence, llm_grade_from_snapshot
 from .repository import HoldingAnalysisRepository
 from .strategy_projection import project_position
 
@@ -33,6 +33,8 @@ class HoldingAnalysisCommand:
     portfolio_id: str
     as_of_time: datetime
     strategy_version: Literal["v2.12"] = "v2.12"
+    import_batch_id: str | None = None
+    import_manifest_sha256: str | None = None
 
 
 class HoldingAnalysisService:
@@ -64,6 +66,7 @@ class HoldingAnalysisService:
             scope=SnapshotScope.holding_analysis(security_ids),
         )
         self._validate_inputs(command, portfolio, snapshot)
+        self._validate_import_provenance(command, portfolio)
         if snapshot.quality.has_errors:
             raise HoldingMarketDataMissing(self._missing_data_detail(snapshot))
 
@@ -86,11 +89,24 @@ class HoldingAnalysisService:
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: missing evaluations for {','.join(missing)}"
             )
-        items = tuple(
-            project_position(position, evaluations_by_security[position.security_id])
-            for position in portfolio.positions
+        invalid_close_ids = tuple(
+            security_id for security_id, item in evaluations_by_security.items() if item.close <= 0
         )
-        portfolio_view = prepared.portfolio
+        if invalid_close_ids:
+            raise HoldingMarketDataMissing(
+                f"{HoldingMarketDataMissing.code}: invalid close for {','.join(invalid_close_ids)}"
+            )
+        items = tuple(
+            project_position(
+                position,
+                evaluations_by_security[position.security_id],
+                evidence_refs=evidence.refs,
+                evidence_available=evidence.is_available,
+            )
+            for position in portfolio.positions
+            for evidence in (holding_evidence(snapshot, position.security_id),)
+        )
+        portfolio_view = evaluation.portfolio_summary
         result = HoldingAnalysisResult(
             run_id=command.run_id,
             portfolio_id=command.portfolio_id,
@@ -102,11 +118,22 @@ class HoldingAnalysisService:
             summary=HoldingRiskSummary(
                 equity=portfolio.equity,
                 cash=portfolio.cash,
-                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure * 100)),
-                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk * 100)),
-                market_state=evaluation.market.state.value,
+                gross_exposure_pct=Decimal(str(portfolio_view.gross_exposure_pct)),
+                portfolio_risk_pct=Decimal(str(portfolio_view.portfolio_risk_pct)),
+                market_state=portfolio_view.market_state.value,
             ),
             items=items,
+            portfolio_imports=tuple(
+                HoldingImportProvenance(batch_id, manifest_sha256)
+                for batch_id, manifest_sha256 in sorted(
+                    {
+                        (lot.batch_id, lot.import_manifest_sha256)
+                        for lot in portfolio.lots
+                        if lot.origin.value == "legacy_opening_balance"
+                        and lot.import_manifest_sha256 is not None
+                    }
+                )
+            ),
         )
         self._repository.save(result)
         return result
@@ -142,6 +169,35 @@ class HoldingAnalysisService:
             raise HoldingAnalysisInvariantError("prepared manifest mismatch")
         if evaluation.manifest_hash != snapshot.manifest_hash:
             raise HoldingAnalysisInvariantError("evaluation manifest mismatch")
+
+    @staticmethod
+    def _validate_import_provenance(
+        command: HoldingAnalysisCommand,
+        portfolio: PortfolioSnapshot,
+    ) -> None:
+        if (command.import_batch_id is None) != (command.import_manifest_sha256 is None):
+            raise HoldingAnalysisInvariantError(
+                "import batch and manifest must be supplied together"
+            )
+        if command.import_batch_id is None or command.import_manifest_sha256 is None:
+            return
+        matching_lots = tuple(
+            lot
+            for lot in portfolio.lots
+            if lot.batch_id == command.import_batch_id
+            and lot.origin.value == "legacy_opening_balance"
+        )
+        if not matching_lots:
+            raise HoldingAnalysisInvariantError(
+                "requested import batch is not in the portfolio snapshot"
+            )
+        if any(
+            lot.import_manifest_sha256 != command.import_manifest_sha256
+            for lot in matching_lots
+        ):
+            raise HoldingAnalysisInvariantError(
+                "requested import manifest does not match the portfolio snapshot"
+            )
 
     @staticmethod
     def _missing_data_detail(snapshot: PointInTimeSnapshot) -> str:

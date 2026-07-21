@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backtests/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Result */
+        get: operations["result_api_v1_backtests__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/candidates": {
         parameters: {
             query?: never;
@@ -277,6 +294,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/legacy-imports/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_api_v1_legacy_imports_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/legacy-imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_v1_legacy_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/legacy-imports/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sources */
+        get: operations["sources_api_v1_legacy_imports_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/legacy-imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Result */
+        get: operations["result_api_v1_legacy_imports__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/fills": {
         parameters: {
             query?: never;
@@ -364,10 +449,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Run */
+        post: operations["retry_run_api_v1_runs__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BacktestGroupSummary */
+        BacktestGroupSummary: {
+            data_grade: components["schemas"]["DataGrade"];
+            group: components["schemas"]["StrategyGroup"];
+            /** Input Manifest Hash */
+            input_manifest_hash: string;
+            llm_grade: components["schemas"]["LlmGrade"];
+            /** Metrics */
+            metrics: {
+                [key: string]: string | number | null;
+            };
+        };
         /** BacktestRequest */
         BacktestRequest: {
             /**
@@ -389,6 +503,8 @@ export interface components {
             groups: components["schemas"]["StrategyGroup"][];
             /** Initial Cash */
             initial_cash: number | string;
+            /** Out Of Sample Start */
+            out_of_sample_start?: string | null;
             /**
              * Sell Slippage Bps
              * @default 10
@@ -401,6 +517,38 @@ export interface components {
             start_date: string;
             /** Strategy Version */
             strategy_version: string;
+        };
+        /** BacktestResultResponse */
+        BacktestResultResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            equity_curve: components["schemas"]["Page_dict_str__str__"];
+            group: components["schemas"]["StrategyGroup"];
+            /** Groups */
+            groups: components["schemas"]["BacktestGroupSummary"][];
+            /** Input Manifest Hash */
+            input_manifest_hash: string;
+            /** Metric Details */
+            metric_details: {
+                [key: string]: unknown;
+            };
+            /** Metrics */
+            metrics: {
+                [key: string]: string | number | null;
+            };
+            rejected_attempts: components["schemas"]["Page_dict_str__str__"];
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string;
+            /** Strategy Version */
+            strategy_version: string;
+            trades: components["schemas"]["Page_dict_str__str__"];
+            /** Warnings */
+            warnings: string[];
         };
         /** CandidateFactorsResponse */
         CandidateFactorsResponse: {
@@ -515,6 +663,27 @@ export interface components {
             /** Security Id */
             security_id: string;
         };
+        /**
+         * DataGrade
+         * @enum {string}
+         */
+        DataGrade: "research" | "pit_verified";
+        /** ErrorResponse */
+        ErrorResponse: {
+            /** Code */
+            code: string;
+            /**
+             * Details
+             * @default {}
+             */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -577,6 +746,13 @@ export interface components {
             /** V */
             v: string;
         };
+        /** HoldingImportProvenanceResponse */
+        HoldingImportProvenanceResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+        };
         /** HoldingRisk */
         HoldingRisk: {
             /** Average Cost */
@@ -623,6 +799,117 @@ export interface components {
             /** Portfolio Risk Pct */
             portfolio_risk_pct: string;
         };
+        /** LegacyHoldingAnalysisLinkResponse */
+        LegacyHoldingAnalysisLinkResponse: {
+            /**
+             * As Of Time
+             * Format: date-time
+             */
+            as_of_time: string;
+            /** Href */
+            href: string;
+            /** Import Batch Id */
+            import_batch_id: string;
+            /** Import Manifest Sha256 */
+            import_manifest_sha256: string;
+            /** Portfolio Id */
+            portfolio_id: string;
+        };
+        /** LegacyImportConfirmRequest */
+        LegacyImportConfirmRequest: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /** Portfolio Id */
+            portfolio_id: string;
+            /** Source Id */
+            source_id: string;
+        };
+        /** LegacyImportPreviewRequest */
+        LegacyImportPreviewRequest: {
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /** Portfolio Id */
+            portfolio_id: string;
+            /** Source Id */
+            source_id: string;
+        };
+        /** LegacyImportPreviewResponse */
+        LegacyImportPreviewResponse: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Current Position Count */
+            current_position_count: number;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /** Historical Position Count */
+            historical_position_count: number;
+            /** Portfolio Id */
+            portfolio_id: string;
+            /** Quality Tags */
+            quality_tags: string[];
+            /** Source File Count */
+            source_file_count: number;
+            /** Source Id */
+            source_id: string;
+        };
+        /** LegacyImportProvenanceResponse */
+        LegacyImportProvenanceResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+        };
+        /** LegacyImportResultResponse */
+        LegacyImportResultResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /** Historical Snapshot Count */
+            historical_snapshot_count: number;
+            holding_analysis: components["schemas"]["LegacyHoldingAnalysisLinkResponse"];
+            /** Idempotent */
+            idempotent: boolean;
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+            /** Opening Position Count */
+            opening_position_count: number;
+            /** Portfolio Id */
+            portfolio_id: string;
+            /** Raw File Count */
+            raw_file_count: number;
+        };
+        /** LegacyImportSourceListResponse */
+        LegacyImportSourceListResponse: {
+            /** Items */
+            items: components["schemas"]["LegacyImportSourceResponse"][];
+        };
+        /** LegacyImportSourceResponse */
+        LegacyImportSourceResponse: {
+            /** Label */
+            label: string;
+            /** Source Id */
+            source_id: string;
+        };
+        /**
+         * LlmGrade
+         * @enum {string}
+         */
+        LlmGrade: "not_used" | "reconstructed" | "forward_observed";
         /** ManualFillRequest */
         ManualFillRequest: {
             /**
@@ -652,6 +939,15 @@ export interface components {
         Page_RunDetail_: {
             /** Items */
             items: components["schemas"]["RunDetail"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[dict[str, str]] */
+        Page_dict_str__str__: {
+            /** Items */
+            items: {
+                [key: string]: string;
+            }[];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -752,6 +1048,7 @@ export interface components {
             cash: string;
             /** Equity */
             equity: string;
+            import_provenance?: components["schemas"]["LegacyImportProvenanceResponse"] | null;
             /** Items */
             items: components["schemas"]["PortfolioPositionResponse"][];
             /** Portfolio Id */
@@ -795,6 +1092,28 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** ReadinessComponents */
+        ReadinessComponents: {
+            /**
+             * Database
+             * @enum {string}
+             */
+            database: "ready" | "unavailable" | "unknown";
+            /**
+             * Worker
+             * @enum {string}
+             */
+            worker: "ready" | "missing" | "stale" | "unknown";
+        };
+        /** ReadinessResponse */
+        ReadinessResponse: {
+            components: components["schemas"]["ReadinessComponents"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "not_ready";
+        };
         /** RunDetail */
         RunDetail: {
             /**
@@ -803,10 +1122,10 @@ export interface components {
              * @constant
              */
             auto_trade_enabled: false;
-            /** Error */
-            error?: {
-                [key: string]: unknown;
-            } | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Heartbeat At */
             heartbeat_at?: string | null;
             /**
@@ -822,6 +1141,11 @@ export interface components {
              * @default 0
              */
             progress: number;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
             /** Run Id */
             run_id: string;
             /** Stage */
@@ -954,6 +1278,10 @@ export interface components {
              * Format: date-time
              */
             as_of_time: string;
+            /** Import Batch Id */
+            import_batch_id?: string | null;
+            /** Import Manifest Sha256 */
+            import_manifest_sha256?: string | null;
             /** Portfolio Id */
             portfolio_id: string;
         };
@@ -986,6 +1314,8 @@ export interface components {
             manifest_hash: string;
             /** Portfolio Id */
             portfolio_id: string;
+            /** Portfolio Imports */
+            portfolio_imports: components["schemas"]["HoldingImportProvenanceResponse"][];
             /** Run Id */
             run_id: string;
             /**
@@ -1022,19 +1352,21 @@ export interface operations {
             /** @description Successful Response */
             202: {
                 headers: {
+                    /** @description URL of the submitted run status resource. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RunRef"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1074,6 +1406,45 @@ export interface operations {
             };
         };
     };
+    result_api_v1_backtests__run_id__get: {
+        parameters: {
+            query?: {
+                group?: components["schemas"]["StrategyGroup"];
+                curve_limit?: number;
+                curve_cursor?: string | null;
+                trade_limit?: number;
+                trade_cursor?: string | null;
+                rejected_limit?: number;
+                rejected_cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestResultResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_candidate_api_v1_candidates_post: {
         parameters: {
             query?: never;
@@ -1092,19 +1463,21 @@ export interface operations {
             /** @description Successful Response */
             202: {
                 headers: {
+                    /** @description URL of the submitted run status resource. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RunRef"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1219,9 +1592,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
                 };
             };
         };
@@ -1244,19 +1624,21 @@ export interface operations {
             /** @description Successful Response */
             202: {
                 headers: {
+                    /** @description URL of the submitted run status resource. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RunRef"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1265,6 +1647,7 @@ export interface operations {
         parameters: {
             query?: {
                 portfolio_id?: string;
+                as_of_time?: string | null;
             };
             header?: never;
             path?: never;
@@ -1360,6 +1743,7 @@ export interface operations {
         parameters: {
             query?: {
                 portfolio_id?: string;
+                as_of_time?: string | null;
             };
             header?: never;
             path?: never;
@@ -1405,19 +1789,21 @@ export interface operations {
             /** @description Successful Response */
             202: {
                 headers: {
+                    /** @description URL of the submitted run status resource. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RunRef"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1518,6 +1904,123 @@ export interface operations {
             };
         };
     };
+    confirm_api_v1_legacy_imports_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegacyImportConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyImportResultResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_legacy_imports_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegacyImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyImportPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_api_v1_legacy_imports_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyImportSourceListResponse"];
+                };
+            };
+        };
+    };
+    result_api_v1_legacy_imports__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyImportResultResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     record_manual_fill_api_v1_portfolio_fills_post: {
         parameters: {
             query?: never;
@@ -1556,6 +2059,8 @@ export interface operations {
             query?: {
                 portfolio_id?: string;
                 as_of_time?: string | null;
+                import_batch_id?: string | null;
+                import_manifest_sha256?: string | null;
             };
             header?: never;
             path?: never;
@@ -1670,19 +2175,21 @@ export interface operations {
             /** @description Successful Response */
             202: {
                 headers: {
+                    /** @description URL of the submitted run resource. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RunRef"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1747,6 +2254,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_run_api_v1_runs__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    /** @description URL of the requeued run resource. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRef"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

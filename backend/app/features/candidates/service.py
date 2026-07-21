@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from string import hexdigits
 from typing import Literal
 
-from backend.app.core.market.pit_models import DataKind, SnapshotScope
+from backend.app.core.market.pit_models import DataKind, PointInTimeSnapshot, SnapshotScope
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder
 from backend.app.core.portfolio.models import PortfolioSnapshot
 from backend.app.core.strategy.service import V212StrategyEngine
@@ -18,6 +19,7 @@ from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.ports.portfolio import PortfolioReader
 from .models import CandidateRecommendationResult
 from .quality import derive_llm_grade
+from backend.app.features.holdings.quality import holding_evidence
 from .repository import CandidateRepository
 from .strategy_projection import project_security
 
@@ -80,7 +82,13 @@ class CandidateService:
         llm_grade, llm_quality = derive_llm_grade(llm_manifest)
         items = tuple(
             sorted(
-                (project_security(item) for item in evaluation.securities),
+                (
+                    project_security(
+                        item,
+                        evidence_refs=_evidence_refs(snapshot, item.security_id),
+                    )
+                    for item in evaluation.securities
+                ),
                 key=lambda item: (
                     item.bucket.value,
                     item.factors.percentile_rank,
@@ -104,9 +112,56 @@ class CandidateService:
         return result
 
 
-def _llm_manifest(snapshot: object) -> dict[str, object] | None:
-    records = getattr(snapshot, "market_inputs", ())
-    llm = [record for record in records if record.kind is DataKind.LLM_FACTOR]
+def _llm_manifest(snapshot: PointInTimeSnapshot) -> dict[str, object] | None:
+    records = _snapshot_records(snapshot)
+    lineage_hashes = {
+        lineage.source_artifact_hash.lower()
+        for lineage in snapshot.lineage
+        if len(lineage.source_artifact_hash) == 64
+        and all(character in hexdigits for character in lineage.source_artifact_hash)
+    }
+    llm = sorted(
+        (
+            record
+            for record in records
+            if record.kind is DataKind.LLM_FACTOR
+            and record.source_artifact_hash.lower() in lineage_hashes
+            and _is_visible(record, snapshot.as_of_time)
+        ),
+        key=lambda record: record.record_id,
+    )
     if not llm:
         return None
-    return {"grade": "reconstructed", "valid": True}
+    payload = dict(llm[-1].payload)
+    return {
+        "grade": str(payload.get("grade", "reconstructed")),
+        "valid": bool(payload.get("valid", False)),
+    }
+
+
+def _snapshot_records(snapshot: PointInTimeSnapshot) -> tuple[object, ...]:
+    market = tuple(getattr(snapshot, "market_inputs", ()))
+    security = tuple(
+        record
+        for observation in getattr(snapshot, "security_observations", ())
+        for record in observation.records
+    )
+    return (*market, *security)
+
+
+def _evidence_refs(snapshot: PointInTimeSnapshot, security_id: str) -> tuple[str, ...]:
+    return holding_evidence(snapshot, security_id).refs
+
+
+def _is_visible(record: object, as_of_time: datetime) -> bool:
+    record_times = (
+        getattr(record, "event_time", None),
+        getattr(record, "observed_at", None),
+        getattr(record, "available_at", None),
+    )
+    if any(
+        value is None or value.tzinfo is None or value.utcoffset() is None
+        for value in record_times
+    ):
+        return False
+    return all(value <= as_of_time for value in record_times)

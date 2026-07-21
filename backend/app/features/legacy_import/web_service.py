@@ -6,7 +6,7 @@ import secrets
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.features.legacy_import.inspect import LegacyInspectionReport, inspect_source
@@ -38,13 +38,23 @@ class LegacyImportPreview:
 @dataclass(frozen=True)
 class LegacyImportResult:
     batch_id: str
-    manifest_sha256: str
     portfolio_id: str
     effective_at: datetime
+    manifest_sha256: str
     raw_file_count: int
     opening_position_count: int
     historical_snapshot_count: int
     idempotent: bool
+    holding_analysis: LegacyHoldingAnalysisLink | None = None
+
+
+@dataclass(frozen=True)
+class LegacyHoldingAnalysisLink:
+    portfolio_id: str
+    as_of_time: datetime
+    import_batch_id: str
+    import_manifest_sha256: str
+    href: str
 
 
 @dataclass(frozen=True)
@@ -183,13 +193,19 @@ class LegacyImportWebService:
         stored = self.result(batch.batch_id)
         return LegacyImportResult(
             batch_id=stored.batch_id,
-            manifest_sha256=stored.manifest_sha256,
             portfolio_id=stored.portfolio_id,
             effective_at=stored.effective_at,
+            manifest_sha256=stored.manifest_sha256,
             raw_file_count=stored.raw_file_count,
             opening_position_count=stored.opening_position_count,
             historical_snapshot_count=stored.historical_snapshot_count,
             idempotent=batch.idempotent,
+            holding_analysis=_holding_analysis_link(
+                portfolio_id=portfolio_id,
+                effective_at=effective_at,
+                batch_id=stored.batch_id,
+                manifest_sha256=stored.manifest_sha256,
+            ),
         )
 
     def result(self, batch_id: str) -> LegacyImportResult:
@@ -197,10 +213,49 @@ class LegacyImportWebService:
             raise KeyError(batch_id)
         result = self._result_reader(batch_id)
         if isinstance(result, LegacyImportResult):
-            return result
+            if result.holding_analysis is not None:
+                return result
+            return LegacyImportResult(
+                batch_id=result.batch_id,
+                portfolio_id=result.portfolio_id,
+                effective_at=result.effective_at,
+                manifest_sha256=result.manifest_sha256,
+                raw_file_count=result.raw_file_count,
+                opening_position_count=result.opening_position_count,
+                historical_snapshot_count=result.historical_snapshot_count,
+                idempotent=result.idempotent,
+                holding_analysis=_holding_analysis_link(
+                    portfolio_id=result.portfolio_id,
+                    effective_at=result.effective_at,
+                    batch_id=result.batch_id,
+                    manifest_sha256=result.manifest_sha256,
+                ),
+            )
         if isinstance(result, dict):
-            return LegacyImportResult(**result)
+            return LegacyImportResult(
+                batch_id=str(result.get("batch_id", batch_id)),
+                portfolio_id=str(result.get("portfolio_id", "")),
+                effective_at=datetime.fromisoformat(str(result["effective_at"]))
+                if result.get("effective_at") is not None
+                else datetime.min.replace(tzinfo=UTC),
+                manifest_sha256=str(result.get("manifest_sha256", "")),
+                raw_file_count=int(result.get("raw_file_count", 0)),
+                opening_position_count=int(result.get("opening_position_count", 0)),
+                historical_snapshot_count=int(result.get("historical_snapshot_count", 0)),
+                idempotent=bool(result.get("idempotent", False)),
+                holding_analysis=_holding_analysis_link(
+                    portfolio_id=str(result.get("portfolio_id", "")),
+                    effective_at=(
+                        datetime.fromisoformat(str(result["effective_at"]))
+                        if result.get("effective_at") is not None
+                        else datetime.min.replace(tzinfo=UTC)
+                    ),
+                    batch_id=str(result.get("batch_id", batch_id)),
+                    manifest_sha256=str(result.get("manifest_sha256", "")),
+                ),
+            )
         raise KeyError(batch_id)
+
 
     @staticmethod
     def _is_source(path: Path) -> bool:
@@ -259,6 +314,32 @@ class LegacyImportWebService:
     def _require_aware(value: datetime) -> None:
         if value.tzinfo is None:
             raise ValueError("effective_at must be timezone-aware")
+
+
+def _holding_analysis_link(
+    *,
+    portfolio_id: str,
+    effective_at: datetime,
+    batch_id: str,
+    manifest_sha256: str,
+) -> LegacyHoldingAnalysisLink:
+    from urllib.parse import urlencode
+
+    query = urlencode(
+        {
+            "portfolio_id": portfolio_id,
+            "as_of_time": effective_at.isoformat(),
+            "import_batch_id": batch_id,
+            "import_manifest_sha256": manifest_sha256,
+        }
+    )
+    return LegacyHoldingAnalysisLink(
+        portfolio_id=portfolio_id,
+        as_of_time=effective_at,
+        import_batch_id=batch_id,
+        import_manifest_sha256=manifest_sha256,
+        href=f"/holdings?{query}",
+    )
 
 
 def _sha256(path: Path) -> str:

@@ -31,13 +31,20 @@ test("requires explicit confirmation before showing a frozen import batch", asyn
   });
   vi.mocked(legacyImportApi.confirm).mockResolvedValue({
     batch_id: "batch-1",
-    manifest_sha256: "a".repeat(64),
     portfolio_id: "main",
     effective_at: "2026-07-19T09:00:00+08:00",
+    manifest_sha256: "a".repeat(64),
     raw_file_count: 3,
     opening_position_count: 1,
     historical_snapshot_count: 2,
     idempotent: false,
+    holding_analysis: {
+      portfolio_id: "main",
+      as_of_time: "2026-07-19T09:00:00+08:00",
+      import_batch_id: "batch-1",
+      import_manifest_sha256: "a".repeat(64),
+      href: "/holdings?portfolio_id=main&import_batch_id=batch-1",
+    },
   });
 
   render(<LegacyImportPage />);
@@ -54,8 +61,7 @@ test("requires explicit confirmation before showing a frozen import batch", asyn
   await waitFor(() => expect(screen.getByText("batch-1")).toBeTruthy());
   expect(screen.getByText("首次导入")).toBeTruthy();
   expect(screen.getByText("不自动触发持仓分析")).toBeTruthy();
-  const analysisLink = screen.getByRole("link", { name: "打开持仓分析" });
+  const analysisLink = screen.getByRole("link", { name: "手动分析已导入持仓" });
   expect(analysisLink.getAttribute("href")).toContain("/holdings?");
-  expect(analysisLink.getAttribute("href")).toContain("batch_id=batch-1");
-  expect(analysisLink.getAttribute("href")).toContain("manifest_sha256=");
+  expect(analysisLink.getAttribute("href")).toContain("import_batch_id=batch-1");
 });

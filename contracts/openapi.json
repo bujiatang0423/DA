@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "BacktestGroupSummary": {
+        "properties": {
+          "data_grade": {
+            "$ref": "#/components/schemas/DataGrade"
+          },
+          "group": {
+            "$ref": "#/components/schemas/StrategyGroup"
+          },
+          "input_manifest_hash": {
+            "title": "Input Manifest Hash",
+            "type": "string"
+          },
+          "llm_grade": {
+            "$ref": "#/components/schemas/LlmGrade"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "group",
+          "data_grade",
+          "llm_grade",
+          "input_manifest_hash",
+          "metrics"
+        ],
+        "title": "BacktestGroupSummary",
+        "type": "object"
+      },
       "BacktestRequest": {
         "additionalProperties": false,
         "properties": {
@@ -41,6 +84,18 @@
             ],
             "title": "Initial Cash"
           },
+          "out_of_sample_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Of Sample Start"
+          },
           "sell_slippage_bps": {
             "default": 10,
             "minimum": 0.0,
@@ -65,6 +120,97 @@
           "groups"
         ],
         "title": "BacktestRequest",
+        "type": "object"
+      },
+      "BacktestResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "equity_curve": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "group": {
+            "$ref": "#/components/schemas/StrategyGroup"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestGroupSummary"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "input_manifest_hash": {
+            "title": "Input Manifest Hash",
+            "type": "string"
+          },
+          "metric_details": {
+            "additionalProperties": true,
+            "title": "Metric Details",
+            "type": "object"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "rejected_attempts": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_version": {
+            "title": "Strategy Version",
+            "type": "string"
+          },
+          "trades": {
+            "$ref": "#/components/schemas/Page_dict_str__str__"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "strategy_version",
+          "input_manifest_hash",
+          "created_at",
+          "groups",
+          "group",
+          "metrics",
+          "metric_details",
+          "warnings",
+          "equity_curve",
+          "trades",
+          "rejected_attempts"
+        ],
+        "title": "BacktestResultResponse",
         "type": "object"
       },
       "CandidateFactorsResponse": {
@@ -355,6 +501,43 @@
         "title": "CorrectedPositionRequest",
         "type": "object"
       },
+      "DataGrade": {
+        "enum": [
+          "research",
+          "pit_verified"
+        ],
+        "title": "DataGrade",
+        "type": "string"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -569,6 +752,24 @@
         "title": "HoldingFactorsResponse",
         "type": "object"
       },
+      "HoldingImportProvenanceResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256"
+        ],
+        "title": "HoldingImportProvenanceResponse",
+        "type": "object"
+      },
       "HoldingRisk": {
         "additionalProperties": false,
         "properties": {
@@ -749,6 +950,269 @@
         "title": "HoldingRiskSummaryResponse",
         "type": "object"
       },
+      "LegacyHoldingAnalysisLinkResponse": {
+        "properties": {
+          "as_of_time": {
+            "format": "date-time",
+            "title": "As Of Time",
+            "type": "string"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "import_batch_id": {
+            "title": "Import Batch Id",
+            "type": "string"
+          },
+          "import_manifest_sha256": {
+            "title": "Import Manifest Sha256",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portfolio_id",
+          "as_of_time",
+          "import_batch_id",
+          "import_manifest_sha256",
+          "href"
+        ],
+        "title": "LegacyHoldingAnalysisLinkResponse",
+        "type": "object"
+      },
+      "LegacyImportConfirmRequest": {
+        "properties": {
+          "confirmation_token": {
+            "maxLength": 256,
+            "minLength": 20,
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at",
+          "confirmation_token"
+        ],
+        "title": "LegacyImportConfirmRequest",
+        "type": "object"
+      },
+      "LegacyImportPreviewRequest": {
+        "properties": {
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "portfolio_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at"
+        ],
+        "title": "LegacyImportPreviewRequest",
+        "type": "object"
+      },
+      "LegacyImportPreviewResponse": {
+        "properties": {
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "current_position_count": {
+            "title": "Current Position Count",
+            "type": "integer"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "historical_position_count": {
+            "title": "Historical Position Count",
+            "type": "integer"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "quality_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quality Tags",
+            "type": "array"
+          },
+          "source_file_count": {
+            "title": "Source File Count",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "portfolio_id",
+          "effective_at",
+          "current_position_count",
+          "historical_position_count",
+          "source_file_count",
+          "quality_tags",
+          "confirmation_token"
+        ],
+        "title": "LegacyImportPreviewResponse",
+        "type": "object"
+      },
+      "LegacyImportProvenanceResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "manifest_sha256"
+        ],
+        "title": "LegacyImportProvenanceResponse",
+        "type": "object"
+      },
+      "LegacyImportResultResponse": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "historical_snapshot_count": {
+            "title": "Historical Snapshot Count",
+            "type": "integer"
+          },
+          "holding_analysis": {
+            "$ref": "#/components/schemas/LegacyHoldingAnalysisLinkResponse"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "opening_position_count": {
+            "title": "Opening Position Count",
+            "type": "integer"
+          },
+          "portfolio_id": {
+            "title": "Portfolio Id",
+            "type": "string"
+          },
+          "raw_file_count": {
+            "title": "Raw File Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch_id",
+          "portfolio_id",
+          "effective_at",
+          "manifest_sha256",
+          "raw_file_count",
+          "opening_position_count",
+          "historical_snapshot_count",
+          "idempotent",
+          "holding_analysis"
+        ],
+        "title": "LegacyImportResultResponse",
+        "type": "object"
+      },
+      "LegacyImportSourceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LegacyImportSourceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "LegacyImportSourceListResponse",
+        "type": "object"
+      },
+      "LegacyImportSourceResponse": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "label"
+        ],
+        "title": "LegacyImportSourceResponse",
+        "type": "object"
+      },
+      "LlmGrade": {
+        "enum": [
+          "not_used",
+          "reconstructed",
+          "forward_observed"
+        ],
+        "title": "LlmGrade",
+        "type": "string"
+      },
       "ManualFillRequest": {
         "additionalProperties": false,
         "properties": {
@@ -853,6 +1317,37 @@
           "items"
         ],
         "title": "Page[RunDetail]",
+        "type": "object"
+      },
+      "Page_dict_str__str__": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[dict[str, str]]",
         "type": "object"
       },
       "PortfolioMaintenanceRequest": {
@@ -1193,6 +1688,16 @@
             "title": "Equity",
             "type": "string"
           },
+          "import_provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LegacyImportProvenanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PortfolioPositionResponse"
@@ -1361,6 +1866,58 @@
         "title": "PositionCorrectionRequest",
         "type": "object"
       },
+      "ReadinessComponents": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "worker": {
+            "enum": [
+              "ready",
+              "missing",
+              "stale",
+              "unknown"
+            ],
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "worker"
+        ],
+        "title": "ReadinessComponents",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/ReadinessComponents"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "components"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
       "RunDetail": {
         "additionalProperties": false,
         "properties": {
@@ -1370,17 +1927,31 @@
             "title": "Auto Trade Enabled",
             "type": "boolean"
           },
-          "error": {
+          "error_code": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Error"
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
           },
           "heartbeat_at": {
             "anyOf": [
@@ -1411,6 +1982,12 @@
             "maximum": 100.0,
             "minimum": 0.0,
             "title": "Progress",
+            "type": "integer"
+          },
+          "retry_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Retry Count",
             "type": "integer"
           },
           "run_id": {
@@ -1757,6 +2334,32 @@
             "title": "As Of Time",
             "type": "string"
           },
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "import_manifest_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Manifest Sha256"
+          },
           "portfolio_id": {
             "minLength": 1,
             "title": "Portfolio Id",
@@ -1812,6 +2415,13 @@
             "title": "Portfolio Id",
             "type": "string"
           },
+          "portfolio_imports": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingImportProvenanceResponse"
+            },
+            "title": "Portfolio Imports",
+            "type": "array"
+          },
           "run_id": {
             "title": "Run Id",
             "type": "string"
@@ -1834,7 +2444,8 @@
           "data_grade",
           "llm_grade",
           "summary",
-          "items"
+          "items",
+          "portfolio_imports"
         ],
         "title": "HoldingAnalysisResponse",
         "type": "object"
@@ -1887,17 +2498,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Backtest",
@@ -1949,6 +2568,142 @@
         ]
       }
     },
+    "/api/v1/backtests/{run_id}": {
+      "get": {
+        "operationId": "result_api_v1_backtests__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StrategyGroup",
+              "default": "A"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curve_limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Curve Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curve_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Curve Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Trade Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rejected_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Rejected Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rejected_cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rejected Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Result",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
     "/api/v1/candidates": {
       "post": {
         "operationId": "submit_candidate_api_v1_candidates_post",
@@ -1989,17 +2744,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Candidate",
@@ -2126,15 +2889,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Ready Api V1 Health Ready Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReadinessResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Ready"
@@ -2180,17 +2949,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Analysis",
@@ -2211,6 +2988,23 @@
               "default": "default",
               "title": "Portfolio Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
             }
           }
         ],
@@ -2338,6 +3132,23 @@
               "title": "Portfolio Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "as_of_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Time"
+            }
           }
         ],
         "responses": {
@@ -2408,17 +3219,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the submitted run status resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Legacy Analysis",
@@ -2562,6 +3381,151 @@
         ]
       }
     },
+    "/api/v1/legacy-imports/confirm": {
+      "post": {
+        "operationId": "confirm_api_v1_legacy_imports_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/preview": {
+      "post": {
+        "operationId": "preview_api_v1_legacy_imports_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/sources": {
+      "get": {
+        "operationId": "sources_api_v1_legacy_imports_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sources",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/{batch_id}": {
+      "get": {
+        "operationId": "result_api_v1_legacy_imports__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyImportResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Result",
+        "tags": [
+          "legacy-imports"
+        ]
+      }
+    },
     "/api/v1/portfolio/fills": {
       "post": {
         "operationId": "record_manual_fill_api_v1_portfolio_fills_post",
@@ -2632,6 +3596,38 @@
                 }
               ],
               "title": "As Of Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_batch_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Batch Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "import_manifest_sha256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Import Manifest Sha256"
             }
           }
         ],
@@ -2809,17 +3805,25 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the submitted run resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Run",
@@ -2914,6 +3918,67 @@
           }
         },
         "summary": "Artifacts",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/retry": {
+      "post": {
+        "operationId": "retry_run_api_v1_runs__run_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRef"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Location": {
+                "description": "URL of the requeued run resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Retry Run",
         "tags": [
           "runs"
         ]

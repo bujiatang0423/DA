@@ -16,13 +16,20 @@ export interface LegacyImportPreview {
 
 export interface LegacyImportResult {
   batch_id: string;
-  manifest_sha256: string;
   portfolio_id: string;
   effective_at: string;
+  manifest_sha256: string;
   raw_file_count: number;
   opening_position_count: number;
   historical_snapshot_count: number;
   idempotent: boolean;
+  holding_analysis: {
+    portfolio_id: string;
+    as_of_time: string;
+    import_batch_id: string;
+    import_manifest_sha256: string;
+    href: string;
+  };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
