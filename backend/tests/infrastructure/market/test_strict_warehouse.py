@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -8,7 +8,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.app.contracts.grades import DataGrade
+from backend.app.contracts.grades import DataGrade, LlmGrade
 from backend.app.core.market.pit_models import DataKind, SnapshotScope
 from backend.app.infrastructure.market.build import build_strict_pit_warehouse
 from backend.app.infrastructure.market.strict_backtest_data import CertifiedHistoricalDailyBars
@@ -21,6 +21,11 @@ from backend.app.infrastructure.market.strict_certificates import (
 from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
 from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
 from backend.app.infrastructure.market.strict_warehouse import UnverifiedPitDataError
+from backend.app.features.backtests.pit_promotion import (
+    PitPromotionService,
+    PromotionCandidate,
+)
+from backend.app.features.backtests.walk_forward import WalkForwardPlan
 from backend.app.infrastructure.persistence.models import Base
 from backend.app.infrastructure.persistence.strict_pit_rows import (
     CorporateActionRow,
@@ -126,7 +131,47 @@ def test_production_build_requires_approved_persisted_audit_report(
 
 
 @pytest.mark.postgres
-def test_bundle_set_hash_rejects_uncovered_days(strict_session: Session) -> None:
+def test_canonical_bundle_certificate_snapshot_and_promotion_chain(
+    strict_session: Session,
+) -> None:
+    manifest = PitBundleManifest.load(Path(__file__).parents[2] / "fixtures" / "pit_bundle")
+    persisted = strict_session.get(PitBundleRow, manifest.bundle_id)
+    assert persisted is not None
+    assert persisted.manifest_sha256 == manifest.manifest_sha256
+    persist_audit_report(strict_session)
+    authority = SqlPitCertificateAuthority(strict_session, SECRET)
+    authority.approve("audit-1", as_of_time=AS_OF, scope=SnapshotScope())
+    snapshot = build_strict_pit_warehouse(
+        session=strict_session, approval_secret=SECRET
+    ).snapshot(as_of_time=AS_OF, scope=SnapshotScope())
+    assert snapshot.data_grade is DataGrade.PIT_VERIFIED
+
+    class CertificateAuthorizer:
+        def assert_authorized(self, *, run_id: str, audit_report_id: str) -> None:
+            assert run_id == "run-chain"
+            assert audit_report_id == "audit-1"
+
+    plan = WalkForwardPlan.rolling(date(2018, 1, 1), date(2024, 12, 31))
+    result = PitPromotionService(CertificateAuthorizer()).promote(
+        PromotionCandidate(
+            run_id="run-chain",
+            current_data_grade=DataGrade.RESEARCH,
+            llm_grade=LlmGrade.RECONSTRUCTED,
+            audit_report_id="audit-1",
+            walk_forward_complete=bool(plan.windows),
+            holdout_locked=True,
+            all_manifests_within_as_of=True,
+            research_gate_passed=False,
+            coverage_complete=True,
+            lineage_verified=bool(snapshot.lineage),
+        )
+    )
+    assert result.data_grade is DataGrade.PIT_VERIFIED
+
+
+def test_bundle_set_hash_rejects_uncovered_days(
+    strict_session: Session,
+) -> None:
     strict_session.execute(delete(PitBundleRow))
     strict_session.add_all(
         [
