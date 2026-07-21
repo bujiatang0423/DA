@@ -104,6 +104,22 @@ def test_daily_event_order_and_next_day_execution_are_replayable() -> None:
         "close_valuation",
         "post_close_decision",
     ]
+    assert observed_events == [
+        "pre_open_risk",
+        "open_execution",
+        "intraday_stops",
+        "close_valuation",
+        "post_close_decision",
+        "pre_open_risk",
+        "open_execution",
+        "intraday_stops",
+        "close_valuation",
+        "post_close_decision",
+        "pre_open_risk",
+        "open_execution",
+        "intraday_stops",
+        "close_valuation",
+    ]
     assert result.equity_curve[0]["trade_date"] == "2024-01-02"
     assert result.trades[0]["signal_date"] == "2024-01-02"
     assert result.trades[0]["trade_date"] == "2024-01-03"

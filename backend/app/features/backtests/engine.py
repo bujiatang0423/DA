@@ -66,6 +66,7 @@ class BacktestEngine:
         *,
         factor_mask: frozenset[str] = ALL_STRATEGY_FACTORS,
     ) -> BacktestGroupResult:
+        self.observed_events.clear()
         request = request.with_group(group)
         ledger = PortfolioLedger.opening(request.initial_cash)
         days = self._trading_days.between(request.start_date, request.end_date)
