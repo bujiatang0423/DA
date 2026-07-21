@@ -26,6 +26,8 @@ class PromotionCandidate:
     holdout_locked: bool
     all_manifests_within_as_of: bool
     research_gate_passed: bool
+    coverage_complete: bool | None = None
+    lineage_verified: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,10 @@ class PitPromotionService:
             raise PitPromotionError("final holdout is not locked")
         if not candidate.all_manifests_within_as_of:
             raise PitPromotionError("manifest contains future input")
+        if candidate.coverage_complete is not True:
+            raise PitPromotionError("PIT coverage is incomplete")
+        if candidate.lineage_verified is not True:
+            raise PitPromotionError("PIT lineage is unverified")
         return PromotionResult(
             run_id=candidate.run_id,
             data_grade=DataGrade.PIT_VERIFIED,

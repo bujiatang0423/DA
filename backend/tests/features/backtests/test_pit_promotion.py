@@ -31,6 +31,8 @@ def candidate(**changes: object) -> PromotionCandidate:
         "holdout_locked": True,
         "all_manifests_within_as_of": True,
         "research_gate_passed": False,
+        "coverage_complete": True,
+        "lineage_verified": True,
     }
     values.update(changes)
     return PromotionCandidate(**values)  # type: ignore[arg-type]
@@ -59,6 +61,8 @@ def test_verified_data_is_independent_from_strategy_gate_and_llm_grade() -> None
         ("walk_forward_complete", "walk-forward incomplete"),
         ("holdout_locked", "final holdout is not locked"),
         ("all_manifests_within_as_of", "manifest contains future input"),
+        ("coverage_complete", "PIT coverage is incomplete"),
+        ("lineage_verified", "PIT lineage is unverified"),
     ],
 )
 def test_promotion_requires_every_non_yield_pit_gate(field: str, message: str) -> None:
@@ -70,4 +74,14 @@ def test_promotion_is_one_way_from_research_only() -> None:
     with pytest.raises(PitPromotionError, match="only research results"):
         PitPromotionService(AuditAuthorizer(authorized=True)).promote(
             candidate(current_data_grade=DataGrade.PIT_VERIFIED)
+        )
+
+
+def test_promotion_fails_closed_when_new_pit_evidence_is_unspecified() -> None:
+    values = candidate().__dict__
+    values["coverage_complete"] = None
+
+    with pytest.raises(PitPromotionError, match="PIT coverage is incomplete"):
+        PitPromotionService(AuditAuthorizer(authorized=True)).promote(
+            PromotionCandidate(**values)
         )
