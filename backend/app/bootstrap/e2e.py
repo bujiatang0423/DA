@@ -128,7 +128,18 @@ class FrozenE2EWarehouse:
         )
         market_records: list[TemporalRecord] = [breadth, index]
         observations: list[SecurityObservation] = []
-        for offset, security_id in enumerate(("000001.SZ", "000002.SZ", "000003.SZ")):
+        for offset, security_id in enumerate(
+            (
+                "000001.SZ",
+                "000002.SZ",
+                "000003.SZ",
+                "000425.SZ",
+                "000568.SZ",
+                "159566.SZ",
+                "517110.SH",
+                "601899.SH",
+            )
+        ):
             artifact_hash = sha256(f"local-e2e:{security_id}".encode()).hexdigest()
             master = TemporalRecord(
                 f"security-master:{security_id}",

@@ -79,6 +79,21 @@ def test_frozen_e2e_warehouse_contains_candidate_evidence_inputs() -> None:
     assert len(snapshot.lineage) >= 3
 
 
+def test_frozen_e2e_warehouse_supports_imported_holding_symbols() -> None:
+    from backend.app.bootstrap.e2e import FrozenE2EWarehouse
+
+    as_of_time = datetime(2026, 7, 21, 15, 30, tzinfo=UTC)
+    security_ids = ("000425.SZ", "000568.SZ", "159566.SZ", "517110.SH", "601899.SH")
+    snapshot = FrozenE2EWarehouse().snapshot(
+        as_of_time=as_of_time,
+        scope=SnapshotScope.holding_analysis(security_ids),
+    )
+
+    assert snapshot.quality.has_errors is False
+    observed_ids = {item.security_id for item in snapshot.security_observations}
+    assert set(security_ids) <= observed_ids
+
+
 def test_frozen_e2e_fixture_projects_three_candidate_buckets() -> None:
     from backend.app.bootstrap.e2e import FrozenE2EWarehouse
     from backend.app.core.market.strategy_inputs import StrategyInputBuilder
