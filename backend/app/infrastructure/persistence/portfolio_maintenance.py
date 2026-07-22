@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from hashlib import sha256
 import json
 from decimal import Decimal
+from threading import Thread
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -14,17 +15,16 @@ from backend.app.contracts.portfolio import (
     PortfolioMaintenanceResponse,
     PortfolioPositionInput,
 )
-from backend.app.core.portfolio.models import PortfolioPosition, PositionOrigin
-from backend.app.core.portfolio.valuation import calculate_equity
-from backend.app.core.market.pit_models import SnapshotScope
 from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.infrastructure.persistence.portfolio_rows import (
     PortfolioAuditEventRow,
     PortfolioLotProjectionRow,
     PortfolioSnapshotProjectionRow,
     PortfolioVersionRow,
+    PortfolioPositionQuoteRow,
 )
 from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
+from backend.app.core.portfolio.models import PositionOrigin
 
 
 class SqlPortfolioMaintenanceService:
@@ -32,9 +32,11 @@ class SqlPortfolioMaintenanceService:
         self,
         session_factory: Callable[[], Session],
         warehouse: PointInTimeWarehouse | None = None,
+        refresh_async: Callable[[tuple[str, ...], datetime], None] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._warehouse = warehouse
+        self._refresh_async = refresh_async
 
     def get(self, portfolio_id: str, as_of_time: datetime) -> PortfolioMaintenanceResponse:
         with self._session_factory() as session:
@@ -67,6 +69,7 @@ class SqlPortfolioMaintenanceService:
                     _position(
                         row.batch_id,
                         row.security_id,
+                        row.security_name,
                         row.buy_date,
                         row.quantity,
                         row.average_cost,
@@ -79,33 +82,33 @@ class SqlPortfolioMaintenanceService:
                 ],
             )
 
+    def latest_quotes(self, portfolio_id: str) -> dict[str, Decimal]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(PortfolioPositionQuoteRow)
+                .where(PortfolioPositionQuoteRow.portfolio_id == portfolio_id)
+                .order_by(PortfolioPositionQuoteRow.security_id, PortfolioPositionQuoteRow.observed_at.desc())
+            ).scalars().all()
+            result: dict[str, Decimal] = {}
+            for row in rows:
+                result.setdefault(row.security_id, Decimal(str(row.price)))
+            return result
+
     def replace(self, request: PortfolioMaintenanceRequest) -> PortfolioMaintenanceResponse:
+        """Persist first, then refresh market data without blocking the save request."""
+        result = self._replace(request)
+        if self._refresh_async is not None and request.positions:
+            symbols = tuple(sorted({position.security_id for position in request.positions}))
+            Thread(
+                target=self._refresh_async,
+                args=(symbols, request.as_of_time),
+                name="portfolio-market-refresh",
+                daemon=True,
+            ).start()
+        return result
+
+    def _replace(self, request: PortfolioMaintenanceRequest) -> PortfolioMaintenanceResponse:
         equity = request.equity
-        if self._warehouse is not None and request.positions:
-            security_ids = tuple(sorted(position.security_id for position in request.positions))
-            snapshot = self._warehouse.snapshot(
-                as_of_time=request.as_of_time,
-                scope=SnapshotScope.holding_analysis(security_ids),
-            )
-            if snapshot.quality.has_errors:
-                raise ValueError("point-in-time market data is unavailable")
-            positions = tuple(
-                PortfolioPosition(
-                    security_id=position.security_id,
-                    strategy_book=None,
-                    origin=PositionOrigin.RECORDED_TRADE,
-                    quantity=position.quantity,
-                    available_to_sell=position.available_to_sell or 0,
-                    average_cost=position.average_cost,
-                    effective_stop=position.effective_stop,
-                    highest_close=position.highest_close,
-                    entry_score=None,
-                    initial_risk_per_share=None,
-                    add_count=0,
-                )
-                for position in request.positions
-            )
-            equity = calculate_equity(request.cash, positions, snapshot)
         with self._session_factory.begin() as session:
             current = session.scalar(
                 select(PortfolioVersionRow)
@@ -165,6 +168,7 @@ class SqlPortfolioMaintenanceService:
                         batch_id=position.batch_id,
                         portfolio_id=request.portfolio_id,
                         security_id=position.security_id,
+                        security_name=position.security_name,
                         buy_date=position.buy_date,
                         quantity=position.quantity,
                         available_to_sell=position.available_to_sell or 0,
@@ -205,6 +209,7 @@ class SqlPortfolioMaintenanceService:
 def _position(
     batch_id: str,
     security_id: str,
+    security_name: str | None,
     buy_date: date | None,
     quantity: int,
     average_cost: Decimal,
@@ -216,6 +221,7 @@ def _position(
     return PortfolioPositionInput(
         batch_id=batch_id,
         security_id=security_id,
+        security_name=security_name,
         buy_date=buy_date,
         quantity=quantity,
         average_cost=average_cost,
@@ -238,6 +244,7 @@ def _same_state(
         {
             "batch_id": row.batch_id,
             "security_id": row.security_id,
+            "security_name": row.security_name,
             "buy_date": row.buy_date.isoformat() if row.buy_date else None,
             "quantity": row.quantity,
             "available_to_sell": row.available_to_sell,
@@ -252,6 +259,7 @@ def _same_state(
         {
             "batch_id": position.batch_id,
             "security_id": position.security_id,
+            "security_name": position.security_name,
             "buy_date": position.buy_date.isoformat() if position.buy_date else None,
             "quantity": position.quantity,
             "available_to_sell": position.available_to_sell or 0,

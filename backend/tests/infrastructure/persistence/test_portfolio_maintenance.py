@@ -45,8 +45,10 @@ def _request(version: int = 0) -> PortfolioMaintenanceRequest:
             PortfolioPositionInput(
                 batch_id="lot-2026-01",
                 security_id="600000",
+                security_name="浦发银行",
                 buy_date=date(2026, 1, 5),
                 quantity=100,
+                available_to_sell=88,
                 average_cost=Decimal("10"),
             )
         ],
@@ -63,6 +65,8 @@ def test_maintenance_writes_projection_and_audit_version() -> None:
     assert loaded.equity == Decimal("2000")
     assert loaded.positions[0].batch_id == "lot-2026-01"
     assert loaded.positions[0].buy_date == date(2026, 1, 5)
+    assert loaded.positions[0].security_name == "浦发银行"
+    assert loaded.positions[0].available_to_sell == 88
 
 
 def test_maintenance_rejects_stale_version() -> None:

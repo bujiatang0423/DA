@@ -51,6 +51,7 @@ class OpeningPositionRow(Base):
     batch_id: Mapped[str] = mapped_column(ForeignKey("legacy_import_batches.id"))
     portfolio_id: Mapped[str] = mapped_column(String(64))
     security_id: Mapped[str] = mapped_column(String(32))
+    security_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
     inherited_unit_cost: Mapped[Decimal] = mapped_column(Numeric(20, 6))
     buy_date: Mapped[date | None] = mapped_column(Date, nullable=True)

@@ -61,6 +61,7 @@ class ManualFillRequest(BaseModel):
 
 class PortfolioPositionResponse(BaseModel):
     security_id: str
+    security_name: str | None = None
     buy_date: date | None = None
     origin: str
     strategy_book: str | None
@@ -77,6 +78,7 @@ class PortfolioPositionResponse(BaseModel):
     def from_domain(cls, position: PortfolioPosition) -> "PortfolioPositionResponse":
         return cls(
             security_id=position.security_id,
+            security_name=position.security_name,
             buy_date=position.buy_date,
             origin=position.origin.value,
             strategy_book=position.strategy_book.value if position.strategy_book else None,

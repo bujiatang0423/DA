@@ -9,6 +9,7 @@ from .common import ContractModel, require_aware
 class PortfolioPositionInput(ContractModel):
     batch_id: str = Field(default="default", min_length=1, max_length=64)
     security_id: str = Field(min_length=1, max_length=32)
+    security_name: str | None = Field(default=None, max_length=256)
     buy_date: date | None = None
     quantity: int = Field(gt=0)
     average_cost: Decimal = Field(gt=0)

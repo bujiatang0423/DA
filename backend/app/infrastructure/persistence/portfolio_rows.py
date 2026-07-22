@@ -19,12 +19,22 @@ class PortfolioSnapshotProjectionRow(Base):
     equity: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
 
 
+class PortfolioPositionQuoteRow(Base):
+    __tablename__ = "portfolio_position_quotes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id: Mapped[str] = mapped_column(String(64), index=True)
+    security_id: Mapped[str] = mapped_column(String(32), index=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+
+
 class PortfolioLotProjectionRow(Base):
     __tablename__ = "portfolio_lot_projections"
     lot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     batch_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
     portfolio_id: Mapped[str] = mapped_column(String(64), index=True)
     security_id: Mapped[str] = mapped_column(String(32))
+    security_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     buy_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
     available_to_sell: Mapped[int] = mapped_column(Integer)

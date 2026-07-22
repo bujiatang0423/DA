@@ -32,6 +32,7 @@ class OpeningPosition:
     entry_score: Decimal | None = None
     initial_risk_per_share: Decimal | None = None
     buy_date: date | None = None
+    security_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class PortfolioLot:
     batch_id: str = "default"
     buy_date: date | None = None
     import_manifest_sha256: str | None = None
+    security_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,7 @@ class PortfolioPosition:
     initial_risk_per_share: Decimal | None
     add_count: int
     buy_date: date | None = None
+    security_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,7 @@ class PortfolioSnapshot:
                     first.initial_risk_per_share,
                     max(x.add_count for x in lots),
                     min((x.buy_date for x in lots if x.buy_date is not None), default=None),
+                    next((x.security_name for x in lots if x.security_name), None),
                 )
             )
         return tuple(out)

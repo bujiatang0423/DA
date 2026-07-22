@@ -1,15 +1,45 @@
 import { useEffect, useState } from "react";
 
-type Position = { batch_id: string; security_id: string; buy_date?: string | null; quantity: number; average_cost: string; available_to_sell?: number | null; effective_stop?: string | null; highest_close?: string | null; strategy_book?: string | null };
+type Position = {
+  batch_id: string;
+  security_id: string;
+  security_name?: string | null;
+  buy_date?: string | null;
+  quantity: number;
+  average_cost: string;
+  available_to_sell?: number | null;
+  effective_stop?: string | null;
+  highest_close?: string | null;
+  strategy_book?: string | null;
+};
 type Maintenance = { version: number; cash: string; equity: string; positions: Position[] };
-type PortfolioPositions = { portfolio_id: string; as_of_time: string; version: number; cash: string; equity: string; items: Array<{ security_id: string; buy_date: string | null; quantity: number; available_to_sell: number; average_cost: string; effective_stop: string | null; highest_close: string | null; strategy_book: string | null; origin: string }> };
+type PortfolioPositions = {
+  portfolio_id: string;
+  as_of_time: string;
+  version: number;
+  cash: string;
+  equity: string;
+  items: Array<Position & { origin: string }>;
+};
 
 const trimDecimalZeros = (value: string): string => {
   if (!value.includes(".")) return value;
   return value.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 };
 
-const emptyPosition = (): Position => ({ batch_id: `batch-${Date.now()}`, security_id: "", buy_date: null, quantity: 100, average_cost: "", available_to_sell: 0, effective_stop: null, highest_close: null, strategy_book: "core" });
+const emptyPosition = (): Position => ({
+  batch_id: `batch-${Date.now()}`,
+  security_id: "",
+  security_name: "",
+  buy_date: null,
+  quantity: 100,
+  average_cost: "",
+  available_to_sell: 0,
+  effective_stop: null,
+  highest_close: null,
+  strategy_book: "core",
+});
+
 const localDateTimeValue = (): string => {
   const now = new Date();
   const pad = (value: number): string => String(value).padStart(2, "0");
@@ -17,15 +47,49 @@ const localDateTimeValue = (): string => {
 };
 
 export function MaintenancePage(): JSX.Element {
-  const [portfolioId, setPortfolioId] = useState("default"); const [asOfTime, setAsOfTime] = useState(localDateTimeValue); const [cash, setCash] = useState("0"); const [equity, setEquity] = useState("0"); const [reason, setReason] = useState("人工维护当前持仓"); const [version, setVersion] = useState(0); const [positions, setPositions] = useState<Position[]>([]); const [message, setMessage] = useState<string | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
-  const load = async (): Promise<void> => { setLoading(true); setError(null); try { const response = await fetch(`/api/v1/portfolio/positions?portfolio_id=${encodeURIComponent(portfolioId)}&as_of_time=${encodeURIComponent(new Date(asOfTime).toISOString())}`); if (!response.ok) throw new Error(`读取持仓失败（${response.status}）`); const data = await response.json() as PortfolioPositions; setCash(trimDecimalZeros(data.cash)); setEquity(trimDecimalZeros(data.equity)); setVersion(data.version); setPositions(data.items.map((item) => ({ batch_id: `${item.origin}:${item.security_id}`, security_id: item.security_id, buy_date: item.buy_date, quantity: item.quantity, average_cost: trimDecimalZeros(item.average_cost), available_to_sell: item.available_to_sell, effective_stop: item.effective_stop ? trimDecimalZeros(item.effective_stop) : null, highest_close: item.highest_close ? trimDecimalZeros(item.highest_close) : null, strategy_book: item.strategy_book }))); setMessage(`已读取第 ${data.version} 版持仓`); } catch (err) { setError(err instanceof Error ? err.message : "读取失败"); } finally { setLoading(false); } };
+  const [portfolioId, setPortfolioId] = useState("default");
+  const [asOfTime, setAsOfTime] = useState(localDateTimeValue);
+  const [cash, setCash] = useState("0");
+  const [equity, setEquity] = useState("0");
+  const [reason, setReason] = useState("人工维护当前持仓");
+  const [version, setVersion] = useState(0);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async (): Promise<void> => {
+    setLoading(true); setError(null);
+    try {
+      const response = await fetch(`/api/v1/portfolio/positions?portfolio_id=${encodeURIComponent(portfolioId)}&as_of_time=${encodeURIComponent(new Date(asOfTime).toISOString())}`);
+      if (!response.ok) throw new Error(`读取持仓失败（${response.status}）`);
+      const data = await response.json() as PortfolioPositions;
+      setCash(trimDecimalZeros(data.cash)); setEquity(trimDecimalZeros(data.equity)); setVersion(data.version);
+      setPositions(data.items.map((item) => ({ ...item, batch_id: `${item.origin}:${item.security_id}`, security_name: item.security_name ?? "", average_cost: trimDecimalZeros(item.average_cost), effective_stop: item.effective_stop ? trimDecimalZeros(item.effective_stop) : null, highest_close: item.highest_close ? trimDecimalZeros(item.highest_close) : null })));
+      setMessage(`已读取第 ${data.version} 版持仓`);
+    } catch (err) { setError(err instanceof Error ? err.message : "读取失败"); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => { void load(); }, []);
-  const save = async (): Promise<void> => { setLoading(true); setError(null); try { const response = await fetch("/api/v1/holdings/maintenance", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ portfolio_id: portfolioId, as_of_time: new Date(asOfTime).toISOString(), cash, equity, positions, expected_version: version, reason }) }); if (!response.ok) throw new Error(`保存持仓失败（${response.status}）`); const data = await response.json() as Maintenance; setVersion(data.version); setMessage(`保存成功，当前版本 ${data.version}`); } catch (err) { setError(err instanceof Error ? err.message : "保存失败"); } finally { setLoading(false); } };
+
+  const save = async (): Promise<void> => {
+    const invalidIndex = positions.findIndex((position) => !position.security_id.trim() || position.quantity <= 0 || !position.average_cost.trim() || Number(position.average_cost) <= 0);
+    if (invalidIndex >= 0) { setError(`第 ${invalidIndex + 1} 行请填写证券代码、数量和大于 0 的成本价`); return; }
+    setLoading(true); setError(null);
+    try {
+      const response = await fetch("/api/v1/holdings/maintenance", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ portfolio_id: portfolioId, as_of_time: new Date(asOfTime).toISOString(), cash, equity, positions, expected_version: version, reason }) });
+      if (!response.ok) { const detail = await response.json().catch(() => null) as { message?: string } | null; throw new Error(detail?.message ? `保存持仓失败：${detail.message}` : `保存持仓失败（${response.status}）`); }
+      const data = await response.json() as Maintenance; setVersion(data.version); setMessage(`保存成功，当前版本 ${data.version}`);
+    } catch (err) { setError(err instanceof Error ? err.message : "保存失败"); }
+    finally { setLoading(false); }
+  };
+
   const update = (index: number, field: keyof Position, value: string): void => setPositions((current) => current.map((position, positionIndex) => positionIndex === index ? { ...position, [field]: field === "quantity" || field === "available_to_sell" ? Number(value) : value } : position));
   return <section className="page-shell"><div className="page-heading"><div><h1>持仓维护</h1><p>维护组合当前快照。每次保存都会写入版本号和审计记录，供持仓分析使用。</p></div><div className="heading-actions"><button className="btn btn-secondary" onClick={() => void load()} disabled={loading}>读取当前持仓</button><button className="btn" onClick={() => void save()} disabled={loading}>{loading ? "保存中…" : "保存持仓"}</button></div></div>
     <div className="panel"><div className="control-grid"><label className="field">组合 ID<input value={portfolioId} onChange={(event) => setPortfolioId(event.target.value)} /></label><label className="field">生效时点<input type="datetime-local" value={asOfTime} onChange={(event) => setAsOfTime(event.target.value)} /></label><label className="field">现金<input value={cash} onChange={(event) => setCash(event.target.value)} /></label><label className="field">组合权益（按点时收盘价自动计算）<input value={equity} readOnly /></label></div><div className="field" style={{ marginTop: 14 }}>维护原因<textarea rows={2} value={reason} onChange={(event) => setReason(event.target.value)} /></div></div>
     {message && <div className="notice" role="status">{message} · 当前版本 {version}</div>}{error && <div className="alert" role="alert">{error}</div>}
-    <div className="panel"><div className="panel-title"><h2>当前持仓明细</h2><button className="btn btn-secondary" onClick={() => setPositions((current) => [...current, emptyPosition()])}>新增一行</button></div><div className="table-wrap"><table className="data-table"><thead><tr><th>批次 ID</th><th>证券代码</th><th>买入日期</th><th>数量</th><th>成本价</th><th>可卖数量</th><th>止损价</th><th>最高收盘</th><th>操作</th></tr></thead><tbody>{positions.length === 0 ? <tr><td colSpan={9}><div className="empty-state">暂无维护记录，请新增持仓或读取历史导入数据。</div></td></tr> : positions.map((position, index) => <tr key={`${position.batch_id}-${position.security_id}-${index}`}><td><input value={position.batch_id} onChange={(event) => update(index, "batch_id", event.target.value)} /></td><td><input value={position.security_id} onChange={(event) => update(index, "security_id", event.target.value)} /></td><td><input type="date" value={position.buy_date ?? ""} onChange={(event) => update(index, "buy_date", event.target.value)} /></td><td><input type="number" value={position.quantity} onChange={(event) => update(index, "quantity", event.target.value)} /></td><td><input value={position.average_cost} onChange={(event) => update(index, "average_cost", event.target.value)} /></td><td><input type="number" value={position.available_to_sell ?? 0} onChange={(event) => update(index, "available_to_sell", event.target.value)} /></td><td><input value={position.effective_stop ?? ""} onChange={(event) => update(index, "effective_stop", event.target.value)} /></td><td><input value={position.highest_close ?? ""} onChange={(event) => update(index, "highest_close", event.target.value)} /></td><td><button className="btn btn-danger" onClick={() => setPositions((current) => current.filter((_, positionIndex) => positionIndex !== index))}>删除</button></td></tr>)}</tbody></table></div></div>
+    <div className="panel"><div className="panel-title"><h2>当前持仓明细</h2><button className="btn btn-secondary" onClick={() => setPositions((current) => [...current, emptyPosition()])}>新增一行</button></div><div className="table-wrap"><table className="data-table"><thead><tr><th>证券代码</th><th>中文名称</th><th>买入日期</th><th>数量</th><th>成本价</th><th>可卖数量</th><th>止损价</th><th>最高收盘</th><th>操作</th></tr></thead><tbody>{positions.length === 0 ? <tr><td colSpan={9}><div className="empty-state">暂无维护记录，请新增持仓或读取历史导入数据。</div></td></tr> : positions.map((position, index) => <tr key={`${position.batch_id}-${index}`}><td><input aria-label="证券代码" value={position.security_id} onChange={(event) => update(index, "security_id", event.target.value)} /></td><td><input aria-label="中文名称" value={position.security_name ?? ""} onChange={(event) => update(index, "security_name", event.target.value)} /></td><td><input type="date" value={position.buy_date ?? ""} onChange={(event) => update(index, "buy_date", event.target.value)} /></td><td><input type="number" value={position.quantity} onChange={(event) => update(index, "quantity", event.target.value)} /></td><td><input value={position.average_cost} onChange={(event) => update(index, "average_cost", event.target.value)} /></td><td><input type="number" value={position.available_to_sell ?? 0} onChange={(event) => update(index, "available_to_sell", event.target.value)} /></td><td><input value={position.effective_stop ?? ""} onChange={(event) => update(index, "effective_stop", event.target.value)} /></td><td><input value={position.highest_close ?? ""} onChange={(event) => update(index, "highest_close", event.target.value)} /></td><td><button className="btn btn-danger" onClick={() => setPositions((current) => current.filter((_, positionIndex) => positionIndex !== index))}>删除</button></td></tr>)}</tbody></table></div></div>
   </section>;
 }
 

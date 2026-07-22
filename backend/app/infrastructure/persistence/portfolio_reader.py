@@ -137,6 +137,7 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             buy_date=opening.buy_date,
             batch_id=opening.batch_id,
             import_manifest_sha256=batch.manifest_sha256,
+            security_name=opening.security_name,
         )
         for opening, batch in rows
         if opening.quantity > 0
@@ -145,8 +146,6 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
 
 def _projection_lot(row: PortfolioLotProjectionRow, as_of_time: datetime) -> PortfolioLot:
     available = int(row.available_to_sell)
-    if as_of_time.date() <= row.effective_at.date():
-        available = 0
     return PortfolioLot(
         lot_id=row.lot_id,
         security_id=row.security_id,
@@ -164,14 +163,13 @@ def _projection_lot(row: PortfolioLotProjectionRow, as_of_time: datetime) -> Por
         batch_id=row.batch_id,
         buy_date=row.buy_date,
         import_manifest_sha256=None,
+        security_name=row.security_name,
     )
 
 
 def _revision_lot(row: dict[str, object], as_of_time: datetime) -> PortfolioLot:
     effective_at = datetime.fromisoformat(str(row["effective_at"]))
     available = int(row["available_to_sell"])
-    if as_of_time.date() <= effective_at.date():
-        available = 0
     buy_date = row.get("buy_date")
     return PortfolioLot(
         lot_id=str(row["lot_id"]),
@@ -190,6 +188,7 @@ def _revision_lot(row: dict[str, object], as_of_time: datetime) -> PortfolioLot:
         batch_id=str(row.get("batch_id") or "default"),
         buy_date=datetime.fromisoformat(str(buy_date)).date() if buy_date else None,
         import_manifest_sha256=None,
+        security_name=str(row["security_name"]) if row.get("security_name") else None,
     )
 
 
