@@ -70,3 +70,13 @@ def test_maintenance_rejects_stale_version() -> None:
     service.replace(_request())
     with pytest.raises(ConcurrentPortfolioUpdate):
         service.replace(_request())
+
+
+def test_maintenance_does_not_increment_version_for_identical_state() -> None:
+    service = _service()
+    first = service.replace(_request())
+    second = service.replace(_request(version=first.version))
+
+    assert first.version == 1
+    assert second.version == 1
+    assert second.equity == Decimal("2000")

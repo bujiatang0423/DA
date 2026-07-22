@@ -66,6 +66,7 @@ class PortfolioPosition:
     entry_score: Decimal | None
     initial_risk_per_share: Decimal | None
     add_count: int
+    buy_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,7 @@ class PortfolioSnapshot:
                     first.entry_score,
                     first.initial_risk_per_share,
                     max(x.add_count for x in lots),
+                    min((x.buy_date for x in lots if x.buy_date is not None), default=None),
                 )
             )
         return tuple(out)

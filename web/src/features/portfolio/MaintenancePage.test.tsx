@@ -17,6 +17,7 @@ test("loads imported opening positions from the unified portfolio endpoint", asy
         items: [
           {
             security_id: "601899.SH",
+            buy_date: "2026-03-05",
             origin: "legacy_opening_balance",
             quantity: 1100,
             available_to_sell: 0,
@@ -36,5 +37,6 @@ test("loads imported opening positions from the unified portfolio endpoint", asy
   await waitFor(() => expect(screen.getByDisplayValue("601899.SH")).toBeTruthy());
   expect(screen.getByDisplayValue("1100")).toBeTruthy();
   expect(screen.getByDisplayValue("31.191")).toBeTruthy();
+  expect(screen.getByDisplayValue("2026-03-05")).toBeTruthy();
   expect(vi.mocked(fetch).mock.calls[0]?.[0]).toContain("/api/v1/portfolio/positions");
 });

@@ -81,7 +81,7 @@ class SqlPortfolioMaintenanceService:
 
     def replace(self, request: PortfolioMaintenanceRequest) -> PortfolioMaintenanceResponse:
         equity = request.equity
-        if self._warehouse is not None:
+        if self._warehouse is not None and request.positions:
             security_ids = tuple(sorted(position.security_id for position in request.positions))
             snapshot = self._warehouse.snapshot(
                 as_of_time=request.as_of_time,
@@ -116,6 +116,28 @@ class SqlPortfolioMaintenanceService:
             if current_version != request.expected_version:
                 raise ConcurrentPortfolioUpdate(
                     f"expected version {request.expected_version}, current {current_version}"
+                )
+            existing_projection = session.get(
+                PortfolioSnapshotProjectionRow, request.portfolio_id
+            )
+            existing_rows = session.scalars(
+                select(PortfolioLotProjectionRow)
+                .where(PortfolioLotProjectionRow.portfolio_id == request.portfolio_id)
+                .order_by(PortfolioLotProjectionRow.lot_id)
+            ).all()
+            if current is not None and _same_state(
+                request,
+                equity,
+                existing_projection,
+                existing_rows,
+            ):
+                return PortfolioMaintenanceResponse(
+                    portfolio_id=request.portfolio_id,
+                    as_of_time=request.as_of_time,
+                    version=current_version,
+                    cash=request.cash,
+                    equity=equity,
+                    positions=list(request.positions),
                 )
             if current is None:
                 current = PortfolioVersionRow(portfolio_id=request.portfolio_id, version=0)
@@ -202,3 +224,78 @@ def _position(
         highest_close=highest_close,
         strategy_book=strategy_book,
     )
+
+
+def _same_state(
+    request: PortfolioMaintenanceRequest,
+    equity: Decimal,
+    projection: PortfolioSnapshotProjectionRow | None,
+    rows: list[PortfolioLotProjectionRow],
+) -> bool:
+    if projection is None:
+        return False
+    current_positions = [
+        {
+            "batch_id": row.batch_id,
+            "security_id": row.security_id,
+            "buy_date": row.buy_date.isoformat() if row.buy_date else None,
+            "quantity": row.quantity,
+            "available_to_sell": row.available_to_sell,
+            "average_cost": _decimal_text(row.average_cost),
+            "effective_stop": _decimal_text(row.effective_stop),
+            "highest_close": _decimal_text(row.highest_close),
+            "strategy_book": row.strategy_book,
+        }
+        for row in rows
+    ]
+    requested_positions = [
+        {
+            "batch_id": position.batch_id,
+            "security_id": position.security_id,
+            "buy_date": position.buy_date.isoformat() if position.buy_date else None,
+            "quantity": position.quantity,
+            "available_to_sell": position.available_to_sell or 0,
+            "average_cost": _decimal_text(position.average_cost),
+            "effective_stop": _decimal_text(position.effective_stop),
+            "highest_close": _decimal_text(position.highest_close),
+            "strategy_book": position.strategy_book,
+        }
+        for position in request.positions
+    ]
+    return _state_hash(
+        request.cash,
+        equity,
+        request.as_of_time,
+        requested_positions,
+    ) == _state_hash(
+        projection.cash,
+        projection.equity,
+        projection.as_of_time,
+        current_positions,
+    )
+
+
+def _state_hash(
+    cash: Decimal,
+    equity: Decimal,
+    as_of_time: datetime,
+    positions: list[dict[str, object]],
+) -> str:
+    payload = {
+        "as_of_time": _datetime_text(as_of_time),
+        "cash": _decimal_text(cash),
+        "equity": _decimal_text(equity),
+        "positions": sorted(positions, key=lambda item: (str(item["batch_id"]), str(item["security_id"]))),
+    }
+    return sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _decimal_text(value: Decimal | int | float | None) -> str | None:
+    if value is None:
+        return None
+    return format(Decimal(str(value)).normalize(), "f")
+
+
+def _datetime_text(value: datetime) -> str:
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat()
