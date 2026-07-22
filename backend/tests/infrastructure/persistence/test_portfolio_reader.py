@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 from decimal import Decimal
 
 from sqlalchemy import create_engine
@@ -57,6 +57,7 @@ def test_reader_filters_legacy_rows_and_applies_t_plus_one() -> None:
                 security_id="600000",
                 quantity=100,
                 inherited_unit_cost=Decimal("10.5"),
+                buy_date=date(2026, 7, 10),
                 effective_at=effective,
                 origin="legacy_opening_balance",
                 source_row_hash="b" * 64,
@@ -67,6 +68,7 @@ def test_reader_filters_legacy_rows_and_applies_t_plus_one() -> None:
     assert same_day.lots[0].origin.value == "legacy_opening_balance"
     assert same_day.lots[0].batch_id == "batch-1"
     assert same_day.lots[0].import_manifest_sha256 == "a" * 64
+    assert same_day.lots[0].buy_date == date(2026, 7, 10)
     assert same_day.lots[0].available_to_sell == 0
     next_day = SqlPortfolioReader(sessions).snapshot(
         portfolio_id="p", as_of_time=datetime(2026, 7, 17, 9, 30, tzinfo=UTC)

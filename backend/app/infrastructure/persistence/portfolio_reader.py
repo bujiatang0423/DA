@@ -134,8 +134,8 @@ def _opening_lots(session: Session, portfolio_id: str, as_of_time: datetime) -> 
             effective_stop=None,
             highest_close=None,
             add_count=0,
+            buy_date=opening.buy_date,
             batch_id=opening.batch_id,
-            buy_date=None,
             import_manifest_sha256=batch.manifest_sha256,
         )
         for opening, batch in rows

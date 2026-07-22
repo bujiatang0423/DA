@@ -56,6 +56,7 @@ class SqlLegacyRepository:
                 security_id=x.security_id,
                 quantity=x.quantity,
                 inherited_unit_cost=x.inherited_unit_cost,
+                buy_date=x.buy_date,
                 effective_at=x.effective_at,
                 origin=x.origin.value,
                 source_row_hash=x.source_row_hash,

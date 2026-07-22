@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base
 
@@ -53,6 +53,7 @@ class OpeningPositionRow(Base):
     security_id: Mapped[str] = mapped_column(String(32))
     quantity: Mapped[int] = mapped_column(Integer)
     inherited_unit_cost: Mapped[Decimal] = mapped_column(Numeric(20, 6))
+    buy_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     origin: Mapped[str] = mapped_column(String(32))
     source_row_hash: Mapped[str] = mapped_column(String(64))

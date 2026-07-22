@@ -31,6 +31,7 @@ class OpeningPosition:
     strategy_book: StrategyBook | None = None
     entry_score: Decimal | None = None
     initial_risk_per_share: Decimal | None = None
+    buy_date: date | None = None
 
 
 @dataclass(frozen=True)

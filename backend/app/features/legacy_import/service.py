@@ -5,7 +5,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -174,6 +174,11 @@ class LegacyImportService:
                         Decimal(row["cost_price"]),
                         effective,
                         h,
+                        buy_date=(
+                            date.fromisoformat(row["buy_date"].strip())
+                            if row.get("buy_date", "").strip()
+                            else None
+                        ),
                     )
                 )
         return tuple(out)
