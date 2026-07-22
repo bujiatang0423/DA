@@ -14,7 +14,10 @@ from backend.app.contracts.portfolio import (
     PortfolioMaintenanceResponse,
     PortfolioPositionInput,
 )
-from backend.app.core.portfolio.models import PositionOrigin
+from backend.app.core.portfolio.models import PortfolioPosition, PositionOrigin
+from backend.app.core.portfolio.valuation import calculate_equity
+from backend.app.core.market.pit_models import SnapshotScope
+from backend.app.ports.point_in_time import PointInTimeWarehouse
 from backend.app.infrastructure.persistence.portfolio_rows import (
     PortfolioAuditEventRow,
     PortfolioLotProjectionRow,
@@ -25,8 +28,13 @@ from backend.app.ports.portfolio import ConcurrentPortfolioUpdate
 
 
 class SqlPortfolioMaintenanceService:
-    def __init__(self, session_factory: Callable[[], Session]) -> None:
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        warehouse: PointInTimeWarehouse | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._warehouse = warehouse
 
     def get(self, portfolio_id: str, as_of_time: datetime) -> PortfolioMaintenanceResponse:
         with self._session_factory() as session:
@@ -72,6 +80,32 @@ class SqlPortfolioMaintenanceService:
             )
 
     def replace(self, request: PortfolioMaintenanceRequest) -> PortfolioMaintenanceResponse:
+        equity = request.equity
+        if self._warehouse is not None:
+            security_ids = tuple(sorted(position.security_id for position in request.positions))
+            snapshot = self._warehouse.snapshot(
+                as_of_time=request.as_of_time,
+                scope=SnapshotScope.holding_analysis(security_ids),
+            )
+            if snapshot.quality.has_errors:
+                raise ValueError("point-in-time market data is unavailable")
+            positions = tuple(
+                PortfolioPosition(
+                    security_id=position.security_id,
+                    strategy_book=None,
+                    origin=PositionOrigin.RECORDED_TRADE,
+                    quantity=position.quantity,
+                    available_to_sell=position.available_to_sell or 0,
+                    average_cost=position.average_cost,
+                    effective_stop=position.effective_stop,
+                    highest_close=position.highest_close,
+                    entry_score=None,
+                    initial_risk_per_share=None,
+                    add_count=0,
+                )
+                for position in request.positions
+            )
+            equity = calculate_equity(request.cash, positions, snapshot)
         with self._session_factory.begin() as session:
             current = session.scalar(
                 select(PortfolioVersionRow)
@@ -99,7 +133,7 @@ class SqlPortfolioMaintenanceService:
                     portfolio_id=request.portfolio_id,
                     as_of_time=request.as_of_time,
                     cash=request.cash,
-                    equity=request.equity,
+                    equity=equity,
                 )
             )
             for position in request.positions:
@@ -141,7 +175,7 @@ class SqlPortfolioMaintenanceService:
                 as_of_time=request.as_of_time,
                 version=next_version,
                 cash=request.cash,
-                equity=request.equity,
+                equity=equity,
                 positions=list(request.positions),
             )
 

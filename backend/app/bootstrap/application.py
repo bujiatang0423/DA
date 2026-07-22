@@ -403,7 +403,7 @@ def build_application() -> FastAPI:
             ),
             build_holdings_feature(
                 SqlPortfolioReader(sessions),
-                SqlPortfolioMaintenanceService(sessions),
+                SqlPortfolioMaintenanceService(sessions, components.warehouse),
                 runs_service.submit,
                 components.holding_repository,
                 components.holding_service,

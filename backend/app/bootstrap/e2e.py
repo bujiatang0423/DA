@@ -249,7 +249,7 @@ def build_local_e2e_application(
             ),
             build_holdings_feature(
                 SqlPortfolioReader(sessions),
-                SqlPortfolioMaintenanceService(sessions),
+                SqlPortfolioMaintenanceService(sessions, components.warehouse),
                 runs.submit,
                 components.holding_repository,
                 components.holding_service,
