@@ -14,7 +14,7 @@ from backend.app.infrastructure.market.research_adapters import (
 )
 from backend.app.infrastructure.market.research_source import ResearchBatch
 from backend.app.infrastructure.llm.deepseek_factor import LlmFactorValidationError, validate_factor
-from backend.app.ports.research_data import FinancialMaterial
+from backend.app.ports.research_data import FinancialMaterial, ResearchBar
 
 
 UTC = UTC
@@ -166,6 +166,45 @@ def test_market_source_excludes_future_financial_publication() -> None:
     )
 
     assert batch.records == ()
+
+
+def test_market_source_uses_concrete_market_provider_in_lineage() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class NamedMarket:
+        provider_name = "akshare"
+
+        def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[ResearchBar, ...]:
+            del as_of_time
+            return (
+                ResearchBar(
+                    security_id=security_id,
+                    trade_date=as_of.date(),
+                    open=Decimal("1"),
+                    high=Decimal("1"),
+                    low=Decimal("1"),
+                    close=Decimal("1"),
+                    volume=1,
+                    amount=Decimal("1"),
+                    price_adjustment="none",
+                    adjustment_factor=Decimal("1"),
+                    available_at=as_of,
+                    source_hash="akshare-response",
+                ),
+            )
+
+        def financials(
+            self, security_id: str, as_of_time: datetime
+        ) -> tuple[FinancialMaterial, ...]:
+            del security_id, as_of_time
+            return ()
+
+    batch = MarketEvidenceSource(NamedMarket()).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(("000568.SZ",), (DataKind.DAILY_BAR_RAW,)),
+    )
+
+    assert batch.lineage[0].provider == "akshare"
 
 
 def test_market_source_filters_future_records_from_research_records_fast_path() -> None:

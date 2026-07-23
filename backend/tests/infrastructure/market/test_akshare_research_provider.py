@@ -105,6 +105,15 @@ def test_provider_returns_current_quote_with_response_lineage() -> None:
     assert len(quotes[0].source_hash) == 64
 
 
+def test_provider_hides_current_quote_when_retrieved_after_as_of_time() -> None:
+    provider = AkShareResearchProvider(
+        FakeAkShare(),
+        now=lambda: AS_OF.replace(minute=AS_OF.minute + 1),
+    )
+
+    assert provider.quotes(("000568.SZ",), AS_OF) == ()
+
+
 def test_provider_returns_calendar_and_universe_with_retrieval_availability() -> None:
     provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
 
@@ -117,6 +126,21 @@ def test_provider_returns_calendar_and_universe_with_retrieval_availability() ->
     assert universe[0].listed_on == date(1994, 5, 9)
     assert universe[0].industry_id == "白酒"
     assert universe[0].available_at == AS_OF
+
+
+def test_provider_hides_current_universe_when_retrieved_after_as_of_time() -> None:
+    provider = AkShareResearchProvider(
+        FakeAkShare(),
+        now=lambda: AS_OF.replace(minute=AS_OF.minute + 1),
+    )
+
+    assert provider.universe(AS_OF) == ()
+
+
+def test_provider_normalizes_lowercase_exchange_suffix() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    assert provider.quotes(("000568.sz",), AS_OF)[0].security_id == "000568.SZ"
 
 
 @pytest.mark.parametrize("security_id", ("000568", "000568.XX", "ABC.SZ"))

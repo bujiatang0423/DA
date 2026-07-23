@@ -76,6 +76,8 @@ class AkShareResearchProvider:
     def universe(self, as_of_time: datetime) -> tuple[UniverseSecurity, ...]:
         _require_aware(as_of_time)
         retrieved_at = self._retrieved_at()
+        if retrieved_at > as_of_time:
+            return ()
         listing_rows = tuple(_rows(self._client.stock_info_a_code_name()))
         result: list[UniverseSecurity] = []
         for listing_row in listing_rows:
@@ -112,6 +114,8 @@ class AkShareResearchProvider:
         _require_aware(as_of_time)
         normalized_ids = tuple(_validate_security_id(item) for item in security_ids)
         retrieved_at = self._retrieved_at()
+        if retrieved_at > as_of_time:
+            return ()
         rows = tuple(_rows(self._client.stock_zh_a_spot_em()))
         source_hash = _response_hash(rows)
         prices = {
@@ -247,6 +251,7 @@ def _akshare_financial_symbol(security_id: str) -> str:
 
 def _validate_security_id(security_id: str) -> str:
     code, separator, exchange = security_id.partition(".")
+    exchange = exchange.upper()
     if separator != "." or len(code) != 6 or not code.isdigit() or exchange not in {"SH", "SZ"}:
         raise ValueError(f"invalid security id: {security_id}")
     expected_exchange = "SH" if code.startswith(("5", "6", "9")) else "SZ"
