@@ -22,6 +22,8 @@ from backend.app.infrastructure.persistence.database import build_engine, build_
 from backend.app.infrastructure.tasks.handlers import HandlerRegistry
 from backend.app.infrastructure.tasks.health import WorkerLeaseStore
 from backend.app.infrastructure.tasks.worker import build_worker, run
+from backend.app.infrastructure.market.portfolio_quote_scheduler import run_quote_scheduler
+from threading import Event, Thread
 
 
 def register_worker_handlers(
@@ -60,10 +62,18 @@ def main() -> None:
         settings.worker_stale_after_seconds,
     )
     stopping = False
+    scheduler_stop = Event()
+    scheduler_thread = Thread(
+        target=run_quote_scheduler,
+        args=(sessions, scheduler_stop),
+        daemon=True,
+    )
+    scheduler_thread.start()
 
     def stop_handler(signum: int, frame: object) -> None:
         nonlocal stopping
         stopping = True
+        scheduler_stop.set()
 
     signal.signal(signal.SIGTERM, stop_handler)
     signal.signal(signal.SIGINT, stop_handler)

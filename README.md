@@ -19,7 +19,7 @@ DA 是独立于 LA 的四维盾剑 V2.12 研究与决策平台，不执行自动
 ./scripts/start.sh stop
 ```
 
-脚本会先清理 8000 和 5173 端口上的监听进程。日志位于 `data/logs/`，PID 位于
+脚本会先清理 18000 和 15180 端口上的监听进程。日志位于 `data/logs/`，PID 位于
 `data/run/`；可用 `DA_API_PORT`、`DA_WEB_PORT` 覆盖端口。
 
 ```bash
@@ -29,7 +29,7 @@ python -m backend.app.main
 cd web && npm run dev
 ```
 
-完成数据库迁移后，API 默认监听 `127.0.0.1:8000`，Web 默认监听 `127.0.0.1:5173`。
+完成数据库迁移后，API 默认监听 `127.0.0.1:18000`，Web 默认监听 `127.0.0.1:15180`。
 
 ## 验证
 

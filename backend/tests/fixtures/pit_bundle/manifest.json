@@ -6,17 +6,17 @@
   "files": [
     {"dataset": "adjustment_factors", "path": "adjustment_factors.csv", "sha256": "ebdcb17b903defaf860fcb177f5cf731e4cb9ae097c6c47abbe9e7130a603b38", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "corporate_actions", "path": "corporate_actions.csv", "sha256": "c1f749fa8a60e5ce94c8670c86f22060c1348f1d7aec3823f6a0ecfd794c91b8", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
-    {"dataset": "daily_bars_raw", "path": "daily_bars_raw.csv", "sha256": "4f0fc5cb71c8ddf1f42c59a76d22a9eb0333750a62524bab7f7cdb66d1d9652b", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
+    {"dataset": "daily_bars_raw", "path": "daily_bars_raw.csv", "sha256": "9b2bb1627f3f5d455310b6e30e9e70fccaa624efdc94b7e7cd8d830dfed34a54", "row_count": 3, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "fee_schedules", "path": "fee_schedules.csv", "sha256": "cdeed738665b3977a07084239d1c49295a313861787265965d47d3cdb441e57f", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "financial_disclosures", "path": "financial_disclosures.csv", "sha256": "65be28ea28f55e4f332789228934bbcb15d2d0913888ad034660b11ee7bb3089", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "financial_facts", "path": "financial_facts.csv", "sha256": "f06a938ffcf5fb6022841727118d1642692813bc945b725191cec5c168c7d05b", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
-    {"dataset": "index_daily_bars", "path": "index_daily_bars.csv", "sha256": "8a64e439e8e58ac003a65e47ecf4138f268989b415e9cd7af9be997be498ae03", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
+    {"dataset": "index_daily_bars", "path": "index_daily_bars.csv", "sha256": "ba18901862b2f05190ed86e9d87341d41bae9d5d451e22dab0ae3aa7fa0417ae", "row_count": 3, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "market_breadth", "path": "market_breadth.csv", "sha256": "c537bdd823905ec1cbfbc37da4e609fa2edc80821c5f41cb3fd563f322a19643", "row_count": 3, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "industry_membership_history", "path": "industry_membership_history.csv", "sha256": "55a1067319482d364258727eb57f8e3597fa8a6e0127ab1d6b37549fce8aa51c", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "policy_documents", "path": "policy_documents.csv", "sha256": "d57376ef21871e6a470f3983e74d041d63c0963e497b91efa628c1df20799360", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "security_master_history", "path": "security_master_history.csv", "sha256": "15afff878f6d9d94d8dc6a2714a7c6855912558ad3c2a4dfcdfbbc7f691a1a1c", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "security_status_daily", "path": "security_status_daily.csv", "sha256": "6ce6f36424ee813379201de1e5c730acfcfae10de099e1fec0ff9c206b2dde33", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
     {"dataset": "theme_membership_history", "path": "theme_membership_history.csv", "sha256": "4e893c3af77e381b37ab7cfcecb38543b665c82b6a00db393ca0fa0261f59cd0", "row_count": 2, "source_id": "fixture-source", "license_id": "fixture-license"},
-    {"dataset": "trading_calendar", "path": "trading_calendar.csv", "sha256": "2526ee951da2e029e830a5e48f47924457f9f156004932fa9580060df4113fc9", "row_count": 3, "source_id": "fixture-source", "license_id": "fixture-license"}
+    {"dataset": "trading_calendar", "path": "trading_calendar.csv", "sha256": "887920b72e269278fb1a8bbedd695099da3435a06fa240af3e24a43a33c12a13", "row_count": 6, "source_id": "fixture-source", "license_id": "fixture-license"}
   ]
 }

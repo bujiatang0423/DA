@@ -1,3 +1,4 @@
 record_id,index_id,trade_date,open,high,low,close,volume,amount,available_at,source_artifact_hash
 idb-1,000300.SH,2020-01-02,4000,4010,3990,4005,1000,4005000,2020-01-02,source-idb-v1
+idb-e2e-1,000300.SH,2020-06-01,4005,4015,3995,4010,1100,4411000,2020-06-01,source-idb-e2e-1
 idb-2,000300.SH,2020-07-02,4200,4210,4190,4205,1200,5046000,2021-01-02,source-idb-v2

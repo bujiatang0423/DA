@@ -9,8 +9,7 @@ afterEach(() => {
 });
 
 test("loads imported opening positions from the unified portfolio endpoint", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => new Response(
       JSON.stringify({
         portfolio_id: "default",
         as_of_time: "2026-07-21T12:00:00+08:00",
@@ -33,8 +32,7 @@ test("loads imported opening positions from the unified portfolio endpoint", asy
         ],
       }),
       { status: 200, headers: { "content-type": "application/json" } },
-    ),
-  );
+    ));
 
   render(<MaintenancePage />);
 
@@ -48,8 +46,7 @@ test("loads imported opening positions from the unified portfolio endpoint", asy
 });
 
 test("keeps the new-row code input focused while typing", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => new Response(
       JSON.stringify({
         portfolio_id: "default",
         as_of_time: "2026-07-21T12:00:00+08:00",
@@ -59,8 +56,7 @@ test("keeps the new-row code input focused while typing", async () => {
         items: [],
       }),
       { status: 200, headers: { "content-type": "application/json" } },
-    ),
-  );
+    ));
 
   render(<MaintenancePage />);
   await waitFor(() => expect(screen.getByRole("button", { name: "新增一行" })).toBeTruthy());

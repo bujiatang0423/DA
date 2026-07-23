@@ -26,6 +26,7 @@ class PortfolioPositionQuoteRow(Base):
     security_id: Mapped[str] = mapped_column(String(32), index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
 
 
 class PortfolioLotProjectionRow(Base):

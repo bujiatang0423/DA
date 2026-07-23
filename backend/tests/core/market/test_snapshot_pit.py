@@ -78,3 +78,28 @@ def test_snapshot_filters_scope_and_history_but_keeps_market_records() -> None:
     )
     assert [x.security_id for x in snap.security_observations] == ["AAA"]
     assert len(snap.market_inputs) == 1
+
+
+def test_snapshot_keeps_reference_data_that_predates_requested_price_history() -> None:
+    as_of = datetime(2026, 1, 10, tzinfo=UTC)
+    master = TemporalRecord(
+        "master",
+        DataKind.SECURITY_MASTER,
+        "AAA",
+        datetime(2020, 1, 1, tzinfo=UTC),
+        datetime(2020, 1, 1, tzinfo=UTC),
+        datetime(2020, 1, 1, tzinfo=UTC),
+        "hash-master",
+        {"name": "AAA"},
+    )
+
+    snapshot = assemble_snapshot(
+        as_of_time=as_of,
+        scope=SnapshotScope(("AAA",), history_start=datetime(2026, 1, 3, tzinfo=UTC)),
+        data_grade=DataGrade.PIT_VERIFIED,
+        records=(master,),
+        lineage=(),
+        quality_issues=(),
+    )
+
+    assert snapshot.security_observations[0].records == (master,)

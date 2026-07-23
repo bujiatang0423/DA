@@ -3,8 +3,10 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_PORT="${DA_API_PORT:-8000}"
-WEB_PORT="${DA_WEB_PORT:-5173}"
+API_PORT="${DA_API_PORT:-18000}"
+WEB_PORT="${DA_WEB_PORT:-15180}"
+export DA_BIND_PORT="$API_PORT"
+export DA_DATABASE_URL="${DA_DATABASE_URL:-postgresql+psycopg://da:da@127.0.0.1:5432/da}"
 LOG_DIR="$ROOT_DIR/data/logs"
 RUN_DIR="$ROOT_DIR/data/run"
 API_LOG="$LOG_DIR/backend.log"
@@ -122,6 +124,10 @@ start() {
     require_command python
     require_command npm
     mkdir -p "$LOG_DIR" "$RUN_DIR"
+    (
+        cd "$ROOT_DIR"
+        python -m alembic upgrade head
+    )
     start_backend
     start_frontend
     start_worker

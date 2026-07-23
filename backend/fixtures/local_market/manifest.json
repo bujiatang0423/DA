@@ -1,0 +1,18 @@
+{
+  "refreshed_at": "2026-07-22T14:16:23.462263+00:00",
+  "source": "/Users/bujiatang/workspace/LA/data/cache/daily_bars",
+  "symbols": [
+    "000425.SZ",
+    "000568.SZ",
+    "159566.SZ",
+    "517110.SH",
+    "601899.SH"
+  ],
+  "records": {
+    "000425.SZ": "078c2f3cc46ee46c2d984f5e7c42eb7dd6b1fbfba5946089b49c66a70dea4058",
+    "000568.SZ": "3fbfd78699d891ce4c7966cba9036286446e43a9ba4c0470cc688bcb115f624c",
+    "159566.SZ": "65c4e7eb884cf3b36c3ab49134eedbc4c902ca7436e3be4efa75baf99ee57525",
+    "517110.SH": "61bef0ec1b132f4208f06bfdb6cea7145053b7440b8c8ad120942c26f6184755",
+    "601899.SH": "c8dd9599409c00966066fe8a54b5bf8674087c4b8247d7e51027757e805c480e"
+  }
+}

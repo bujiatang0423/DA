@@ -6,6 +6,7 @@ from datetime import datetime, UTC
 
 from backend.app.contracts.grades import DataGrade
 from backend.app.core.market.pit_models import (
+    DataKind,
     LineageRef,
     PointInTimeSnapshot,
     QualityIssue,
@@ -13,6 +14,15 @@ from backend.app.core.market.pit_models import (
     SnapshotQuality,
     SnapshotScope,
     TemporalRecord,
+)
+
+
+_HISTORY_BOUNDED_KINDS = frozenset(
+    {
+        DataKind.DAILY_BAR_RAW,
+        DataKind.INDEX_DAILY_BAR,
+        DataKind.TRADING_CALENDAR,
+    }
 )
 
 
@@ -48,9 +58,11 @@ def assemble_snapshot(
             and record.entity_id not in allowed
         ):
             continue
-        if scope.history_start is not None and event.astimezone(
-            UTC
-        ) < scope.history_start.astimezone(UTC):
+        if (
+            scope.history_start is not None
+            and record.kind in _HISTORY_BOUNDED_KINDS
+            and event.astimezone(UTC) < scope.history_start.astimezone(UTC)
+        ):
             continue
         selected.append(record)
     ordered = tuple(sorted(selected, key=lambda r: (r.entity_id, r.kind.value, r.record_id)))

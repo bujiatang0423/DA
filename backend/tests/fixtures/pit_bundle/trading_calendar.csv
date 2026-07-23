@@ -1,4 +1,7 @@
 record_id,exchange,trade_date,is_open,available_at,source_artifact_hash
 tc-1,SZSE,2020-01-02,true,2020-01-01,source-tc-v1
 tc-1-sse,SSE,2020-01-02,true,2020-01-01,source-tc-sse-v1
+tc-e2e-1,SSE,2020-06-01,true,2020-05-31,source-tc-e2e-1
+tc-e2e-2,SSE,2020-06-02,true,2020-06-01,source-tc-e2e-2
+tc-e2e-3,SSE,2020-07-02,true,2020-07-01,source-tc-e2e-3
 tc-2,SZSE,2020-07-02,true,2021-01-01,source-tc-v2

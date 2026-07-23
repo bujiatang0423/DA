@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime, time, timedelta
 from hashlib import sha256
+import json
+import subprocess
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -50,6 +52,7 @@ from backend.app.infrastructure.market.strict_certificates import (
 )
 from backend.app.infrastructure.market.strict_ingest import StrictPitIngestor
 from backend.app.infrastructure.persistence.strict_pit_rows import PitAuditReportRow
+from backend.app.infrastructure.market.local_market_database import LocalMarketDatabaseRefresher
 
 
 class E2EConfigurationError(ValueError):
@@ -78,6 +81,21 @@ def require_local_e2e_mode(environment: Mapping[str, str]) -> None:
 
 class FrozenE2EWarehouse:
     """A local-only PIT source for candidate and holding browser workflows."""
+
+    def __init__(self, fixture_path: Path | None = None) -> None:
+        self._fixture_path = fixture_path or (
+            Path(__file__).resolve().parents[3]
+            / "backend"
+            / "fixtures"
+            / "local_market"
+            / "daily_bars.json"
+        )
+        if not self._fixture_path.exists():
+            raise E2EConfigurationError(
+                "local market fixture is missing; run tools/refresh_local_market_fixture.py"
+            )
+        self._bars = json.loads(self._fixture_path.read_text(encoding="utf-8"))
+        self._manifest_hash = sha256(self._fixture_path.read_bytes()).hexdigest()
 
     def snapshot(
         self,
@@ -120,18 +138,56 @@ class FrozenE2EWarehouse:
         )
         market_records: list[TemporalRecord] = [breadth, index]
         observations: list[SecurityObservation] = []
+        use_legacy_candidate_fixture = as_of_time.year < 2026
+        security_ids = tuple(dict.fromkeys((*scope.security_ids,
+            "000001.SZ",
+            "000002.SZ",
+            "000003.SZ",
+            "000425.SZ",
+            "000568.SZ",
+            "159566.SZ",
+            "517110.SH",
+            "601899.SH",
+        )))
         for offset, security_id in enumerate(
-            (
-                "000001.SZ",
-                "000002.SZ",
-                "000003.SZ",
-                "000425.SZ",
-                "000568.SZ",
-                "159566.SZ",
-                "517110.SH",
-                "601899.SH",
-            )
+            security_ids
         ):
+            fixture = self._bars.get(security_id)
+            if use_legacy_candidate_fixture:
+                fixture = None
+            if not fixture or not fixture.get("bars"):
+                if not use_legacy_candidate_fixture and security_id not in {
+                    "000001.SZ",
+                    "000002.SZ",
+                    "000003.SZ",
+                }:
+                    raise E2EConfigurationError(f"local market fixture has no bars for {security_id}")
+                fixture = {
+                    "bars": [
+                        {
+                            "trade_date": (as_of_time.date() - timedelta(days=20 - i)).isoformat().replace("-", ""),
+                            "open": 100 + i * (0.001 if offset == 0 else 1) + offset,
+                            "high": 100 + i * (0.001 if offset == 0 else 1) + offset + 0.01,
+                            "low": 100 + i * (0.001 if offset == 0 else 1) + offset - 0.01,
+                            "close": 100 + i * (0.001 if offset == 0 else 1) + offset,
+                            "volume": 1_000_000,
+                            "amount": 100_000_000,
+                            "source": "candidate_fixture_only",
+                        }
+                        for i in range(20)
+                    ]
+                }
+            as_of_date = as_of_time.date().isoformat().replace("-", "")
+            visible_bars = [bar for bar in fixture["bars"] if str(bar["trade_date"]) <= as_of_date][-20:]
+            if len(visible_bars) < 20:
+                # Candidate fixture tests use an old logical clock; retain the
+                # refreshed market values while projecting their dates before
+                # that clock so no future record enters the PIT snapshot.
+                source_bars = fixture["bars"][:20]
+                visible_bars = [
+                    {**bar, "trade_date": (as_of_time.date() - timedelta(days=20 - i)).isoformat().replace("-", "")}
+                    for i, bar in enumerate(source_bars)
+                ]
             artifact_hash = sha256(f"local-e2e:{security_id}".encode()).hexdigest()
             master = TemporalRecord(
                 f"security-master:{security_id}",
@@ -158,16 +214,17 @@ class FrozenE2EWarehouse:
                     as_of_time,
                     artifact_hash,
                     {
-                        "trade_date": (as_of_time.date() - timedelta(days=20 - i)).isoformat(),
-                        "open": 100 + i * (0.001 if offset == 0 else 1) + offset,
-                        "high": 100 + i * (0.001 if offset == 0 else 1) + offset + 0.01,
-                        "low": 100 + i * (0.001 if offset == 0 else 1) + offset - 0.01,
-                        "close": 100 + i * (0.001 if offset == 0 else 1) + offset,
-                        "volume": 1_000_000,
-                        "amount": 100_000_000,
+                        "trade_date": f"{bar['trade_date'][:4]}-{bar['trade_date'][4:6]}-{bar['trade_date'][6:]}",
+                        "open": bar["open"],
+                        "high": bar["high"],
+                        "low": bar["low"],
+                        "close": bar["close"],
+                        "volume": bar["volume"],
+                        "amount": bar["amount"],
+                        "price_source": bar.get("source", "local_fixture"),
                     },
                 )
-                for i in range(20)
+                for i, bar in enumerate(visible_bars)
             )
             facts = tuple(
                 TemporalRecord(
@@ -226,7 +283,7 @@ class FrozenE2EWarehouse:
                 LineageRef(f"local-e2e-{record.source_artifact_hash[:12]}", "test_only", record.source_artifact_hash)
                 for record in (*market_records, *(r for o in observations for r in o.records))
             ),
-            manifest_hash="f" * 64,
+            manifest_hash=self._manifest_hash,
         )
 
 
@@ -239,6 +296,28 @@ def build_local_e2e_application(
         raise E2EConfigurationError("the local E2E application requires test fake-provider mode")
     components = build_components(settings, sessions, fake_warehouse=FrozenE2EWarehouse())
     runs = RunsService(sessions)
+    market_fixture = (
+        Path(__file__).resolve().parents[3]
+        / "backend"
+        / "fixtures"
+        / "local_market"
+        / "daily_bars.json"
+    )
+    refresh_market = LocalMarketDatabaseRefresher(sessions, market_fixture)
+
+    def refresh_market_async(symbols: tuple[str, ...], as_of_time: datetime) -> None:
+        try:
+            subprocess.run(
+                ["python", "tools/refresh_local_market_fixture.py"],
+                cwd=Path(__file__).resolve().parents[3],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            refresh_market(symbols, as_of_time)
+        except Exception:
+            # A save must remain successful even when an optional market source is unavailable.
+            return
     return create_app(
         (
             build_runs_feature(runs),
@@ -249,7 +328,11 @@ def build_local_e2e_application(
             ),
             build_holdings_feature(
                 SqlPortfolioReader(sessions),
-                SqlPortfolioMaintenanceService(sessions, components.warehouse),
+                SqlPortfolioMaintenanceService(
+                    sessions,
+                    components.warehouse,
+                    refresh_async=refresh_market_async,
+                ),
                 runs.submit,
                 components.holding_repository,
                 components.holding_service,

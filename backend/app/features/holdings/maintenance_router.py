@@ -22,4 +22,8 @@ def build_maintenance_router(service: SqlPortfolioMaintenanceService) -> APIRout
     def replace_maintenance(request: PortfolioMaintenanceRequest) -> PortfolioMaintenanceResponse:
         return service.replace(request)
 
+    @router.get("/quotes")
+    def latest_quotes(portfolio_id: str) -> dict[str, str]:
+        return {key: str(value) for key, value in service.latest_quotes(portfolio_id).items()}
+
     return router

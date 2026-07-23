@@ -28,4 +28,4 @@ def test_equity_uses_latest_point_in_time_close() -> None:
         add_count=0,
     )
 
-    assert calculate_equity(Decimal("100"), (position,), snapshot) == Decimal("1360")
+    assert calculate_equity(Decimal("100"), (position,), snapshot) == Decimal("470.6")

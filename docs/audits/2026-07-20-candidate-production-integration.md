@@ -37,3 +37,15 @@ Once Provider Tasks 5-8 deliver those concrete ports, deployment can configure t
 changing candidate orchestration. A full factory integration test must then verify source lineage,
 PIT availability, invalid-provider failure, and a non-executable empty result for every missing
 input.
+
+## Provider Source Decision
+
+Production candidate data will use an official-first, ingest-before-consume design. Policy material
+comes from official publications and is visible at `max(published_at, first_observed_at)`; financial
+facts come from public exchange/disclosure records and are visible only after publication. The LLM
+pipeline consumes only frozen policy and financial artifacts, persists model/prompt/input hashes and
+validated structured evidence, and never emits order, quantity, position, allocation, or recommendation
+fields. Candidate requests read one frozen research snapshot and never contact an upstream provider.
+
+These sources remain `RESEARCH` until separately ingested into the strict historical bundle, coverage-
+audited, and certificate-authorized. Missing source clients or failed ingestion must remain fail-closed.

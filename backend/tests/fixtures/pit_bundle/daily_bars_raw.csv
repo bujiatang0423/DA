@@ -1,3 +1,4 @@
 record_id,security_id,trade_date,open,high,low,close,volume,amount,available_at,source_artifact_hash
 dbr-1,000001.SZ,2020-01-02,10,11,9,10.5,100,1050,2020-01-02,source-dbr-v1
+dbr-e2e-1,000001.SZ,2020-06-01,10.5,10.8,10.2,10.6,110,1166,2020-06-01,source-dbr-e2e-1
 dbr-2,000001.SZ,2020-07-02,12,13,11,12.5,120,1500,2021-01-02,source-dbr-v2
