@@ -4,6 +4,10 @@ from backend.app.infrastructure.market.research_adapters import (
     PolicyEvidenceSource,
     ResearchEvidenceSource,
 )
+from backend.app.infrastructure.market.official_evidence import (
+    OfficialEvidenceReader,
+    OfficialEvidenceSource,
+)
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.market.strict_reader import SqlStrictRecordReader
 from backend.app.infrastructure.market.strict_certificates import SqlPitCertificateAuthority
@@ -16,17 +20,16 @@ def build_point_in_time_warehouse(
     market: object,
     policy: object,
     llm: object,
+    official_evidence: OfficialEvidenceReader | None = None,
     benchmark_ids: tuple[str, ...] = ("000985.CSI", "000001.SH"),
 ) -> ResearchPointInTimeWarehouse:
+    sources: list[object] = [MarketEvidenceSource(market, benchmark_ids)]
+    if official_evidence is not None:
+        sources.append(OfficialEvidenceSource(official_evidence))
+    sources.extend((PolicyEvidenceSource(policy), LlmEvidenceSource(llm, policy, market)))
     return ResearchPointInTimeWarehouse(
         (
-            ResearchEvidenceSource(
-                (
-                    MarketEvidenceSource(market, benchmark_ids),
-                    PolicyEvidenceSource(policy),
-                    LlmEvidenceSource(llm, policy, market),
-                )
-            ),
+            ResearchEvidenceSource(tuple(sources)),
         )
     )
 
