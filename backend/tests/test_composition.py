@@ -23,6 +23,7 @@ from backend.app.core.market.pit_models import (
 from backend.app.contracts.grades import DataGrade
 from backend.app.infrastructure.market.research_providers import FallbackDailyBarProvider
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
+from backend.app.infrastructure.market.official_evidence import OfficialEvidenceSource
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 
 
@@ -193,6 +194,45 @@ def test_incomplete_configured_provider_fails_closed(
     warehouse = build_warehouse(settings)
 
     assert isinstance(warehouse, UnavailableResearchWarehouse)
+
+
+def test_production_components_inject_persisted_official_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        provider_mode="production",
+        research_provider_factory="fixture_provider:build",
+    )
+
+    class Market:
+        def trade_calendar(self, *args: object) -> tuple[object, ...]: return ()
+        def universe(self, *args: object) -> tuple[object, ...]: return ()
+        def quotes(self, *args: object) -> tuple[object, ...]: return ()
+        def daily_bars(self, *args: object) -> tuple[object, ...]: return ()
+        def financials(self, *args: object) -> tuple[object, ...]: return ()
+        def fee_schedules(self, *args: object) -> tuple[object, ...]: return ()
+
+    class Policy:
+        def materials(self, *, as_of_time: datetime) -> tuple[object, ...]: return ()
+
+    class Llm:
+        def extract(self, **kwargs: object) -> object: return object()
+
+    import sys
+
+    module = ModuleType("fixture_provider")
+    module.build = lambda current: ProductionResearchProviders(Market(), Policy(), Llm())
+    monkeypatch.setitem(sys.modules, "fixture_provider", module)
+
+    components = build_components(settings, sessionmaker())
+
+    assert isinstance(components.warehouse, ResearchPointInTimeWarehouse)
+    assert any(
+        isinstance(source, OfficialEvidenceSource)
+        for source in components.warehouse.sources[0].sources
+    )
 
 
 def test_components_share_the_explicit_fake_warehouse() -> None:

@@ -62,6 +62,34 @@ def test_import_accepts_cninfo_and_recomputes_untrusted_content_hash() -> None:
     assert persisted.content_sha256 == sha256(document.text.encode()).hexdigest()
 
 
+def test_financial_and_policy_allowlists_are_separate() -> None:
+    store = OfficialEvidenceStore.in_memory()
+
+    with pytest.raises(ValueError, match="financial announcement"):
+        store.import_document(
+            _document(source_url="https://www.csrc.gov.cn/csrc/c100028/c123/content.shtml")
+        )
+    with pytest.raises(ValueError, match="policy document"):
+        store.import_document(
+            _document(
+                kind="policy_document",
+                security_id=None,
+                report_period=None,
+                issuer="中国证监会",
+                security_ids=("000568.SZ",),
+            )
+        )
+
+
+def test_import_rejects_review_before_first_observation() -> None:
+    store = OfficialEvidenceStore.in_memory()
+
+    with pytest.raises(ValueError, match="reviewed_at"):
+        store.import_document(
+            _document(reviewed_at=datetime(2026, 4, 29, 20, 4, tzinfo=SHANGHAI))
+        )
+
+
 def test_policy_requires_holding_security_bindings_and_effective_time() -> None:
     store = OfficialEvidenceStore.in_memory()
 
@@ -73,6 +101,7 @@ def test_policy_requires_holding_security_bindings_and_effective_time() -> None:
                 report_period=None,
                 issuer="中国证监会",
                 security_ids=(),
+                source_url="https://www.csrc.gov.cn/csrc/c100028/c123/content.shtml",
             )
         )
 
@@ -306,6 +335,7 @@ def test_llm_source_consumes_only_persisted_official_policy_and_financial_eviden
             report_period=None,
             issuer="中国证监会",
             security_ids=("000568.SZ",),
+            source_url="https://www.csrc.gov.cn/csrc/c100028/c123/content.shtml",
             title="政策",
             text="policy text",
         )

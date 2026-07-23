@@ -25,6 +25,7 @@ from backend.app.infrastructure.market.research_providers import (
 )
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
+from backend.app.infrastructure.market.official_evidence import OfficialEvidenceStore
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
 from backend.app.ports.llm_factor import LlmFactorPort
@@ -115,6 +116,7 @@ def build_warehouse(
     fake_warehouse: PointInTimeWarehouse | None = None,
     akshare_module: ModuleType | None = None,
     baostock_module: ModuleType | None = None,
+    sessions: sessionmaker[Session] | None = None,
 ) -> PointInTimeWarehouse:
     if settings.environment != "test" and settings.provider_mode == "fake":
         raise ProviderConfigurationError("fake provider mode is allowed only in test environment")
@@ -142,6 +144,7 @@ def build_warehouse(
             market=providers.market,
             policy=providers.policy,
             llm=providers.llm,
+            official_evidence=OfficialEvidenceStore(sessions) if sessions is not None else None,
         )
 
     if settings.environment != "test":
@@ -182,6 +185,7 @@ def build_components(
         fake_warehouse=fake_warehouse,
         akshare_module=akshare_module,
         baostock_module=baostock_module,
+        sessions=sessions,
     )
     strategy = V212StrategyEngine()
     service = CandidateService(

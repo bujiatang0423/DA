@@ -23,9 +23,8 @@ from backend.app.infrastructure.persistence.official_evidence_rows import Offici
 FINANCIAL_ANNOUNCEMENT = "financial_announcement"
 POLICY_DOCUMENT = "policy_document"
 _VALID_KINDS = frozenset((FINANCIAL_ANNOUNCEMENT, POLICY_DOCUMENT))
-_OFFICIAL_HOSTS = frozenset(
-    ("cninfo.com.cn", "csrc.gov.cn", "gov.cn", "sse.com.cn", "szse.cn")
-)
+_FINANCIAL_HOSTS = frozenset(("cninfo.com.cn",))
+_POLICY_HOSTS = frozenset(("csrc.gov.cn", "gov.cn", "sse.com.cn", "szse.cn"))
 _DEFAULT_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
@@ -187,7 +186,7 @@ def _record(document: OfficialEvidenceDocument) -> TemporalRecord:
 def _validate_document(document: OfficialEvidenceDocument) -> str:
     if document.kind not in _VALID_KINDS:
         raise ValueError(f"unsupported official evidence kind: {document.kind}")
-    host = _official_host(document.source_url)
+    host = _official_host(document.kind, document.source_url)
     for value, label in (
         (document.published_at, "published_at"),
         (document.first_observed_at, "first_observed_at"),
@@ -197,6 +196,8 @@ def _validate_document(document: OfficialEvidenceDocument) -> str:
         _require_aware(value, label)
     if document.first_observed_at < document.published_at:
         raise ValueError("first_observed_at cannot precede published_at")
+    if document.reviewed_at < document.first_observed_at:
+        raise ValueError("reviewed_at cannot precede first_observed_at")
     if document.kind == FINANCIAL_ANNOUNCEMENT and (
         document.security_id is None or document.report_period is None
     ):
@@ -214,13 +215,15 @@ def _validate_document(document: OfficialEvidenceDocument) -> str:
     return host
 
 
-def _official_host(source_url: str) -> str:
+def _official_host(kind: str, source_url: str) -> str:
     parsed = urlparse(source_url)
     host = (parsed.hostname or "").lower()
+    allowed_hosts = _FINANCIAL_HOSTS if kind == FINANCIAL_ANNOUNCEMENT else _POLICY_HOSTS
     if parsed.scheme != "https" or not any(
-        host == allowed or host.endswith(f".{allowed}") for allowed in _OFFICIAL_HOSTS
+        host == allowed or host.endswith(f".{allowed}") for allowed in allowed_hosts
     ):
-        raise ValueError("source URL is not on the official allowlist")
+        label = "financial announcement" if kind == FINANCIAL_ANNOUNCEMENT else "policy document"
+        raise ValueError(f"source URL is not on the official allowlist for {label}")
     return host
 
 
