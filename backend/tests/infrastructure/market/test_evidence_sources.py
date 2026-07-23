@@ -14,7 +14,7 @@ from backend.app.infrastructure.market.research_adapters import (
 )
 from backend.app.infrastructure.market.research_source import ResearchBatch
 from backend.app.infrastructure.llm.deepseek_factor import LlmFactorValidationError, validate_factor
-from backend.app.ports.research_data import FinancialMaterial
+from backend.app.ports.research_data import FinancialMaterial, ResearchBar
 
 
 UTC = UTC
@@ -166,6 +166,89 @@ def test_market_source_excludes_future_financial_publication() -> None:
     )
 
     assert batch.records == ()
+
+
+def test_market_source_uses_concrete_market_provider_in_lineage() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class NamedMarket:
+        provider_name = "akshare"
+
+        def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[ResearchBar, ...]:
+            del as_of_time
+            return (
+                ResearchBar(
+                    security_id=security_id,
+                    trade_date=as_of.date(),
+                    open=Decimal("1"),
+                    high=Decimal("1"),
+                    low=Decimal("1"),
+                    close=Decimal("1"),
+                    volume=1,
+                    amount=Decimal("1"),
+                    price_adjustment="none",
+                    adjustment_factor=Decimal("1"),
+                    available_at=as_of,
+                    source_hash="akshare-response",
+                ),
+            )
+
+        def financials(
+            self, security_id: str, as_of_time: datetime
+        ) -> tuple[FinancialMaterial, ...]:
+            del security_id, as_of_time
+            return ()
+
+    batch = MarketEvidenceSource(NamedMarket()).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(("000568.SZ",), (DataKind.DAILY_BAR_RAW,)),
+    )
+
+    assert batch.lineage[0].provider == "akshare"
+
+
+def test_market_source_does_not_expand_live_universe_without_an_explicit_scope() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class LiveMarket:
+        provider_name = "akshare"
+
+        def universe(self, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            raise AssertionError("live provider must not trigger an all-market fan-out")
+
+    batch = MarketEvidenceSource(LiveMarket()).fetch(as_of_time=as_of, scope=SnapshotScope())
+
+    assert batch.records == ()
+
+
+def test_market_source_uses_bounded_benchmark_ids_when_live_scope_is_empty() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+    requested_ids: list[str] = []
+
+    class LiveMarket:
+        provider_name = "akshare"
+
+        def universe(self, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            raise AssertionError("bounded benchmark ids must avoid the universe endpoint")
+
+        def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            requested_ids.append(security_id)
+            return ()
+
+        def financials(self, security_id: str, as_of_time: datetime) -> tuple[object, ...]:
+            del security_id, as_of_time
+            return ()
+
+    batch = MarketEvidenceSource(LiveMarket(), benchmark_ids=("000568.SZ",)).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(),
+    )
+
+    assert batch.records == ()
+    assert requested_ids == ["000568.SZ"]
 
 
 def test_market_source_filters_future_records_from_research_records_fast_path() -> None:
