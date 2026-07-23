@@ -1,4 +1,6 @@
 from dataclasses import replace
+from datetime import datetime
+from types import SimpleNamespace
 from decimal import Decimal
 
 import pytest
@@ -35,6 +37,16 @@ from backend.tests.features.holdings.fakes import (
     FakeStrategyDecisionPort,
     FakeStrategyInputBuilder,
 )
+
+
+class RecordingFinancialEvidenceRefresher:
+    def __init__(self, available_at: datetime | None = None) -> None:
+        self.requests: list[tuple[tuple[str, ...], datetime]] = []
+        self.available_at = available_at
+
+    def refresh(self, *, security_ids: tuple[str, ...], as_of_time: datetime) -> object:
+        self.requests.append((security_ids, as_of_time))
+        return SimpleNamespace(available_at=self.available_at) if self.available_at else None
 
 
 def build_service(
@@ -94,6 +106,61 @@ def test_service_reads_portfolio_and_market_at_identical_as_of_time() -> None:
     assert result.manifest_hash == warehouse.snapshot_value.manifest_hash
     assert result.summary.gross_exposure_pct == Decimal("65.0")
     assert repository.saved == [result]
+
+
+def test_service_refreshes_official_financial_evidence_before_building_snapshot() -> None:
+    service, command, warehouse, portfolios, input_builder, strategy, repository = build_service()
+    refresher = RecordingFinancialEvidenceRefresher()
+    service = HoldingAnalysisService(
+        warehouse,
+        portfolios,
+        input_builder,
+        strategy,
+        repository,
+        financial_evidence_refresher=refresher,
+    )
+
+    service.run(command)
+
+    assert refresher.requests == [(('000001.SZ',), command.as_of_time)]
+
+
+def test_service_uses_the_evidence_observation_time_for_current_analysis() -> None:
+    service, command, warehouse, portfolios, input_builder, strategy, repository = build_service()
+    available_at = command.as_of_time.replace(minute=command.as_of_time.minute + 1)
+    refresher = RecordingFinancialEvidenceRefresher(available_at)
+    initial_portfolio = portfolios.snapshot_value
+    portfolio = replace(initial_portfolio, as_of_time=available_at)
+
+    class SequencedPortfolioReader:
+        def __init__(self) -> None:
+            self.requests: list[tuple[str, datetime]] = []
+
+        def snapshot(self, *, portfolio_id: str, as_of_time: datetime) -> object:
+            self.requests.append((portfolio_id, as_of_time))
+            return initial_portfolio if as_of_time == command.as_of_time else portfolio
+
+    reader = SequencedPortfolioReader()
+    warehouse.snapshot_value = replace(warehouse.snapshot_value, as_of_time=available_at)
+    input_builder.prepared_value.as_of.as_of_time = available_at
+    strategy.evaluation = replace(strategy.evaluation, as_of_time=available_at)
+    service = HoldingAnalysisService(
+        warehouse,
+        reader,
+        input_builder,
+        strategy,
+        repository,
+        financial_evidence_refresher=refresher,
+    )
+
+    result = service.run(command)
+
+    assert warehouse.requests == [(available_at, SnapshotScope.holding_analysis(("000001.SZ",)))]
+    assert reader.requests == [
+        (command.portfolio_id, command.as_of_time),
+        (command.portfolio_id, available_at),
+    ]
+    assert result.as_of_time == available_at
 
 
 def test_service_persists_actual_legacy_import_provenance() -> None:

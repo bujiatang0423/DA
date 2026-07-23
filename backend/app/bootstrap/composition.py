@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from importlib import import_module
 from types import ModuleType
 from zoneinfo import ZoneInfo
@@ -26,6 +27,12 @@ from backend.app.infrastructure.market.research_providers import (
 from backend.app.infrastructure.market.research_warehouse import ResearchPointInTimeWarehouse
 from backend.app.infrastructure.market.unavailable import UnavailableResearchWarehouse
 from backend.app.infrastructure.market.official_evidence import OfficialEvidenceStore
+from backend.app.infrastructure.market.cninfo_financial_announcements import (
+    CninfoFinancialAnnouncementClient,
+)
+from backend.app.infrastructure.market.holding_financial_evidence import (
+    HoldingFinancialEvidenceRefresher,
+)
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
 from backend.app.ports.llm_factor import LlmFactorPort
@@ -202,6 +209,7 @@ def build_components(
         StrategyInputBuilder(),
         strategy,
         holding_repository,
+        financial_evidence_refresher=_holding_financial_evidence_refresher(settings, sessions),
     )
     portfolio_writer = AuditedPortfolioWriter(SqlPortfolioEventStore(sessions))
     return ApplicationComponents(
@@ -211,4 +219,23 @@ def build_components(
         holding_service,
         holding_repository,
         portfolio_writer,
+    )
+
+
+def _holding_financial_evidence_refresher(
+    settings: Settings,
+    sessions: sessionmaker[Session],
+) -> HoldingFinancialEvidenceRefresher | None:
+    enabled = settings.cninfo_web_fetch_enabled
+    if enabled is None:
+        enabled = settings.environment == "development"
+    if not enabled:
+        return None
+    import requests
+
+    timezone = ZoneInfo(settings.timezone)
+    return HoldingFinancialEvidenceRefresher(
+        OfficialEvidenceStore(sessions),
+        CninfoFinancialAnnouncementClient(session=requests.Session()),
+        now=lambda: datetime.now(timezone),
     )

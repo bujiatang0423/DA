@@ -235,6 +235,18 @@ def test_production_components_inject_persisted_official_evidence(
     )
 
 
+def test_local_components_enable_automatic_official_financial_refresh() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="development",
+        provider_mode="production",
+    )
+
+    components = build_components(settings, sessionmaker())
+
+    assert components.holding_service._financial_evidence_refresher is not None
+
+
 def test_components_share_the_explicit_fake_warehouse() -> None:
     settings = Settings(_env_file=None, environment="test", provider_mode="fake")
     warehouse = FrozenWarehouse()

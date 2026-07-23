@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Protocol
 
 from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
 from backend.app.core.market.strategy_inputs import StrategyInputBuilder, StrategyInputError
@@ -27,6 +27,12 @@ class HoldingMarketDataMissing(RuntimeError):
     code = "HOLDING_MARKET_DATA_MISSING"
 
 
+class FinancialEvidenceRefresher(Protocol):
+    """Ensures official financial evidence is current for a holding scope."""
+
+    def refresh(self, *, security_ids: tuple[str, ...], as_of_time: datetime) -> object: ...
+
+
 @dataclass(frozen=True, slots=True)
 class HoldingAnalysisCommand:
     run_id: str
@@ -45,12 +51,14 @@ class HoldingAnalysisService:
         builder: StrategyInputBuilder,
         strategy: StrategyDecisionPort,
         repository: HoldingAnalysisRepository,
+        financial_evidence_refresher: FinancialEvidenceRefresher | None = None,
     ) -> None:
         self._warehouse = warehouse
         self._portfolios = portfolios
         self._builder = builder
         self._strategy = strategy
         self._repository = repository
+        self._financial_evidence_refresher = financial_evidence_refresher
 
     def run(self, command: HoldingAnalysisCommand) -> HoldingAnalysisResult:
         if command.as_of_time.tzinfo is None or command.as_of_time.utcoffset() is None:
@@ -61,12 +69,39 @@ class HoldingAnalysisService:
             as_of_time=command.as_of_time,
         )
         security_ids = tuple(sorted({position.security_id for position in portfolio.positions}))
+        initial_security_ids = security_ids
+        effective_command = command
+        if self._financial_evidence_refresher is not None:
+            refresh_result = self._financial_evidence_refresher.refresh(
+                security_ids=security_ids,
+                as_of_time=command.as_of_time,
+            )
+            available_at = getattr(refresh_result, "available_at", None)
+            if isinstance(available_at, datetime) and available_at > command.as_of_time:
+                effective_command = replace(command, as_of_time=available_at)
+                portfolio = self._portfolios.snapshot(
+                    portfolio_id=command.portfolio_id,
+                    as_of_time=available_at,
+                )
+                security_ids = tuple(
+                    sorted({position.security_id for position in portfolio.positions})
+                )
+                added_security_ids = tuple(
+                    security_id
+                    for security_id in security_ids
+                    if security_id not in initial_security_ids
+                )
+                if added_security_ids:
+                    self._financial_evidence_refresher.refresh(
+                        security_ids=added_security_ids,
+                        as_of_time=effective_command.as_of_time,
+                    )
         snapshot = self._warehouse.snapshot(
-            as_of_time=command.as_of_time,
+            as_of_time=effective_command.as_of_time,
             scope=SnapshotScope.holding_analysis(security_ids),
         )
-        self._validate_inputs(command, portfolio, snapshot)
-        self._validate_import_provenance(command, portfolio)
+        self._validate_inputs(effective_command, portfolio, snapshot)
+        self._validate_import_provenance(effective_command, portfolio)
         if snapshot.quality.has_errors:
             raise HoldingMarketDataMissing(self._missing_data_detail(snapshot))
 
@@ -74,14 +109,14 @@ class HoldingAnalysisService:
             prepared = self._builder.build(
                 snapshot=snapshot,
                 portfolio=portfolio,
-                strategy_version=command.strategy_version,
+                strategy_version=effective_command.strategy_version,
             )
         except StrategyInputError as exc:
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: strategy inputs unavailable"
             ) from exc
         evaluation = self._strategy.evaluate(prepared)
-        self._validate_evaluation(command, snapshot, prepared, evaluation)
+        self._validate_evaluation(effective_command, snapshot, prepared, evaluation)
 
         evaluations_by_security = {item.security_id: item for item in evaluation.securities}
         missing = tuple(sid for sid in security_ids if sid not in evaluations_by_security)
@@ -108,10 +143,10 @@ class HoldingAnalysisService:
         )
         portfolio_view = evaluation.portfolio_summary
         result = HoldingAnalysisResult(
-            run_id=command.run_id,
-            portfolio_id=command.portfolio_id,
-            as_of_time=command.as_of_time,
-            strategy_version=command.strategy_version,
+            run_id=effective_command.run_id,
+            portfolio_id=effective_command.portfolio_id,
+            as_of_time=effective_command.as_of_time,
+            strategy_version=effective_command.strategy_version,
             manifest_hash=snapshot.manifest_hash,
             data_grade=snapshot.data_grade,
             llm_grade=llm_grade_from_snapshot(snapshot),
