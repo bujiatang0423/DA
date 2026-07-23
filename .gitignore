@@ -16,3 +16,4 @@ web/dist/
 playwright-report/
 web/test-results/
 .coverage
+.worktrees/
