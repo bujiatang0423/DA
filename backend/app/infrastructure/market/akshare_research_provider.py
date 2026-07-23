@@ -28,10 +28,6 @@ from backend.app.ports.research_data import (
 class AkShareClient(Protocol):
     def tool_trade_date_hist_sina(self) -> RawFrame: ...
 
-    def stock_info_a_code_name(self) -> RawFrame: ...
-
-    def stock_individual_info_em(self, **kwargs: object) -> RawFrame: ...
-
     def stock_zh_a_spot_em(self) -> RawFrame: ...
 
     def fund_etf_spot_em(self) -> RawFrame: ...
@@ -83,42 +79,9 @@ class AkShareResearchProvider:
         retrieved_at = self._retrieved_at()
         if retrieved_at > as_of_time:
             return ()
-        listing_rows = tuple(_rows(self._client.stock_info_a_code_name()))
-        spot_rows = tuple(_rows(self._client.stock_zh_a_spot_em()))
-        active_security_ids = {
-            security_id
-            for row in spot_rows
-            if (security_id := _security_id_from_code(row.get("代码"))) is not None
-            and _is_active_spot(row)
-        }
-        result: list[UniverseSecurity] = []
-        for listing_row in listing_rows:
-            security_id = _security_id_from_code(listing_row.get("code"))
-            name = str(listing_row.get("name", "")).strip()
-            if security_id is None or security_id not in active_security_ids or not name:
-                continue
-            metadata_rows = tuple(
-                _rows(self._client.stock_individual_info_em(symbol=_code(security_id)))
-            )
-            metadata = _metadata(metadata_rows)
-            listed_on = _optional_date(metadata.get("上市时间"))
-            if listed_on is None:
-                continue
-            source_hash = _response_hash((*listing_rows, *spot_rows, *metadata_rows))
-            result.append(
-                UniverseSecurity(
-                    security_id=security_id,
-                    name=name,
-                    listed_on=listed_on,
-                    is_st="ST" in name.upper(),
-                    is_suspended=False,
-                    industry_id=_string_or_none(metadata.get("行业")),
-                    theme_ids=(),
-                    available_at=retrieved_at,
-                    source_hash=source_hash,
-                )
-            )
-        return tuple(result)
+        # AkShare's public spot endpoint supplies a last price, not a verified
+        # suspension state. Do not infer an investable universe from it.
+        return ()
 
     def quotes(
         self, security_ids: tuple[str, ...], as_of_time: datetime
@@ -372,25 +335,6 @@ def _optional_date(value: object) -> date | None:
         return _parse_date(value)
     except (TypeError, ValueError):
         return None
-
-
-def _metadata(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
-    return {
-        str(row["item"]): row["value"]
-        for row in rows
-        if row.get("item") is not None and row.get("value") is not None
-    }
-
-
-def _string_or_none(value: object) -> str | None:
-    normalized = str(value).strip() if value is not None else ""
-    return normalized or None
-
-
-def _is_active_spot(row: dict[str, object]) -> bool:
-    suspended_at = _string_or_none(row.get("停牌时间"))
-    price = _optional_decimal(row.get("最新价"))
-    return suspended_at is None and price is not None and price > 0
 
 
 def _quote_prices(rows: tuple[dict[str, object], ...]) -> dict[str, tuple[Decimal, str]]:

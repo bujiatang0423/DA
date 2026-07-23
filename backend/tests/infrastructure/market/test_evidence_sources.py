@@ -222,6 +222,35 @@ def test_market_source_does_not_expand_live_universe_without_an_explicit_scope()
     assert batch.records == ()
 
 
+def test_market_source_uses_bounded_benchmark_ids_when_live_scope_is_empty() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+    requested_ids: list[str] = []
+
+    class LiveMarket:
+        provider_name = "akshare"
+
+        def universe(self, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            raise AssertionError("bounded benchmark ids must avoid the universe endpoint")
+
+        def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            requested_ids.append(security_id)
+            return ()
+
+        def financials(self, security_id: str, as_of_time: datetime) -> tuple[object, ...]:
+            del security_id, as_of_time
+            return ()
+
+    batch = MarketEvidenceSource(LiveMarket(), benchmark_ids=("000568.SZ",)).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(),
+    )
+
+    assert batch.records == ()
+    assert requested_ids == ["000568.SZ"]
+
+
 def test_market_source_filters_future_records_from_research_records_fast_path() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
 

@@ -142,18 +142,13 @@ def test_provider_hides_current_quote_when_retrieved_after_as_of_time() -> None:
     assert provider.quotes(("000568.SZ",), AS_OF) == ()
 
 
-def test_provider_returns_calendar_and_universe_with_retrieval_availability() -> None:
+def test_provider_returns_calendar_with_retrieval_availability() -> None:
     provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
 
     calendar = provider.trade_calendar(date(2026, 7, 21), date(2026, 7, 22))
-    universe = provider.universe(AS_OF)
 
     assert [item.trade_date for item in calendar] == [date(2026, 7, 21), date(2026, 7, 22)]
     assert all(item.available_at == AS_OF and len(item.source_hash) == 64 for item in calendar)
-    assert universe[0].security_id == "000568.SZ"
-    assert universe[0].listed_on == date(1994, 5, 9)
-    assert universe[0].industry_id == "白酒"
-    assert universe[0].available_at == AS_OF
 
 
 def test_provider_hides_current_universe_when_retrieved_after_as_of_time() -> None:
@@ -208,12 +203,8 @@ def test_provider_routes_etf_bars_and_quotes_to_etf_endpoints(security_id: str) 
     assert provider.quotes((security_id,), AS_OF)[0].price == Decimal("1.43")
 
 
-def test_provider_excludes_universe_securities_without_active_spot_status() -> None:
-    class NoSpotAkShare(FakeAkShare):
-        def stock_zh_a_spot_em(self) -> FakeFrame:
-            return FakeFrame([])
-
-    provider = AkShareResearchProvider(NoSpotAkShare(), now=lambda: AS_OF)
+def test_provider_excludes_universe_security_with_nonzero_price_but_no_status() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
 
     assert provider.universe(AS_OF) == ()
 
