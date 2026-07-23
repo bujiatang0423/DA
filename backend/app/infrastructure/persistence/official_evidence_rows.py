@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Date, DateTime, Index, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import JSON, Date, DateTime, Index, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.infrastructure.persistence.models import Base
@@ -24,6 +24,9 @@ class OfficialEvidenceRow(Base):
     kind: Mapped[str] = mapped_column(String(32))
     security_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     report_period: Mapped[date | None] = mapped_column(Date, nullable=True)
+    issuer: Mapped[str] = mapped_column(Text)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    security_ids: Mapped[list[str]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
     source_url: Mapped[str] = mapped_column(Text)
     source_host: Mapped[str] = mapped_column(String(255))
     content_sha256: Mapped[str] = mapped_column(String(64))

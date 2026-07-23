@@ -23,10 +23,14 @@ def build_point_in_time_warehouse(
     official_evidence: OfficialEvidenceReader | None = None,
     benchmark_ids: tuple[str, ...] = ("000985.CSI", "000001.SH"),
 ) -> ResearchPointInTimeWarehouse:
-    sources: list[object] = [MarketEvidenceSource(market, benchmark_ids)]
+    sources: list[object] = [
+        MarketEvidenceSource(market, benchmark_ids, official_evidence=official_evidence)
+    ]
     if official_evidence is not None:
         sources.append(OfficialEvidenceSource(official_evidence))
-    sources.extend((PolicyEvidenceSource(policy), LlmEvidenceSource(llm, policy, market)))
+    else:
+        sources.append(PolicyEvidenceSource(policy))
+    sources.append(LlmEvidenceSource(llm, policy, market, official_evidence=official_evidence))
     return ResearchPointInTimeWarehouse(
         (
             ResearchEvidenceSource(tuple(sources)),
