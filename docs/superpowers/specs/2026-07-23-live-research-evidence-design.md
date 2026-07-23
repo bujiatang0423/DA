@@ -2,8 +2,9 @@
 
 ## Goal
 
-Run local holding and candidate analysis only from live, externally obtained evidence, while
-keeping historical backtests restricted to persisted and certified point-in-time data.
+Run local holding and candidate analysis only from live, externally obtained evidence.  Real
+historical backtests first ingest real source data into PostgreSQL, then replay only persisted and
+certified point-in-time data.
 
 ## Source responsibilities
 
@@ -30,10 +31,12 @@ keeping historical backtests restricted to persisted and certified point-in-time
 No normal component reads `backend/fixtures/**`.  Holding/candidate analysis fails closed when any
 required source is unavailable, rather than synthesizing facts or scores.
 
-Live data is for current holding/candidate research.  Backtests continue to read only the
-PostgreSQL strict PIT warehouse.  A separate ingestion and certification step must persist live
-evidence before it is eligible for historical backtests; no backtest calls AkShare, CNINFO, policy
-sites or DeepSeek directly.
+Live data is for current holding/candidate research.  A historical ingestion job retrieves real
+unadjusted bars and corporate-action metadata from AkShare, financial disclosures from the selected
+financial source, and policy documents from the official-source store.  It persists source artifacts,
+publication/availability times and lineage in PostgreSQL.  Coverage audit and certificate generation
+then make that real data eligible for the strict PIT warehouse.  No backtest calls AkShare, CNINFO,
+policy sites or DeepSeek directly, and it can never read a fixture.
 
 ## Configuration
 
@@ -48,5 +51,5 @@ LLM adapter reports an unavailable required dataset and blocks analysis safely.
 2. AkShare/CNINFO/policy failure or absence of a DeepSeek key produces a precise quality failure,
    never a fixture fallback.
 3. A successful DeepSeek response passes the existing factor-schema and forbidden-field checks.
-4. Normal candidate/holding runtime uses the configured provider factory; strict backtests remain
-   database/PIT-only.
+4. Normal candidate/holding runtime uses the configured provider factory; strict backtests read only
+   real source-derived database/PIT data that passed coverage and certificate checks.
