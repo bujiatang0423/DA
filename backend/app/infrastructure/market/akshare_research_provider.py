@@ -14,6 +14,7 @@ import hashlib
 import json
 from typing import Protocol
 from zoneinfo import ZoneInfo
+
 from backend.app.ports.research_data import (
     CalendarDay,
     FinancialMaterial,
@@ -33,7 +34,11 @@ class AkShareClient(Protocol):
 
     def stock_zh_a_spot_em(self) -> RawFrame: ...
 
+    def fund_etf_spot_em(self) -> RawFrame: ...
+
     def stock_zh_a_hist(self, **kwargs: object) -> RawFrame: ...
+
+    def fund_etf_hist_em(self, **kwargs: object) -> RawFrame: ...
 
     def stock_financial_report_sina(self, **kwargs: object) -> RawFrame: ...
 
@@ -79,11 +84,18 @@ class AkShareResearchProvider:
         if retrieved_at > as_of_time:
             return ()
         listing_rows = tuple(_rows(self._client.stock_info_a_code_name()))
+        spot_rows = tuple(_rows(self._client.stock_zh_a_spot_em()))
+        active_security_ids = {
+            security_id
+            for row in spot_rows
+            if (security_id := _security_id_from_code(row.get("代码"))) is not None
+            and _is_active_spot(row)
+        }
         result: list[UniverseSecurity] = []
         for listing_row in listing_rows:
             security_id = _security_id_from_code(listing_row.get("code"))
             name = str(listing_row.get("name", "")).strip()
-            if security_id is None or not name:
+            if security_id is None or security_id not in active_security_ids or not name:
                 continue
             metadata_rows = tuple(
                 _rows(self._client.stock_individual_info_em(symbol=_code(security_id)))
@@ -92,7 +104,7 @@ class AkShareResearchProvider:
             listed_on = _optional_date(metadata.get("上市时间"))
             if listed_on is None:
                 continue
-            source_hash = _response_hash((*listing_rows, *metadata_rows))
+            source_hash = _response_hash((*listing_rows, *spot_rows, *metadata_rows))
             result.append(
                 UniverseSecurity(
                     security_id=security_id,
@@ -116,12 +128,13 @@ class AkShareResearchProvider:
         retrieved_at = self._retrieved_at()
         if retrieved_at > as_of_time:
             return ()
-        rows = tuple(_rows(self._client.stock_zh_a_spot_em()))
-        source_hash = _response_hash(rows)
-        prices = {
-            _security_id_from_code(row.get("代码")): _optional_decimal(row.get("最新价"))
-            for row in rows
-        }
+        stock_ids = tuple(item for item in normalized_ids if not _is_etf(item))
+        etf_ids = tuple(item for item in normalized_ids if _is_etf(item))
+        prices: dict[str, tuple[Decimal, str]] = {}
+        if stock_ids:
+            prices.update(_quote_prices(tuple(_rows(self._client.stock_zh_a_spot_em()))))
+        if etf_ids:
+            prices.update(_quote_prices(tuple(_rows(self._client.fund_etf_spot_em()))))
         return tuple(
             ResearchQuote(
                 security_id=security_id,
@@ -130,19 +143,25 @@ class AkShareResearchProvider:
                 source_hash=source_hash,
             )
             for security_id in normalized_ids
-            if (price := prices.get(security_id)) is not None and price > 0
+            if (quote := prices.get(security_id)) is not None
+            for price, source_hash in (quote,)
         )
 
     def daily_bars(self, security_id: str, as_of_time: datetime) -> tuple[ResearchBar, ...]:
         _require_aware(as_of_time)
         security_id = _validate_security_id(security_id)
         start = as_of_time.date() - timedelta(days=self._lookback_days)
-        frame = self._client.stock_zh_a_hist(
-            symbol=_code(security_id),
-            period="daily",
-            start_date=start.strftime("%Y%m%d"),
-            end_date=as_of_time.strftime("%Y%m%d"),
-            adjust="",
+        request = {
+            "symbol": _code(security_id),
+            "period": "daily",
+            "start_date": start.strftime("%Y%m%d"),
+            "end_date": as_of_time.strftime("%Y%m%d"),
+            "adjust": "",
+        }
+        frame = (
+            self._client.fund_etf_hist_em(**request)
+            if _is_etf(security_id)
+            else self._client.stock_zh_a_hist(**request)
         )
         rows = tuple(_rows(frame))
         source_hash = _response_hash(rows)
@@ -158,18 +177,30 @@ class AkShareResearchProvider:
     ) -> tuple[FinancialMaterial, ...]:
         _require_aware(as_of_time)
         security_id = _validate_security_id(security_id)
-        frame = self._client.stock_financial_report_sina(
-            stock=_akshare_financial_symbol(security_id),
-            symbol="利润表",
+        if _is_etf(security_id):
+            return ()
+        statement_rows = tuple(
+            tuple(
+                _rows(
+                    self._client.stock_financial_report_sina(
+                        stock=_akshare_financial_symbol(security_id),
+                        symbol=statement,
+                    )
+                )
+            )
+            for statement in ("利润表", "资产负债表", "现金流量表")
         )
-        rows = tuple(_rows(frame))
+        rows = tuple(row for items in statement_rows for row in items)
         source_hash = _response_hash(rows)
-        result: list[FinancialMaterial] = []
+        grouped: dict[date, list[FinancialMaterial]] = {}
         for row in rows:
             material = _financial_from_row(security_id, row, as_of_time, source_hash)
             if material is not None:
-                result.append(material)
-        return tuple(result)
+                grouped.setdefault(material.report_period, []).append(material)
+        return tuple(
+            _merge_financials(security_id, period, items, source_hash)
+            for period, items in grouped.items()
+        )
 
     def fee_schedules(self, as_of_time: datetime) -> tuple[ResearchFeeSchedule, ...]:
         del as_of_time
@@ -216,7 +247,7 @@ def _financial_from_row(
     security_id: str, row: dict[str, object], as_of_time: datetime, source_hash: str
 ) -> FinancialMaterial | None:
     try:
-        report_period = _parse_date(row["报表日期"])
+        report_period = _parse_date(row["报告日"])
         published_at = _parse_datetime(row["公告日期"], as_of_time.tzinfo)
     except (KeyError, TypeError, ValueError):
         return None
@@ -225,12 +256,30 @@ def _financial_from_row(
     facts = {
         key: _fact_value(value)
         for key, value in row.items()
-        if key not in {"报表日期", "公告日期"}
+        if key not in {"报告日", "公告日期"}
     }
     return FinancialMaterial(
         security_id=security_id,
         report_period=report_period,
         published_at=published_at,
+        facts=facts,
+        source_hash=source_hash,
+    )
+
+
+def _merge_financials(
+    security_id: str,
+    report_period: date,
+    materials: list[FinancialMaterial],
+    source_hash: str,
+) -> FinancialMaterial:
+    facts: dict[str, Decimal | str | None] = {}
+    for material in materials:
+        facts.update(material.facts)
+    return FinancialMaterial(
+        security_id=security_id,
+        report_period=report_period,
+        published_at=max(item.published_at for item in materials),
         facts=facts,
         source_hash=source_hash,
     )
@@ -254,6 +303,8 @@ def _validate_security_id(security_id: str) -> str:
     exchange = exchange.upper()
     if separator != "." or len(code) != 6 or not code.isdigit() or exchange not in {"SH", "SZ"}:
         raise ValueError(f"invalid security id: {security_id}")
+    if code.startswith(("4", "8")):
+        raise ValueError(f"unsupported Beijing security id: {security_id}")
     expected_exchange = "SH" if code.startswith(("5", "6", "9")) else "SZ"
     if exchange != expected_exchange:
         raise ValueError(f"invalid security id exchange: {security_id}")
@@ -264,8 +315,17 @@ def _security_id_from_code(value: object) -> str | None:
     code = str(value).strip()
     if len(code) != 6 or not code.isdigit():
         return None
+    if code.startswith(("4", "8")):
+        return None
     exchange = "SH" if code.startswith(("5", "6", "9")) else "SZ"
     return f"{code}.{exchange}"
+
+
+def _is_etf(security_id: str) -> bool:
+    code, _, exchange = _validate_security_id(security_id).partition(".")
+    return (exchange == "SH" and code.startswith(("5",))) or (
+        exchange == "SZ" and code.startswith(("15", "16", "18"))
+    )
 
 
 def _parse_date(value: object) -> date:
@@ -273,7 +333,12 @@ def _parse_date(value: object) -> date:
 
 
 def _parse_datetime(value: object, timezone: tzinfo) -> datetime:
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    raw = str(value).strip().replace("Z", "+00:00")
+    if len(raw) == 8 and raw.isdigit():
+        return datetime.combine(_parse_date(raw), time.max, timezone)
+    if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
+        return datetime.combine(_parse_date(raw), time.max, timezone)
+    parsed = datetime.fromisoformat(raw)
     if parsed.tzinfo is not None:
         return parsed.astimezone(timezone)
     return parsed.replace(tzinfo=timezone)
@@ -320,6 +385,23 @@ def _metadata(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
 def _string_or_none(value: object) -> str | None:
     normalized = str(value).strip() if value is not None else ""
     return normalized or None
+
+
+def _is_active_spot(row: dict[str, object]) -> bool:
+    suspended_at = _string_or_none(row.get("停牌时间"))
+    price = _optional_decimal(row.get("最新价"))
+    return suspended_at is None and price is not None and price > 0
+
+
+def _quote_prices(rows: tuple[dict[str, object], ...]) -> dict[str, tuple[Decimal, str]]:
+    source_hash = _response_hash(rows)
+    prices: dict[str, tuple[Decimal, str]] = {}
+    for row in rows:
+        security_id = _security_id_from_code(row.get("代码"))
+        price = _optional_decimal(row.get("最新价"))
+        if security_id is not None and price is not None and price > 0:
+            prices[security_id] = (price, source_hash)
+    return prices
 
 
 def _response_hash(rows: tuple[dict[str, object], ...]) -> str:

@@ -41,6 +41,8 @@ class MarketEvidenceSource:
                 and (not required or record.kind in required)
             )
             return ResearchBatch(result, _lineage(self.provider, result))
+        if not scope.security_ids and self.provider == "akshare":
+            return ResearchBatch((), ())
         result: list[TemporalRecord] = []
         ids = scope.security_ids or tuple(x.security_id for x in self.market.universe(as_of_time))
         required = set(scope.required_kinds)

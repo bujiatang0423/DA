@@ -207,6 +207,21 @@ def test_market_source_uses_concrete_market_provider_in_lineage() -> None:
     assert batch.lineage[0].provider == "akshare"
 
 
+def test_market_source_does_not_expand_live_universe_without_an_explicit_scope() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class LiveMarket:
+        provider_name = "akshare"
+
+        def universe(self, as_of_time: datetime) -> tuple[object, ...]:
+            del as_of_time
+            raise AssertionError("live provider must not trigger an all-market fan-out")
+
+    batch = MarketEvidenceSource(LiveMarket()).fetch(as_of_time=as_of, scope=SnapshotScope())
+
+    assert batch.records == ()
+
+
 def test_market_source_filters_future_records_from_research_records_fast_path() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
 
