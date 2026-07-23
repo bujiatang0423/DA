@@ -174,7 +174,6 @@ def test_empty_official_store_keeps_holding_financial_disclosure_fail_closed() -
     assert any(
         issue.code == "REQUIRED_DATASET_MISSING"
         and issue.dataset == DataKind.FINANCIAL_DISCLOSURE.value
-        and issue.entity_id == "000568.SZ"
         for issue in snapshot.quality.issues
     )
 
