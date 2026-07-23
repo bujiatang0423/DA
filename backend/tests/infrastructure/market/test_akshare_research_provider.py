@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from backend.app.infrastructure.market.akshare_research_provider import AkShareResearchProvider
 
@@ -18,6 +20,21 @@ class FakeFrame:
 
 
 class FakeAkShare:
+    def tool_trade_date_hist_sina(self) -> FakeFrame:
+        return FakeFrame([{"trade_date": "2026-07-21"}, {"trade_date": "2026-07-22"}])
+
+    def stock_info_a_code_name(self) -> FakeFrame:
+        return FakeFrame([{"code": "000568", "name": "泸州老窖"}])
+
+    def stock_individual_info_em(self, **kwargs: object) -> FakeFrame:
+        assert kwargs == {"symbol": "000568"}
+        return FakeFrame(
+            [{"item": "上市时间", "value": "19940509"}, {"item": "行业", "value": "白酒"}]
+        )
+
+    def stock_zh_a_spot_em(self) -> FakeFrame:
+        return FakeFrame([{"代码": "000568", "最新价": "86.80"}])
+
     def stock_zh_a_hist(self, **kwargs: object) -> FakeFrame:
         assert kwargs == {
             "symbol": "000568",
@@ -75,3 +92,36 @@ def test_provider_rejects_financial_rows_without_publication_time() -> None:
     provider = AkShareResearchProvider(MissingPublicationAkShare())
 
     assert provider.financials("000568.SZ", AS_OF) == ()
+
+
+def test_provider_returns_current_quote_with_response_lineage() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    quotes = provider.quotes(("000568.SZ",), AS_OF)
+
+    assert len(quotes) == 1
+    assert quotes[0].price == Decimal("86.80")
+    assert quotes[0].observed_at == AS_OF
+    assert len(quotes[0].source_hash) == 64
+
+
+def test_provider_returns_calendar_and_universe_with_retrieval_availability() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    calendar = provider.trade_calendar(date(2026, 7, 21), date(2026, 7, 22))
+    universe = provider.universe(AS_OF)
+
+    assert [item.trade_date for item in calendar] == [date(2026, 7, 21), date(2026, 7, 22)]
+    assert all(item.available_at == AS_OF and len(item.source_hash) == 64 for item in calendar)
+    assert universe[0].security_id == "000568.SZ"
+    assert universe[0].listed_on == date(1994, 5, 9)
+    assert universe[0].industry_id == "白酒"
+    assert universe[0].available_at == AS_OF
+
+
+@pytest.mark.parametrize("security_id", ("000568", "000568.XX", "ABC.SZ"))
+def test_provider_rejects_noncanonical_security_suffixes(security_id: str) -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    with pytest.raises(ValueError, match="security id"):
+        provider.daily_bars(security_id, AS_OF)
