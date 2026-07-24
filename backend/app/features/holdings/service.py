@@ -52,6 +52,7 @@ class HoldingAnalysisService:
         strategy: StrategyDecisionPort,
         repository: HoldingAnalysisRepository,
         financial_evidence_refresher: FinancialEvidenceRefresher | None = None,
+        policy_evidence_refresher: FinancialEvidenceRefresher | None = None,
     ) -> None:
         self._warehouse = warehouse
         self._portfolios = portfolios
@@ -59,6 +60,7 @@ class HoldingAnalysisService:
         self._strategy = strategy
         self._repository = repository
         self._financial_evidence_refresher = financial_evidence_refresher
+        self._policy_evidence_refresher = policy_evidence_refresher
 
     def run(self, command: HoldingAnalysisCommand) -> HoldingAnalysisResult:
         if command.as_of_time.tzinfo is None or command.as_of_time.utcoffset() is None:
@@ -70,6 +72,11 @@ class HoldingAnalysisService:
         )
         security_ids = tuple(sorted({position.security_id for position in portfolio.positions}))
         initial_security_ids = security_ids
+        if self._policy_evidence_refresher is not None:
+            self._policy_evidence_refresher.refresh(
+                security_ids=security_ids,
+                as_of_time=command.as_of_time,
+            )
         effective_command = command
         if self._financial_evidence_refresher is not None:
             refresh_result = self._financial_evidence_refresher.refresh(

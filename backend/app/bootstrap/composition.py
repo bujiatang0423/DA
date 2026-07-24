@@ -33,6 +33,7 @@ from backend.app.infrastructure.market.cninfo_financial_announcements import (
 from backend.app.infrastructure.market.holding_financial_evidence import (
     HoldingFinancialEvidenceRefresher,
 )
+from backend.app.infrastructure.market.gov_policy_fetcher import GovPolicyFetcher
 from backend.app.infrastructure.persistence.portfolio_reader import SqlPortfolioReader
 from backend.app.infrastructure.persistence.portfolio_repository import SqlPortfolioEventStore
 from backend.app.ports.llm_factor import LlmFactorPort
@@ -210,6 +211,7 @@ def build_components(
         strategy,
         holding_repository,
         financial_evidence_refresher=_holding_financial_evidence_refresher(settings, sessions),
+        policy_evidence_refresher=_holding_policy_evidence_refresher(settings, sessions),
     )
     portfolio_writer = AuditedPortfolioWriter(SqlPortfolioEventStore(sessions))
     return ApplicationComponents(
@@ -237,5 +239,21 @@ def _holding_financial_evidence_refresher(
     return HoldingFinancialEvidenceRefresher(
         OfficialEvidenceStore(sessions),
         CninfoFinancialAnnouncementClient(session=requests.Session()),
+        now=lambda: datetime.now(timezone),
+    )
+
+
+def _holding_policy_evidence_refresher(
+    settings: Settings,
+    sessions: sessionmaker[Session],
+) -> GovPolicyFetcher | None:
+    if settings.environment != "development":
+        return None
+    import requests
+
+    timezone = ZoneInfo(settings.timezone)
+    return GovPolicyFetcher(
+        OfficialEvidenceStore(sessions),
+        get=lambda url: requests.get(url, timeout=15).content.decode("utf-8"),
         now=lambda: datetime.now(timezone),
     )
