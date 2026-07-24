@@ -50,5 +50,10 @@ def _tag_text(html: str, tag: str, identifier: str) -> str:
 
 
 def _date(value: str, fallback: datetime) -> datetime:
-    parsed = datetime.strptime(value[:16], "%Y-%m-%d %H:%M")
+    if not value:
+        raise ValueError("official policy page is missing publication time")
+    match = re.search(r"20\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}", value)
+    if match is None:
+        raise ValueError("official policy page has an invalid publication time")
+    parsed = datetime.strptime(match.group(0), "%Y-%m-%d %H:%M")
     return parsed.replace(tzinfo=fallback.tzinfo)
