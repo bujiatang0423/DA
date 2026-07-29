@@ -180,5 +180,33 @@ def test_refresh_wraps_source_failures_with_the_holding_market_data_code() -> No
     assert error.value.code == "HOLDING_MARKET_DATA_MISSING"
 
 
+def test_refresh_uses_existing_official_report_when_lookup_is_temporarily_unavailable() -> None:
+    reference = _reference()
+    store = OfficialEvidenceStore.in_memory()
+    HoldingFinancialEvidenceRefresher(
+        store,
+        FakeAnnouncementClient((reference,), {reference.source_url: "官方财报正文"}),
+        now=lambda: AS_OF,
+    ).refresh(security_ids=("000568.SZ",), as_of_time=AS_OF)
+
+    class FailingClient(FakeAnnouncementClient):
+        def list_financial_announcements(
+            self,
+            *,
+            security_id: str,
+            as_of_time: datetime,
+        ) -> tuple[FinancialAnnouncementReference, ...]:
+            del security_id, as_of_time
+            raise TimeoutError("source timeout")
+
+    result = HoldingFinancialEvidenceRefresher(
+        store,
+        FailingClient((), {}),
+        now=lambda: AS_OF,
+    ).refresh(security_ids=("000568.SZ",), as_of_time=AS_OF)
+
+    assert result.available_at is None
+
+
 def test_refresh_error_uses_holding_market_data_failure_code() -> None:
     assert FinancialEvidenceRefreshError.code == "HOLDING_MARKET_DATA_MISSING"

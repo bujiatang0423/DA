@@ -84,6 +84,8 @@ class HoldingFinancialEvidenceRefresher:
                     as_of_time=as_of_time,
                 )
             except Exception as exc:
+                if existing_periods:
+                    continue
                 raise FinancialEvidenceRefreshError(
                     f"official financial announcement lookup failed for {security_id}"
                 ) from exc
