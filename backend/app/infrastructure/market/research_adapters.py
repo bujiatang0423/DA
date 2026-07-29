@@ -50,10 +50,11 @@ class MarketEvidenceSource:
             or tuple(x.security_id for x in self.market.universe(as_of_time))
         )
         required = set(scope.required_kinds)
+        optional = set(scope.optional_kinds)
         include_masters = not required or DataKind.SECURITY_MASTER in required
         include_bars = not required or DataKind.DAILY_BAR_RAW in required
         include_financials = not required or bool(
-            {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & required
+            {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & (required | optional)
         )
         official_financials = _official_financials(
             self._official_evidence,
@@ -136,7 +137,13 @@ class MarketEvidenceSource:
                         )
                     )
             if include_financials:
-                for financial in self.market.financials(sid, as_of_time):
+                try:
+                    financials = self.market.financials(sid, as_of_time)
+                except Exception:
+                    if DataKind.FINANCIAL_FACT in required:
+                        raise
+                    financials = ()
+                for financial in financials:
                     if financial.published_at > as_of_time:
                         continue
                     official = official_financials.get((sid, financial.report_period))
@@ -283,7 +290,11 @@ def _llm_financials(
         if document.kind == FINANCIAL_ANNOUNCEMENT
     }
     materials: list[FinancialMaterial] = []
-    for financial in market.financials(security_id, as_of_time):
+    try:
+        financial_rows = market.financials(security_id, as_of_time)
+    except Exception:
+        return ()
+    for financial in financial_rows:
         if financial.published_at > as_of_time:
             continue
         document = documents_by_period.get((security_id, financial.report_period))

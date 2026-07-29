@@ -61,6 +61,7 @@ class SnapshotScope:
     history_start: datetime | None = None
     market_id: str = "CN_A"
     universe_id: str = "ALL_A"
+    optional_kinds: tuple[DataKind, ...] = ()
 
     @classmethod
     def candidate_recommendation(cls) -> SnapshotScope:
@@ -69,17 +70,16 @@ class SnapshotScope:
     @classmethod
     def holding_analysis(cls, security_ids: tuple[str, ...]) -> SnapshotScope:
         return cls(
-            security_ids,
-            (
+            security_ids=security_ids,
+            required_kinds=(
                 DataKind.SECURITY_MASTER,
                 DataKind.DAILY_BAR_RAW,
                 DataKind.INDEX_DAILY_BAR,
                 DataKind.MARKET_BREADTH,
-                DataKind.FINANCIAL_DISCLOSURE,
-                DataKind.FINANCIAL_FACT,
                 DataKind.POLICY_DOCUMENT,
                 DataKind.LLM_FACTOR,
             ),
+            optional_kinds=(DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT),
         )
 
     @classmethod

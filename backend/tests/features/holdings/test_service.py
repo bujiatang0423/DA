@@ -118,6 +118,7 @@ def test_service_refreshes_official_financial_evidence_before_building_snapshot(
         strategy,
         repository,
         financial_evidence_refresher=refresher,
+        financial_evidence_runner=lambda task: task(),
     )
 
     service.run(command)
@@ -151,6 +152,7 @@ def test_service_uses_the_evidence_observation_time_for_current_analysis() -> No
         strategy,
         repository,
         financial_evidence_refresher=refresher,
+        financial_evidence_runner=lambda task: task(),
     )
 
     result = service.run(command)

@@ -147,6 +147,7 @@ class StrategyInputBuilder:
             financial_score = max(0.0, min(100.0, mean(numeric_values))) if numeric_values else 0.0
             if not numeric_values:
                 quality.append("FINANCIAL_NUMERIC_MISSING")
+                quality.append("FINANCIAL_DATA_UNAVAILABLE")
             policy_records = observation.records_of(DataKind.POLICY_DOCUMENT) + tuple(
                 r
                 for r in global_policy

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
+from threading import Thread
 from typing import Literal, Protocol
 
 from backend.app.core.market.pit_models import PointInTimeSnapshot, SnapshotScope
@@ -53,6 +55,7 @@ class HoldingAnalysisService:
         repository: HoldingAnalysisRepository,
         financial_evidence_refresher: FinancialEvidenceRefresher | None = None,
         policy_evidence_refresher: FinancialEvidenceRefresher | None = None,
+        financial_evidence_runner: Callable[[Callable[[], object]], object | None] | None = None,
     ) -> None:
         self._warehouse = warehouse
         self._portfolios = portfolios
@@ -61,6 +64,7 @@ class HoldingAnalysisService:
         self._repository = repository
         self._financial_evidence_refresher = financial_evidence_refresher
         self._policy_evidence_refresher = policy_evidence_refresher
+        self._financial_evidence_runner = financial_evidence_runner or _run_in_background
 
     def run(self, command: HoldingAnalysisCommand) -> HoldingAnalysisResult:
         if command.as_of_time.tzinfo is None or command.as_of_time.utcoffset() is None:
@@ -79,9 +83,11 @@ class HoldingAnalysisService:
             )
         effective_command = command
         if self._financial_evidence_refresher is not None:
-            refresh_result = self._financial_evidence_refresher.refresh(
-                security_ids=security_ids,
-                as_of_time=command.as_of_time,
+            refresh_result = self._financial_evidence_runner(
+                lambda: self._financial_evidence_refresher.refresh(
+                    security_ids=security_ids,
+                    as_of_time=command.as_of_time,
+                )
             )
             available_at = getattr(refresh_result, "available_at", None)
             if isinstance(available_at, datetime) and available_at > command.as_of_time:
@@ -99,9 +105,11 @@ class HoldingAnalysisService:
                     if security_id not in initial_security_ids
                 )
                 if added_security_ids:
-                    self._financial_evidence_refresher.refresh(
-                        security_ids=added_security_ids,
-                        as_of_time=effective_command.as_of_time,
+                    self._financial_evidence_runner(
+                        lambda: self._financial_evidence_refresher.refresh(
+                            security_ids=added_security_ids,
+                            as_of_time=effective_command.as_of_time,
+                        )
                     )
         snapshot = self._warehouse.snapshot(
             as_of_time=effective_command.as_of_time,
@@ -248,3 +256,14 @@ class HoldingAnalysisService:
 
 
 V212HoldingAnalysisService = HoldingAnalysisService
+
+
+def _run_in_background(task: Callable[[], object]) -> None:
+    Thread(target=_discard_refresh_failure, args=(task,), daemon=True).start()
+
+
+def _discard_refresh_failure(task: Callable[[], object]) -> None:
+    try:
+        task()
+    except Exception:
+        return
