@@ -130,7 +130,11 @@ def _prompt(input_payload: Mapping[str, object]) -> str:
         "evidence": "[{source_id,published_at,quote}]",
     }
     return json.dumps(
-        {"input": input_payload, "required_schema": schema},
+        {
+            "instruction": "Return only one JSON object matching required_schema.",
+            "input": input_payload,
+            "required_schema": schema,
+        },
         ensure_ascii=False,
         default=str,
         separators=(",", ":"),

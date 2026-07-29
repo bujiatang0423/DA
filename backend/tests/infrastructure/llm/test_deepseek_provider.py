@@ -54,3 +54,5 @@ def test_deepseek_provider_returns_schema_checked_factor_with_hashes() -> None:
     assert factor.payload["policy_direction"] == "neutral"
     assert len(factor.prompt_hash) == len(factor.input_hash) == len(factor.output_hash) == 64
     assert requests[0]["headers"] == {"Authorization": "Bearer secret"}
+    messages = requests[0]["json"]["messages"]
+    assert "json" in messages[1]["content"].casefold()
