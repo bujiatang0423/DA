@@ -105,9 +105,6 @@ class AkShareResearchProvider:
         strategy receives ``UNKNOWN`` status from the evidence adapter.
         """
         _require_aware(as_of_time)
-        retrieved_at = self._retrieved_at()
-        if retrieved_at > as_of_time:
-            return ()
         try:
             stock_names = {
                 str(row.get("code", "")).zfill(6): str(row.get("name", "")).strip()
@@ -150,7 +147,7 @@ class AkShareResearchProvider:
                     is_suspended=False,
                     industry_id=industry,
                     theme_ids=(),
-                    available_at=retrieved_at,
+                    available_at=as_of_time,
                     source_hash=source_hash,
                 )
             )

@@ -209,6 +209,16 @@ def test_provider_returns_scoped_security_master_without_loading_market_spot_pag
     assert masters[0].is_suspended is False
 
 
+def test_scoped_security_master_is_available_at_the_requested_analysis_time() -> None:
+    provider = AkShareResearchProvider(
+        FakeAkShare(), now=lambda: AS_OF.replace(minute=AS_OF.minute + 1)
+    )
+
+    masters = provider.security_masters(("000568.SZ",), AS_OF)
+
+    assert masters[0].available_at == AS_OF
+
+
 def test_provider_returns_unadjusted_index_bars_with_source_hash() -> None:
     provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
 
