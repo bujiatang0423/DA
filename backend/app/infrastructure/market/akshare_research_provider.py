@@ -46,6 +46,8 @@ class AkShareClient(Protocol):
 
     def fund_etf_hist_em(self, **kwargs: object) -> RawFrame: ...
 
+    def fund_etf_hist_sina(self, **kwargs: object) -> RawFrame: ...
+
     def stock_financial_report_sina(self, **kwargs: object) -> RawFrame: ...
 
 
@@ -193,7 +195,12 @@ class AkShareResearchProvider:
             "adjust": "",
         }
         if _is_etf(security_id):
-            frame = self._client.fund_etf_hist_em(**request)
+            try:
+                frame = self._client.fund_etf_hist_em(**request)
+            except Exception:
+                frame = self._client.fund_etf_hist_sina(
+                    symbol=_akshare_financial_symbol(security_id)
+                )
         else:
             try:
                 frame = self._client.stock_zh_a_hist(**request)
