@@ -1,7 +1,6 @@
 """Local real-data provider factory; never loads fixtures."""
 from __future__ import annotations
 from datetime import datetime
-import os
 import akshare
 from backend.app.bootstrap.composition import ProductionResearchProviders
 from backend.app.bootstrap.settings import Settings
@@ -13,9 +12,8 @@ class LocalPolicy:
         return ()
 
 def build(settings: Settings) -> ProductionResearchProviders:
-    del settings
     return ProductionResearchProviders(
         AkShareResearchProvider(akshare),
         LocalPolicy(),
-        DeepSeekFactorProvider(api_key=os.getenv("DEEPSEEK_API_KEY")),
+        DeepSeekFactorProvider(api_key=settings.deepseek_api_key),
     )

@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     provider_mode: Literal["production", "fake"] = "production"
     research_provider_factory: str | None = None
+    deepseek_api_key: str | None = Field(
+        default=None,
+        validation_alias="DEEPSEEK_API_KEY",
+        repr=False,
+    )
     cninfo_web_fetch_enabled: bool | None = None
     bind_host: str = "127.0.0.1"
     bind_port: int = Field(default=8000, ge=1, le=65535)
