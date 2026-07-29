@@ -105,6 +105,26 @@ def test_provider_returns_unadjusted_daily_bars_with_source_hash() -> None:
     assert len(bars[0].source_hash) == 64
 
 
+def test_provider_uses_tencent_history_when_eastmoney_history_is_unavailable() -> None:
+    class TencentFallbackAkShare(FakeAkShare):
+        def stock_zh_a_hist(self, **kwargs: object) -> FakeFrame:
+            del kwargs
+            raise ConnectionError("eastmoney unavailable")
+
+        def stock_zh_a_hist_tx(self, **kwargs: object) -> FakeFrame:
+            assert kwargs["symbol"] == "sz000568"
+            return FakeFrame(
+                [{"date": "2026-07-22", "open": 85, "high": 87, "low": 84, "close": 86.8,
+                  "amount": 12345}]
+            )
+
+    bars = AkShareResearchProvider(TencentFallbackAkShare(), lookback_days=21).daily_bars(
+        "000568.SZ", AS_OF
+    )
+
+    assert bars[0].close == Decimal("86.8")
+
+
 def test_provider_rejects_financial_rows_without_publication_time() -> None:
     class MissingPublicationAkShare(FakeAkShare):
         def stock_financial_report_sina(self, **kwargs: object) -> FakeFrame:

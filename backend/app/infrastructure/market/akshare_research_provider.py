@@ -42,6 +42,8 @@ class AkShareClient(Protocol):
 
     def stock_zh_a_hist(self, **kwargs: object) -> RawFrame: ...
 
+    def stock_zh_a_hist_tx(self, **kwargs: object) -> RawFrame: ...
+
     def fund_etf_hist_em(self, **kwargs: object) -> RawFrame: ...
 
     def stock_financial_report_sina(self, **kwargs: object) -> RawFrame: ...
@@ -190,11 +192,19 @@ class AkShareResearchProvider:
             "end_date": as_of_time.strftime("%Y%m%d"),
             "adjust": "",
         }
-        frame = (
-            self._client.fund_etf_hist_em(**request)
-            if _is_etf(security_id)
-            else self._client.stock_zh_a_hist(**request)
-        )
+        if _is_etf(security_id):
+            frame = self._client.fund_etf_hist_em(**request)
+        else:
+            try:
+                frame = self._client.stock_zh_a_hist(**request)
+            except Exception:
+                frame = self._client.stock_zh_a_hist_tx(
+                    symbol=_akshare_financial_symbol(security_id),
+                    start_date=request["start_date"],
+                    end_date=request["end_date"],
+                    adjust="",
+                    timeout=8,
+                )
         rows = tuple(_rows(frame))
         source_hash = _response_hash(rows)
         result: list[ResearchBar] = []
@@ -264,10 +274,13 @@ def _bar_from_row(
     security_id: str, row: dict[str, object], as_of_time: datetime, source_hash: str
 ) -> ResearchBar | None:
     try:
-        trade_date = _parse_date(row["日期"])
-        prices = tuple(_decimal(row[field]) for field in ("开盘", "最高", "最低", "收盘"))
-        volume = int(Decimal(str(row["成交量"])))
-        amount = _decimal(row["成交额"])
+        trade_date = _parse_date(row.get("日期", row.get("date")))
+        prices = tuple(
+            _decimal(row.get(chinese, row.get(english)))
+            for chinese, english in (("开盘", "open"), ("最高", "high"), ("最低", "low"), ("收盘", "close"))
+        )
+        volume = int(Decimal(str(row.get("成交量", row.get("volume", 0)))))
+        amount = _decimal(row.get("成交额", row.get("amount", 0)))
     except (KeyError, TypeError, ValueError, InvalidOperation):
         return None
     available_at = datetime.combine(trade_date, time(15), as_of_time.tzinfo)
