@@ -132,6 +132,7 @@ def test_llm_source_preserves_output_hash_and_identity_lineage() -> None:
         item.payload["output_hash"] == "output"
         and batch.lineage[0].source_artifact_hash == "output"
     )
+    assert item.payload["policy_direction"] == "neutral"
 
 
 def test_market_source_excludes_future_financial_publication() -> None:

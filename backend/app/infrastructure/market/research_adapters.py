@@ -436,6 +436,7 @@ class LlmEvidenceSource:
                         "output_hash": factor.output_hash,
                         "input_artifact_hashes": tuple(sorted(row_input_hashes)),
                         "factor": factor.payload,
+                        **factor.payload,
                     },
                 )
             )
