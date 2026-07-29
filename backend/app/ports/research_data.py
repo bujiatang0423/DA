@@ -16,7 +16,7 @@ class CalendarDay:
 class UniverseSecurity:
     security_id: str
     name: str
-    listed_on: date
+    listed_on: date | None
     is_st: bool
     is_suspended: bool
     industry_id: str | None

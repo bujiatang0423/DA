@@ -103,3 +103,18 @@ def test_snapshot_keeps_reference_data_that_predates_requested_price_history() -
     )
 
     assert snapshot.security_observations[0].records == (master,)
+
+
+def test_holding_analysis_scope_requires_only_inputs_consumed_by_holding_strategy() -> None:
+    scope = SnapshotScope.holding_analysis(("000001.SZ",))
+
+    assert scope.required_kinds == (
+        DataKind.SECURITY_MASTER,
+        DataKind.DAILY_BAR_RAW,
+        DataKind.INDEX_DAILY_BAR,
+        DataKind.MARKET_BREADTH,
+        DataKind.FINANCIAL_DISCLOSURE,
+        DataKind.FINANCIAL_FACT,
+        DataKind.POLICY_DOCUMENT,
+        DataKind.LLM_FACTOR,
+    )

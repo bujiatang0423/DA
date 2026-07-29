@@ -28,9 +28,17 @@ from backend.app.ports.research_data import (
 class AkShareClient(Protocol):
     def tool_trade_date_hist_sina(self) -> RawFrame: ...
 
+    def stock_info_a_code_name(self) -> RawFrame: ...
+
+    def stock_individual_info_em(self, **kwargs: object) -> RawFrame: ...
+
+    def fund_individual_basic_info_xq(self, **kwargs: object) -> RawFrame: ...
+
     def stock_zh_a_spot_em(self) -> RawFrame: ...
 
     def fund_etf_spot_em(self) -> RawFrame: ...
+
+    def stock_zh_index_daily(self, **kwargs: object) -> RawFrame: ...
 
     def stock_zh_a_hist(self, **kwargs: object) -> RawFrame: ...
 
@@ -83,6 +91,67 @@ class AkShareResearchProvider:
         # suspension state. Do not infer an investable universe from it.
         return ()
 
+    def security_masters(
+        self, security_ids: tuple[str, ...], as_of_time: datetime
+    ) -> tuple[UniverseSecurity, ...]:
+        """Return static metadata for the requested holdings only.
+
+        This deliberately avoids AkShare's paginated all-market spot endpoint.
+        A profile is not an assertion that a security is currently tradable; the
+        strategy receives ``UNKNOWN`` status from the evidence adapter.
+        """
+        _require_aware(as_of_time)
+        retrieved_at = self._retrieved_at()
+        if retrieved_at > as_of_time:
+            return ()
+        try:
+            stock_names = {
+                str(row.get("code", "")).zfill(6): str(row.get("name", "")).strip()
+                for row in _rows(self._client.stock_info_a_code_name())
+            }
+        except Exception:
+            stock_names = {}
+        masters: list[UniverseSecurity] = []
+        for security_id in tuple(_validate_security_id(item) for item in security_ids):
+            code = _code(security_id)
+            profile_rows: tuple[dict[str, object], ...] = ()
+            try:
+                profile_rows = tuple(
+                    _rows(
+                        self._client.fund_individual_basic_info_xq(symbol=code)
+                        if _is_etf(security_id)
+                        else self._client.stock_individual_info_em(symbol=code)
+                    )
+                )
+            except Exception:
+                pass
+            profile = {
+                str(row.get("item", row.get("项目", ""))).strip(): str(
+                    row.get("value", row.get("值", ""))
+                ).strip()
+                for row in profile_rows
+            }
+            listed_on = _profile_date(profile, ("上市时间", "成立日期", "成立日"))
+            name = profile.get("股票简称") or profile.get("基金简称") or stock_names.get(code, "")
+            if not name:
+                name = security_id
+            industry = profile.get("行业") or profile.get("所属行业") or None
+            source_hash = _response_hash(({"code": code, "name": name},) + profile_rows)
+            masters.append(
+                UniverseSecurity(
+                    security_id=security_id,
+                    name=name,
+                    listed_on=listed_on,
+                    is_st="ST" in name.upper(),
+                    is_suspended=False,
+                    industry_id=industry,
+                    theme_ids=(),
+                    available_at=retrieved_at,
+                    source_hash=source_hash,
+                )
+            )
+        return tuple(masters)
+
     def quotes(
         self, security_ids: tuple[str, ...], as_of_time: datetime
     ) -> tuple[ResearchQuote, ...]:
@@ -131,6 +200,22 @@ class AkShareResearchProvider:
         result: list[ResearchBar] = []
         for row in rows:
             bar = _bar_from_row(security_id, row, as_of_time, source_hash)
+            if bar is not None:
+                result.append(bar)
+        return tuple(result)
+
+    def index_daily_bars(
+        self, index_id: str, as_of_time: datetime
+    ) -> tuple[ResearchBar, ...]:
+        """Return the Shanghai Composite history used as the market benchmark."""
+        _require_aware(as_of_time)
+        if index_id.upper() != "000001.SH":
+            return ()
+        rows = tuple(_rows(self._client.stock_zh_index_daily(symbol="sh000001")))
+        source_hash = _response_hash(rows)
+        result: list[ResearchBar] = []
+        for row in rows:
+            bar = _index_bar_from_row(index_id, row, as_of_time, source_hash)
             if bar is not None:
                 result.append(bar)
         return tuple(result)
@@ -192,6 +277,38 @@ def _bar_from_row(
         return None
     return ResearchBar(
         security_id=security_id,
+        trade_date=trade_date,
+        open=prices[0],
+        high=prices[1],
+        low=prices[2],
+        close=prices[3],
+        volume=volume,
+        amount=amount,
+        price_adjustment="none",
+        adjustment_factor=Decimal("1"),
+        available_at=available_at,
+        source_hash=source_hash,
+    )
+
+
+def _index_bar_from_row(
+    index_id: str, row: dict[str, object], as_of_time: datetime, source_hash: str
+) -> ResearchBar | None:
+    try:
+        trade_date = _parse_date(row.get("date", row.get("日期")))
+        prices = tuple(
+            _decimal(row.get(field, row.get(chinese)))
+            for field, chinese in (("open", "开盘"), ("high", "最高"), ("low", "最低"), ("close", "收盘"))
+        )
+        volume = int(Decimal(str(row.get("volume", row.get("成交量", 0)))))
+        amount = _decimal(row.get("amount", row.get("成交额", 0)))
+    except (TypeError, ValueError, InvalidOperation):
+        return None
+    available_at = datetime.combine(trade_date, time(15), as_of_time.tzinfo)
+    if trade_date > as_of_time.date() or available_at > as_of_time or min(prices) <= 0:
+        return None
+    return ResearchBar(
+        security_id=index_id,
         trade_date=trade_date,
         open=prices[0],
         high=prices[1],
@@ -335,6 +452,16 @@ def _optional_date(value: object) -> date | None:
         return _parse_date(value)
     except (TypeError, ValueError):
         return None
+
+
+def _profile_date(profile: Mapping[str, str], keys: tuple[str, ...]) -> date | None:
+    for key in keys:
+        value = profile.get(key)
+        if value:
+            parsed = _optional_date(value)
+            if parsed is not None:
+                return parsed
+    return None
 
 
 def _quote_prices(rows: tuple[dict[str, object], ...]) -> dict[str, tuple[Decimal, str]]:

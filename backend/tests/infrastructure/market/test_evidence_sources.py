@@ -14,7 +14,7 @@ from backend.app.infrastructure.market.research_adapters import (
 )
 from backend.app.infrastructure.market.research_source import ResearchBatch
 from backend.app.infrastructure.llm.deepseek_factor import LlmFactorValidationError, validate_factor
-from backend.app.ports.research_data import FinancialMaterial, ResearchBar
+from backend.app.ports.research_data import FinancialMaterial, ResearchBar, UniverseSecurity
 
 
 UTC = UTC
@@ -166,6 +166,97 @@ def test_market_source_excludes_future_financial_publication() -> None:
     )
 
     assert batch.records == ()
+
+
+def test_market_source_maps_scoped_security_master_without_loading_full_universe() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class ScopedMasterMarket:
+        def security_masters(
+            self, security_ids: tuple[str, ...], requested_as_of: datetime
+        ) -> tuple[UniverseSecurity, ...]:
+            assert security_ids == ("AAA",)
+            assert requested_as_of == as_of
+            return (
+                UniverseSecurity(
+                    security_id="AAA",
+                    name="Alpha",
+                    listed_on=date(2020, 1, 1),
+                    is_st=False,
+                    is_suspended=False,
+                    industry_id="industry",
+                    theme_ids=(),
+                    available_at=as_of,
+                    source_hash="master-hash",
+                ),
+            )
+
+    batch = MarketEvidenceSource(ScopedMasterMarket()).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(
+            security_ids=("AAA",),
+            required_kinds=(DataKind.SECURITY_MASTER,),
+        ),
+    )
+
+    assert len(batch.records) == 1
+    assert batch.records[0].kind is DataKind.SECURITY_MASTER
+    assert batch.records[0].entity_id == "AAA"
+    assert batch.records[0].payload["name"] == "Alpha"
+    assert batch.lineage[0].source_artifact_hash == "master-hash"
+
+
+def test_market_source_builds_auditable_holding_breadth_and_index_history() -> None:
+    as_of = datetime(2026, 1, 2, 16, tzinfo=UTC)
+
+    class HoldingMarket:
+        def daily_bars(self, security_id: str, requested_as_of: datetime) -> tuple[ResearchBar, ...]:
+            assert requested_as_of == as_of
+            return tuple(
+                ResearchBar(
+                    security_id=security_id,
+                    trade_date=trade_date,
+                    open=Decimal(close),
+                    high=Decimal(close),
+                    low=Decimal(close),
+                    close=Decimal(close),
+                    volume=1,
+                    amount=Decimal("1"),
+                    price_adjustment="none",
+                    adjustment_factor=Decimal("1"),
+                    available_at=datetime.combine(trade_date, datetime.min.time(), UTC),
+                    source_hash=f"{security_id}-{trade_date}",
+                )
+                for trade_date, close in ((date(2026, 1, 1), "10"), (date(2026, 1, 2), "11"))
+            )
+
+        def index_daily_bars(
+            self, index_id: str, requested_as_of: datetime
+        ) -> tuple[ResearchBar, ...]:
+            return self.daily_bars(index_id, requested_as_of)
+
+    batch = MarketEvidenceSource(HoldingMarket(), benchmark_ids=("000001.SH",)).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(
+            security_ids=("AAA",),
+            required_kinds=(
+                DataKind.DAILY_BAR_RAW,
+                DataKind.INDEX_DAILY_BAR,
+                DataKind.MARKET_BREADTH,
+            ),
+        ),
+    )
+
+    index = next(item for item in batch.records if item.kind is DataKind.INDEX_DAILY_BAR)
+    breadth = next(item for item in batch.records if item.kind is DataKind.MARKET_BREADTH)
+    assert index.payload["close"] == Decimal("11")
+    assert len(index.payload["bars"]) == 2
+    assert breadth.payload == {
+        "breadth": 1.0,
+        "security_count": 1,
+        "method": "holding_return_proxy",
+        "low_confidence": True,
+    }
 
 
 def test_market_source_uses_concrete_market_provider_in_lineage() -> None:

@@ -35,6 +35,22 @@ class FakeAkShare:
     def stock_zh_a_spot_em(self) -> FakeFrame:
         return FakeFrame([{"代码": "000568", "最新价": "86.80"}])
 
+    def stock_zh_index_daily(self, **kwargs: object) -> FakeFrame:
+        assert kwargs == {"symbol": "sh000001"}
+        return FakeFrame(
+            [
+                {
+                    "date": "2026-07-22",
+                    "open": "3500",
+                    "high": "3520",
+                    "low": "3490",
+                    "close": "3510",
+                    "volume": "100",
+                    "amount": "1000",
+                }
+            ]
+        )
+
     def stock_zh_a_hist(self, **kwargs: object) -> FakeFrame:
         assert kwargs == {
             "symbol": "000568",
@@ -158,6 +174,30 @@ def test_provider_hides_current_universe_when_retrieved_after_as_of_time() -> No
     )
 
     assert provider.universe(AS_OF) == ()
+
+
+def test_provider_returns_scoped_security_master_without_loading_market_spot_pages() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    masters = provider.security_masters(("000568.SZ",), AS_OF)
+
+    assert len(masters) == 1
+    assert masters[0].security_id == "000568.SZ"
+    assert masters[0].name == "泸州老窖"
+    assert masters[0].listed_on == date(1994, 5, 9)
+    assert masters[0].industry_id == "白酒"
+    assert masters[0].is_suspended is False
+
+
+def test_provider_returns_unadjusted_index_bars_with_source_hash() -> None:
+    provider = AkShareResearchProvider(FakeAkShare(), now=lambda: AS_OF)
+
+    bars = provider.index_daily_bars("000001.SH", AS_OF)
+
+    assert len(bars) == 1
+    assert bars[0].security_id == "000001.SH"
+    assert bars[0].close == Decimal("3510")
+    assert bars[0].available_at == datetime(2026, 7, 22, 15, 0, tzinfo=SHANGHAI)
 
 
 def test_provider_normalizes_lowercase_exchange_suffix() -> None:

@@ -50,6 +50,7 @@ class MarketEvidenceSource:
             or tuple(x.security_id for x in self.market.universe(as_of_time))
         )
         required = set(scope.required_kinds)
+        include_masters = not required or DataKind.SECURITY_MASTER in required
         include_bars = not required or DataKind.DAILY_BAR_RAW in required
         include_financials = not required or bool(
             {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & required
@@ -59,6 +60,59 @@ class MarketEvidenceSource:
             as_of_time=as_of_time,
             security_ids=ids,
         )
+        if include_masters and hasattr(self.market, "security_masters"):
+            masters = self.market.security_masters(ids, as_of_time)
+            for master in masters:
+                if master.available_at > as_of_time:
+                    continue
+                event_time = (
+                    datetime.combine(master.listed_on, time.min, as_of_time.tzinfo)
+                    if master.listed_on is not None
+                    else master.available_at
+                )
+                payload = asdict(master)
+                payload["listing_days"] = (
+                    (as_of_time.date() - master.listed_on).days
+                    if master.listed_on is not None
+                    else 0
+                )
+                payload["status"] = "UNKNOWN"
+                result.append(
+                    _record(
+                        DataKind.SECURITY_MASTER,
+                        master.security_id,
+                        master.listed_on.isoformat() if master.listed_on else "observed",
+                        event_time,
+                        master.available_at,
+                        master.source_hash,
+                        payload,
+                    )
+                )
+        include_index = not required or DataKind.INDEX_DAILY_BAR in required
+        if include_index and hasattr(self.market, "index_daily_bars"):
+            for index_id in self.benchmark_ids:
+                bars = tuple(self.market.index_daily_bars(index_id, as_of_time))
+                available_bars = tuple(
+                    bar for bar in bars if getattr(bar, "available_at", as_of_time) <= as_of_time
+                )
+                if not available_bars:
+                    continue
+                ordered_bars = tuple(sorted(available_bars, key=lambda item: item.trade_date))
+                latest = ordered_bars[-1]
+                result.append(
+                    _record(
+                        DataKind.INDEX_DAILY_BAR,
+                        f"MARKET:{index_id}",
+                        str(latest.trade_date),
+                        datetime.combine(latest.trade_date, time(15), as_of_time.tzinfo),
+                        latest.available_at,
+                        latest.source_hash,
+                        {
+                            "close": latest.close,
+                            "bars": tuple(asdict(bar) for bar in ordered_bars),
+                        },
+                    )
+                )
         for sid in ids:
             if include_bars:
                 for bar in self.market.daily_bars(sid, as_of_time):
@@ -130,6 +184,10 @@ class MarketEvidenceSource:
                                     payload,
                                 )
                             )
+        if (not required or DataKind.MARKET_BREADTH in required) and scope.security_ids:
+            breadth_record = _holding_breadth_record(result, as_of_time)
+            if breadth_record is not None:
+                result.append(breadth_record)
         return ResearchBatch(tuple(result), _lineage(self.provider, tuple(result)))
 
 
@@ -145,6 +203,50 @@ def _record(
     return TemporalRecord(
         f"{kind.value}:{entity}:{suffix}", kind, entity, event, event, available, h, payload
     )
+
+
+def _holding_breadth_record(
+    records: list[TemporalRecord], as_of_time: datetime
+) -> TemporalRecord | None:
+    closes_by_security: dict[str, list[tuple[datetime, object]]] = {}
+    hashes: list[str] = []
+    for record in records:
+        if record.kind is not DataKind.DAILY_BAR_RAW:
+            continue
+        close = record.payload.get("close")
+        if close is None:
+            continue
+        closes_by_security.setdefault(record.entity_id, []).append((record.event_time, close))
+        hashes.append(record.source_artifact_hash)
+    changes: list[bool] = []
+    for rows in closes_by_security.values():
+        ordered = sorted(rows, key=lambda item: item[0])
+        if len(ordered) >= 2 and float(ordered[-2][1]) > 0:
+            changes.append(float(ordered[-1][1]) >= float(ordered[-2][1]))
+    if not changes:
+        return None
+    source_hash = _breadth_hash(tuple(sorted(set(hashes))))
+    payload = {
+        "breadth": sum(changes) / len(changes),
+        "security_count": len(changes),
+        "method": "holding_return_proxy",
+        "low_confidence": True,
+    }
+    return _record(
+        DataKind.MARKET_BREADTH,
+        "MARKET:CN_A:HOLDING_BREADTH",
+        as_of_time.isoformat(),
+        as_of_time,
+        as_of_time,
+        source_hash,
+        payload,
+    )
+
+
+def _breadth_hash(hashes: tuple[str, ...]) -> str:
+    from hashlib import sha256
+
+    return sha256("|".join(hashes).encode("utf-8")).hexdigest()
 
 
 def _lineage(provider: str, records: tuple[TemporalRecord, ...]) -> tuple[LineageRef, ...]:

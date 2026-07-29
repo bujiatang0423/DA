@@ -68,7 +68,19 @@ class SnapshotScope:
 
     @classmethod
     def holding_analysis(cls, security_ids: tuple[str, ...]) -> SnapshotScope:
-        return cls(security_ids, cls.candidate_recommendation().required_kinds)
+        return cls(
+            security_ids,
+            (
+                DataKind.SECURITY_MASTER,
+                DataKind.DAILY_BAR_RAW,
+                DataKind.INDEX_DAILY_BAR,
+                DataKind.MARKET_BREADTH,
+                DataKind.FINANCIAL_DISCLOSURE,
+                DataKind.FINANCIAL_FACT,
+                DataKind.POLICY_DOCUMENT,
+                DataKind.LLM_FACTOR,
+            ),
+        )
 
     @classmethod
     def backtest(cls, security_ids: tuple[str, ...], history_start: datetime) -> SnapshotScope:
