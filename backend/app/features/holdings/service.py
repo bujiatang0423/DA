@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
+import logging
 from threading import Thread
 from typing import Literal, Protocol
 
@@ -19,6 +20,9 @@ from .models import HoldingAnalysisResult, HoldingImportProvenance, HoldingRiskS
 from .quality import holding_evidence, llm_grade_from_snapshot
 from .repository import HoldingAnalysisRepository
 from .strategy_projection import project_position
+
+
+_LOGGER = logging.getLogger("da.holdings")
 
 
 class HoldingAnalysisInvariantError(RuntimeError):
@@ -118,6 +122,7 @@ class HoldingAnalysisService:
         self._validate_inputs(effective_command, portfolio, snapshot)
         self._validate_import_provenance(effective_command, portfolio)
         if snapshot.quality.has_errors:
+            _LOGGER.warning("holding_snapshot_quality issues=%s", _quality_issue_summary(snapshot))
             raise HoldingMarketDataMissing(self._missing_data_detail(snapshot))
 
         try:
@@ -256,6 +261,13 @@ class HoldingAnalysisService:
 
 
 V212HoldingAnalysisService = HoldingAnalysisService
+
+
+def _quality_issue_summary(snapshot: PointInTimeSnapshot) -> str:
+    return ",".join(
+        f"{issue.code}:{issue.dataset}:{issue.entity_id or '-'}"
+        for issue in snapshot.quality.issues
+    )
 
 
 def _run_in_background(task: Callable[[], object]) -> None:

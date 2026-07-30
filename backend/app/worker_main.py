@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import signal
+import logging
 from datetime import UTC, datetime
 from os import environ
 from socket import gethostname
@@ -46,6 +47,7 @@ def register_worker_handlers(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     settings = Settings()
     engine = build_engine(settings.database_url)
     sessions = build_session_factory(engine)

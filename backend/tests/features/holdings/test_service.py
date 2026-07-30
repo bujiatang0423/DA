@@ -108,6 +108,18 @@ def test_service_reads_portfolio_and_market_at_identical_as_of_time() -> None:
     assert repository.saved == [result]
 
 
+def test_service_logs_safe_snapshot_quality_issues(caplog: pytest.LogCaptureFixture) -> None:
+    issue = QualityIssue(
+        "LINEAGE_MISSING", QualitySeverity.ERROR, "lineage", "000001.SZ", "missing lineage"
+    )
+    service, command, *_ = build_service(snapshot_errors=(issue,))
+
+    with pytest.raises(HoldingMarketDataMissing):
+        service.run(command)
+
+    assert "holding_snapshot_quality issues=LINEAGE_MISSING:lineage:000001.SZ" in caplog.text
+
+
 def test_service_refreshes_official_financial_evidence_before_building_snapshot() -> None:
     service, command, warehouse, portfolios, input_builder, strategy, repository = build_service()
     refresher = RecordingFinancialEvidenceRefresher()
