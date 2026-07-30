@@ -114,9 +114,9 @@ def test_holding_analysis_scope_requires_only_inputs_consumed_by_holding_strateg
         DataKind.INDEX_DAILY_BAR,
         DataKind.MARKET_BREADTH,
         DataKind.POLICY_DOCUMENT,
-        DataKind.LLM_FACTOR,
     )
     assert scope.optional_kinds == (
         DataKind.FINANCIAL_DISCLOSURE,
         DataKind.FINANCIAL_FACT,
+        DataKind.LLM_FACTOR,
     )

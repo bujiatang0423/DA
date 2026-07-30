@@ -417,12 +417,17 @@ class LlmEvidenceSource:
                 if DataKind.FINANCIAL_FACT in scope.required_kinds
                 else ()
             )
-            factor = self.llm.extract(
-                as_of_time=as_of_time,
-                security_id=sid,
-                policy_materials=policies,
-                financial_materials=financials,
-            )
+            try:
+                factor = self.llm.extract(
+                    as_of_time=as_of_time,
+                    security_id=sid,
+                    policy_materials=policies,
+                    financial_materials=financials,
+                )
+            except Exception:
+                # LLM research is advisory. A transient failure for one holding
+                # must leave the deterministic analysis of the portfolio intact.
+                continue
             if factor.as_of_time != as_of_time or factor.security_id != sid:
                 raise ValueError("LLM factor identity mismatch")
             if not all(

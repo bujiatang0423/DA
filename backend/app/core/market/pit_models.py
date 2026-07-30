@@ -77,9 +77,12 @@ class SnapshotScope:
                 DataKind.INDEX_DAILY_BAR,
                 DataKind.MARKET_BREADTH,
                 DataKind.POLICY_DOCUMENT,
+            ),
+            optional_kinds=(
+                DataKind.FINANCIAL_DISCLOSURE,
+                DataKind.FINANCIAL_FACT,
                 DataKind.LLM_FACTOR,
             ),
-            optional_kinds=(DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT),
         )
 
     @classmethod
