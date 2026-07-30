@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from backend.app.contracts.grades import DataGrade
 from backend.app.core.market.pit_models import (
@@ -8,6 +9,9 @@ from backend.app.core.market.pit_models import (
 )
 from backend.app.core.market.snapshot import assemble_snapshot
 from backend.app.infrastructure.market.research_source import ResearchSource
+
+
+_LOGGER = logging.getLogger("da.research")
 
 
 class ResearchPointInTimeWarehouse:
@@ -28,14 +32,20 @@ class ResearchPointInTimeWarehouse:
         for source in self.sources:
             try:
                 batches.append(source.fetch(as_of_time=as_of_time, scope=scope))
-            except Exception:
+            except Exception as error:
+                provider = _provider_name(source)
+                _LOGGER.warning(
+                    "research_source_failed provider=%s exception_type=%s",
+                    provider,
+                    type(error).__name__,
+                )
                 issues.append(
                     QualityIssue(
                         "PROVIDER_UNAVAILABLE",
                         QualitySeverity.ERROR,
-                        _provider_name(source),
+                        provider,
                         None,
-                        "provider is unavailable",
+                        f"provider unavailable: {type(error).__name__}",
                     )
                 )
         records = tuple(r for b in batches for r in b.records)

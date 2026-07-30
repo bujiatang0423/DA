@@ -55,6 +55,7 @@ def test_source_failure_becomes_sanitized_provider_quality_error() -> None:
     assert snapshot.quality.has_errors
     assert issue.severity.value == "error"
     assert issue.dataset == "market_provider"
+    assert "RuntimeError" in issue.detail
     assert "secret" not in issue.detail
     assert "provider response" not in issue.detail
 
