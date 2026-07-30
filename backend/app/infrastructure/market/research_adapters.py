@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from datetime import datetime, date, time
+import logging
 
 from backend.app.core.market.pit_models import DataKind, LineageRef, SnapshotScope, TemporalRecord
 from backend.app.infrastructure.llm.deepseek_factor import validate_factor
@@ -12,6 +13,9 @@ from backend.app.infrastructure.market.official_evidence import (
 from backend.app.ports.policy import PolicyMaterial
 from backend.app.ports.research_data import FinancialMaterial
 from backend.app.infrastructure.market.research_source import ResearchBatch
+
+
+_LOGGER = logging.getLogger("da.research")
 
 
 class MarketEvidenceSource:
@@ -498,6 +502,11 @@ class ResearchEvidenceSource:
         records = tuple(records_by_id[record_id] for record_id in sorted(records_by_id))
         missing = set(scope.required_kinds) - {r.kind for r in records}
         if missing:
+            _LOGGER.warning(
+                "research_evidence_missing required_kinds=%s available_kinds=%s",
+                sorted(item.value for item in missing),
+                sorted({item.kind.value for item in records}),
+            )
             raise ValueError(
                 "research evidence source missing: " + ",".join(sorted(x.value for x in missing))
             )
