@@ -50,11 +50,10 @@ class MarketEvidenceSource:
             or tuple(x.security_id for x in self.market.universe(as_of_time))
         )
         required = set(scope.required_kinds)
-        optional = set(scope.optional_kinds)
         include_masters = not required or DataKind.SECURITY_MASTER in required
         include_bars = not required or DataKind.DAILY_BAR_RAW in required
         include_financials = not required or bool(
-            {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & (required | optional)
+            {DataKind.FINANCIAL_DISCLOSURE, DataKind.FINANCIAL_FACT} & required
         )
         official_financials = _official_financials(
             self._official_evidence,
@@ -401,12 +400,16 @@ class LlmEvidenceSource:
         rows = []
         input_hashes: set[str] = set()
         for sid in ids:
-            financials = _llm_financials(
-                self.market,
-                sid,
-                as_of_time,
-                official_documents,
-                self._official_evidence is not None,
+            financials = (
+                _llm_financials(
+                    self.market,
+                    sid,
+                    as_of_time,
+                    official_documents,
+                    self._official_evidence is not None,
+                )
+                if DataKind.FINANCIAL_FACT in scope.required_kinds
+                else ()
             )
             factor = self.llm.extract(
                 as_of_time=as_of_time,

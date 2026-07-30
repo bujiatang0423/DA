@@ -427,7 +427,8 @@ def test_llm_lineage_includes_all_input_artifacts() -> None:
             )
 
     batch = LlmEvidenceSource(Llm(), InputPolicy(), InputMarket()).fetch(
-        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+        as_of_time=as_of,
+        scope=SnapshotScope(("AAA",), (DataKind.FINANCIAL_FACT,)),
     )
 
     assert {item.source_artifact_hash for item in batch.lineage} == {
@@ -587,7 +588,8 @@ def test_llm_source_accepts_evidence_from_a_public_financial_source() -> None:
             )
 
     batch = LlmEvidenceSource(FinancialEvidenceLlm(), Policy(), FinancialEvidenceMarket()).fetch(
-        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+        as_of_time=as_of,
+        scope=SnapshotScope(("AAA",), (DataKind.FINANCIAL_FACT,)),
     )
 
     assert batch.records[0].kind is DataKind.LLM_FACTOR
