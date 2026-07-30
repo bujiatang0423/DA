@@ -489,7 +489,17 @@ class ResearchEvidenceSource:
         self.sources = sources
 
     def fetch(self, *, as_of_time: datetime, scope: SnapshotScope) -> ResearchBatch:
-        batches = tuple(s.fetch(as_of_time=as_of_time, scope=scope) for s in self.sources)
+        batches: list[ResearchBatch] = []
+        for source in self.sources:
+            try:
+                batches.append(source.fetch(as_of_time=as_of_time, scope=scope))
+            except Exception as error:
+                _LOGGER.warning(
+                    "research_evidence_source_failed provider=%s exception_type=%s",
+                    getattr(source, "provider", type(source).__name__),
+                    type(error).__name__,
+                )
+                raise
         records_by_id: dict[str, TemporalRecord] = {}
         for batch in batches:
             for record in batch.records:
