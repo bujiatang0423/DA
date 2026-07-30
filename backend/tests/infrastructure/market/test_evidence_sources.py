@@ -519,7 +519,7 @@ def test_market_source_maps_available_financial_disclosure_and_facts() -> None:
     assert {item.source_artifact_hash for item in batch.lineage} == {"financial-hash"}
 
 
-def test_llm_source_rejects_unvalidated_factor_before_snapshot_assembly() -> None:
+def test_llm_source_drops_unvalidated_factor_without_losing_other_research() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
 
     class InvalidLlm:
@@ -534,13 +534,14 @@ def test_llm_source_rejects_unvalidated_factor_before_snapshot_assembly() -> Non
                 {"action": "buy"},
             )
 
-    with pytest.raises(LlmFactorValidationError, match="forbidden"):
-        LlmEvidenceSource(InvalidLlm(), Policy(), Market()).fetch(
-            as_of_time=as_of, scope=SnapshotScope(("AAA",))
-        )
+    batch = LlmEvidenceSource(InvalidLlm(), Policy(), Market()).fetch(
+        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+    )
+
+    assert batch.records == ()
 
 
-def test_llm_source_rejects_malformed_factor_metadata() -> None:
+def test_llm_source_drops_malformed_factor_metadata() -> None:
     as_of = datetime(2026, 1, 1, tzinfo=UTC)
 
     class MalformedLlm:
@@ -555,10 +556,11 @@ def test_llm_source_rejects_malformed_factor_metadata() -> None:
                 valid_factor_payload(kwargs["as_of_time"]),
             )
 
-    with pytest.raises(ValueError, match="metadata"):
-        LlmEvidenceSource(MalformedLlm(), Policy(), Market()).fetch(
-            as_of_time=as_of, scope=SnapshotScope(("AAA",))
-        )
+    batch = LlmEvidenceSource(MalformedLlm(), Policy(), Market()).fetch(
+        as_of_time=as_of, scope=SnapshotScope(("AAA",))
+    )
+
+    assert batch.records == ()
 
 
 @pytest.mark.parametrize(

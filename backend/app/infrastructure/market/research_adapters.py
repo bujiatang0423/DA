@@ -429,19 +429,22 @@ class LlmEvidenceSource:
                 # must leave the deterministic analysis of the portfolio intact.
                 continue
             if factor.as_of_time != as_of_time or factor.security_id != sid:
-                raise ValueError("LLM factor identity mismatch")
+                continue
             if not all(
                 isinstance(getattr(factor, field, None), str)
                 and bool(getattr(factor, field).strip())
                 for field in ("model_id", "prompt_hash", "input_hash", "output_hash")
             ) or not isinstance(factor.payload, dict):
-                raise ValueError("LLM factor metadata/schema mismatch")
-            validate_factor(
-                factor.payload,
-                as_of_time=as_of_time,
-                allowed_evidence={item.source_id for item in policies}
-                | {item.source_hash for item in financials},
-            )
+                continue
+            try:
+                validate_factor(
+                    factor.payload,
+                    as_of_time=as_of_time,
+                    allowed_evidence={item.source_id for item in policies}
+                    | {item.source_hash for item in financials},
+                )
+            except Exception:
+                continue
             row_input_hashes = {item.content_hash for item in policies} | {
                 item.source_hash for item in financials
             }
