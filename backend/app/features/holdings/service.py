@@ -136,7 +136,15 @@ class HoldingAnalysisService:
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: strategy inputs unavailable"
             ) from exc
-        evaluation = self._strategy.evaluate(prepared)
+        try:
+            evaluation = self._strategy.evaluate(prepared)
+        except Exception as exc:
+            _LOGGER.warning(
+                "holding_strategy_evaluation_error exception_type=%s message=%s",
+                type(exc).__name__,
+                str(exc),
+            )
+            raise
         self._validate_evaluation(effective_command, snapshot, prepared, evaluation)
 
         evaluations_by_security = {item.security_id: item for item in evaluation.securities}
