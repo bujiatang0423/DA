@@ -142,6 +142,7 @@ class HoldingAnalysisService:
         evaluations_by_security = {item.security_id: item for item in evaluation.securities}
         missing = tuple(sid for sid in security_ids if sid not in evaluations_by_security)
         if missing:
+            _LOGGER.warning("holding_evaluations_missing security_ids=%s", ",".join(missing))
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: missing evaluations for {','.join(missing)}"
             )
@@ -149,6 +150,7 @@ class HoldingAnalysisService:
             security_id for security_id, item in evaluations_by_security.items() if item.close <= 0
         )
         if invalid_close_ids:
+            _LOGGER.warning("holding_closes_invalid security_ids=%s", ",".join(invalid_close_ids))
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: invalid close for {','.join(invalid_close_ids)}"
             )
