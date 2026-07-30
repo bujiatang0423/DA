@@ -132,6 +132,7 @@ class HoldingAnalysisService:
                 strategy_version=effective_command.strategy_version,
             )
         except StrategyInputError as exc:
+            _LOGGER.warning("holding_strategy_input_error error=%s", str(exc))
             raise HoldingMarketDataMissing(
                 f"{HoldingMarketDataMissing.code}: strategy inputs unavailable"
             ) from exc
