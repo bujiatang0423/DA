@@ -299,6 +299,44 @@ def test_market_source_uses_concrete_market_provider_in_lineage() -> None:
     assert batch.lineage[0].provider == "akshare"
 
 
+def test_market_source_keeps_other_holdings_when_one_quote_request_fails() -> None:
+    as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
+
+    class PartiallyAvailableMarket:
+        def daily_bars(
+            self, security_id: str, requested_as_of: datetime
+        ) -> tuple[ResearchBar, ...]:
+            assert requested_as_of == as_of
+            if security_id == "BROKEN":
+                raise RuntimeError("temporary quote timeout")
+            return (
+                ResearchBar(
+                    security_id=security_id,
+                    trade_date=as_of.date(),
+                    open=Decimal("10"),
+                    high=Decimal("10"),
+                    low=Decimal("10"),
+                    close=Decimal("10"),
+                    volume=1,
+                    amount=Decimal("1"),
+                    price_adjustment="none",
+                    adjustment_factor=Decimal("1"),
+                    available_at=as_of,
+                    source_hash="good-quote",
+                ),
+            )
+
+    batch = MarketEvidenceSource(PartiallyAvailableMarket()).fetch(
+        as_of_time=as_of,
+        scope=SnapshotScope(
+            security_ids=("GOOD", "BROKEN"),
+            required_kinds=(DataKind.DAILY_BAR_RAW,),
+        ),
+    )
+
+    assert tuple(record.entity_id for record in batch.records) == ("GOOD",)
+
+
 def test_market_source_does_not_expand_live_universe_without_an_explicit_scope() -> None:
     as_of = datetime(2026, 1, 1, 16, tzinfo=UTC)
 

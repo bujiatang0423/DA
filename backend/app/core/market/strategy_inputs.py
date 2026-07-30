@@ -135,6 +135,8 @@ class StrategyInputBuilder:
                 returns_by_security[observation.security_id] = (r20, r60)
             complete = len(observation.records_of(DataKind.FINANCIAL_FACT)) >= 2
             quality: list[str] = []
+            if not bars:
+                quality.append("MARKET_DATA_UNAVAILABLE")
             if not complete:
                 quality.append("FINANCIAL_TEMPLATE_INCOMPLETE")
             financial_rows = [_payload(r) for r in observation.records_of(DataKind.FINANCIAL_FACT)]

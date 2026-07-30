@@ -115,7 +115,13 @@ class MarketEvidenceSource:
                 )
         for sid in ids:
             if include_bars:
-                for bar in self.market.daily_bars(sid, as_of_time):
+                try:
+                    bars = self.market.daily_bars(sid, as_of_time)
+                except Exception:
+                    # A transient quote outage for one holding must not discard
+                    # the usable evidence for the rest of the portfolio.
+                    bars = ()
+                for bar in bars:
                     available_at = getattr(bar, "available_at", as_of_time)
                     if available_at > as_of_time:
                         continue

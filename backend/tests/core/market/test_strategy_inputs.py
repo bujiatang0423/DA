@@ -104,3 +104,28 @@ def test_builder_maps_policy_llm_and_marks_incomplete_financial_quality() -> Non
     assert item.breakout_or_valid_pullback
     assert item.breakout_volume_percentile > 0
     assert item.turnover_percentile > 0
+
+
+def test_builder_marks_holding_without_bars_for_manual_market_review() -> None:
+    rows = (
+        _r("breadth", DataKind.MARKET_BREADTH, "MARKET:INDEX", {"breadth": 0.6}),
+        _r("master", DataKind.SECURITY_MASTER, "BROKEN", {"name": "Broken", "listing_days": 200}),
+        _r(
+            "policy",
+            DataKind.POLICY_DOCUMENT,
+            "BROKEN",
+            {"strength": 0.8, "relevance": 0.7, "stage": "pilot"},
+        ),
+        _r("llm", DataKind.LLM_FACTOR, "BROKEN", {"factor": {}}),
+    )
+    portfolio = PortfolioSnapshot(
+        "p", datetime(2026, 1, 1, tzinfo=UTC), 1, Decimal("0"), Decimal("100"), ()
+    )
+
+    result = StrategyInputBuilder().build(
+        snapshot=_snapshot(rows), portfolio=portfolio, strategy_version="v1.0"
+    )
+
+    item = result.securities[0]
+    assert "MARKET_DATA_UNAVAILABLE" in item.quality_codes
+    assert not item.hard_filter_passed
